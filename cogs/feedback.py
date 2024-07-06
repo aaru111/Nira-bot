@@ -64,7 +64,7 @@ class FeedbackModal(Modal):
         await interaction.response.send_message(embed=embed)
 
         logger.info(
-            f"Feedback from {user} (ID: {user.id}) in {guild} (ID: {guild.id}) - Subject: {subject}, Details: {details}"
+            f"Feedback from {user} (ID: {user.id}) in {guild.name if guild else 'Direct Message'} (ID: {guild.id if guild else 'N/A'}) - Subject: {subject}, Details: {details}"
         )
 
         feedback_channel_id = self.config.get('feedback_channel_id')
@@ -81,7 +81,8 @@ class FeedbackModal(Modal):
                                          inline=False)
                 feedback_embed.add_field(
                     name="Guild",
-                    value=f"{guild.name} (ID: {guild.id})",
+                    value=
+                    f"{interaction.guild.name if interaction.guild else 'Direct Message'} (ID: {interaction.guild.id if interaction.guild else 'N/A'})",  # Corrected line
                     inline=False)
                 feedback_embed.set_footer(text="Upvotes: 0 | Downvotes: 0")
 
@@ -110,23 +111,27 @@ class FeedbackView(View):
         self.downvotes = 0
 
     @discord.ui.button(label="Upvote", style=discord.ButtonStyle.green)
-    async def upvote_button(self, button: Button,
-                            interaction: discord.Interaction):
+    async def upvote_button(self, interaction: discord.Interaction,
+                            button: Button):
         self.upvotes += 1
-        await self.update_feedback_message(interaction)
+        if self.feedback_message:  # Check if feedback_message is set
+            await self.update_feedback_message(interaction)
 
     @discord.ui.button(label="Downvote", style=discord.ButtonStyle.red)
-    async def downvote_button(self, button: Button,
-                              interaction: discord.Interaction):
+    async def downvote_button(self, interaction: discord.Interaction,
+                              button: Button):
         self.downvotes += 1
-        await self.update_feedback_message(interaction)
+        if self.feedback_message:  # Check if feedback_message is set
+            await self.update_feedback_message(interaction)
 
     async def update_feedback_message(self, interaction: discord.Interaction):
-        feedback_embed = self.feedback_message.embeds[0]
-        feedback_embed.set_footer(
-            text=f"Upvotes: {self.upvotes} | Downvotes: {self.downvotes}")
-        await self.feedback_message.edit(embed=feedback_embed, view=self)
-        await interaction.defer_update()
+        if self.feedback_message:  # Check if feedback_message is set
+            feedback_embed = self.feedback_message.embeds[0]
+            feedback_embed.set_footer(
+                text=f"Upvotes: {self.upvotes} | Downvotes: {self.downvotes}")
+            await self.feedback_message.edit(embed=feedback_embed, view=self)
+            await interaction.response.defer(
+            )  # Use defer() instead of defer_update()
 
 
 class Feedback(commands.Cog):
@@ -155,8 +160,12 @@ class Feedback(commands.Cog):
         if feedback_channel_id:
             channel = self.bot.get_channel(feedback_channel_id)
             if channel:
-                await ctx.send(
-                    f"The current feedback channel is {channel.mention}")
+                if isinstance(channel, discord.TextChannel):
+                    await ctx.send(
+                        f"The current feedback channel is {channel.mention}")
+                else:
+                    await ctx.send(
+                        "The current feedback channel is a private channel.")
             else:
                 await ctx.send(
                     "```py\nError: The saved feedback channel ID is invalid. Please set a new feedback channel using the setfeedbackchannel command.```"
@@ -179,7 +188,3 @@ class Feedback(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Feedback(bot))
-
-
-async def register_commands(bot: commands.Bot):
-    await bot.tree.sync()
