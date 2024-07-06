@@ -118,18 +118,24 @@ class Fun(commands.Cog):
     @commands.command()
     async def joke(self, ctx: commands.Context):
         await ctx.defer()
-        j = await Jokes()
-        blacklist = ["racist"]
-        if not ctx.message.channel.is_nsfw():
-            blacklist.append("nsfw")
-        joke = await j.get_joke(blacklist=blacklist)
-        msg = ""
-        if joke["type"] == "single":
-            msg = joke["joke"]
-        else:
-            msg = joke["setup"]
-            msg += f"||{joke['delivery']}||"
-        await ctx.send(msg)
+        try:
+            j = await Jokes()
+            joke = await j.get_joke()
+
+            # Ensure joke is treated as a dictionary
+            joke = dict(joke)
+
+            if joke["type"] == "single":
+                msg = joke["joke"]
+            else:
+                msg = joke["setup"]
+                if 'delivery' in joke:
+                    msg += f"||{joke['delivery']}||"
+
+            await ctx.send(msg)
+        except Exception as e:
+            await ctx.send(f"Error: {str(e)}")
+
 
 
 async def setup(bot: commands.Bot):
