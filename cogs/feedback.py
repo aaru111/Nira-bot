@@ -1,3 +1,4 @@
+#good code
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -33,7 +34,7 @@ def save_config(config: dict):
 
 
 # Define the embed color
-EMBED_COLOR = 0x2f3131
+EMBED_COLOR = 0xFF00FF
 
 
 class FeedbackModal(Modal):
@@ -77,6 +78,12 @@ class FeedbackModal(Modal):
                     description=
                     f"**Subject:** {subject}\n\n**Details:** {details}",
                     color=EMBED_COLOR)
+                feedback_embed.add_field(name="Upvote Meter",
+                                         value="────────── 0.0%",
+                                         inline=False)
+                feedback_embed.add_field(name="Downvote Meter",
+                                         value="────────── 0.0%",
+                                         inline=False)
                 feedback_embed.add_field(name="User",
                                          value=f"{user} (ID: {user.id})",
                                          inline=False)
@@ -85,13 +92,17 @@ class FeedbackModal(Modal):
                     value=
                     f"{guild.name if guild else 'Direct Message'} (ID: {guild.id if guild else 'N/A'})",
                     inline=False)
-                feedback_embed.set_footer(text="Upvotes: 0 | Downvotes: 0")
+                feedback_embed.set_footer(
+                    text=
+                    f"Initiated by {user} at <t:{int(interaction.created_at.timestamp())}:f>\nUpvotes: 0 (0.0%) | Downvotes: 0 (0.0%)"
+                )
 
                 feedback_view = FeedbackView(self.bot)
                 feedback_message = await feedback_channel.send(
                     embed=feedback_embed, view=feedback_view)
 
                 feedback_view.feedback_message = feedback_message
+                feedback_view.user_id = user.id
             else:
                 await interaction.followup.send(
                     "```py\nError: Feedback channel not found. Please set a valid feedback channel using the setfeedbackchannel command.```"
@@ -111,32 +122,79 @@ class FeedbackView(View):
         self.upvotes = 0
         self.downvotes = 0
         self.user_votes = {}  # Track user votes
-    
-    @discord.ui.button(label="Upvote", style=discord.ButtonStyle.green)
+
+    @discord.ui.button(label="Upvote",
+                       style=discord.ButtonStyle.green,
+                       emoji="📈")
     async def upvote_button(self, interaction: discord.Interaction,
                             button: Button):
         user_id = interaction.user.id
-        if self.user_votes.get(user_id) == "downvote":
-            self.downvotes -= 1
-        self.user_votes[user_id] = "upvote"
-        self.upvotes += 1
+        previous_vote = self.user_votes.get(user_id)
+
+        if previous_vote == "upvote":
+            # User is removing their upvote
+            self.upvotes -= 1
+            del self.user_votes[user_id]
+        else:
+            # User is changing or adding an upvote
+            if previous_vote == "downvote":
+                self.downvotes -= 1
+            self.upvotes += 1
+            self.user_votes[user_id] = "upvote"
+
         await self.update_feedback_message(interaction)
-    
-    @discord.ui.button(label="Downvote", style=discord.ButtonStyle.red)
+
+    @discord.ui.button(label="Downvote",
+                       style=discord.ButtonStyle.red,
+                       emoji="📉")
     async def downvote_button(self, interaction: discord.Interaction,
                               button: Button):
         user_id = interaction.user.id
-        if self.user_votes.get(user_id) == "upvote":
-            self.upvotes -= 1
-        self.user_votes[user_id] = "downvote"
-        self.downvotes += 1
+        previous_vote = self.user_votes.get(user_id)
+
+        if previous_vote == "downvote":
+            # User is removing their downvote
+            self.downvotes -= 1
+            del self.user_votes[user_id]
+        else:
+            # User is changing or adding a downvote
+            if previous_vote == "upvote":
+                self.upvotes -= 1
+            self.downvotes += 1
+            self.user_votes[user_id] = "downvote"
+
         await self.update_feedback_message(interaction)
-    
+
     async def update_feedback_message(self, interaction: discord.Interaction):
         if self.feedback_message:
+            total_votes = self.upvotes + self.downvotes
+            upvote_percentage = (self.upvotes /
+                                 total_votes) * 100 if total_votes > 0 else 0
+            downvote_percentage = (self.downvotes /
+                                   total_votes) * 100 if total_votes > 0 else 0
+            upvote_bar = '█' * int(upvote_percentage // 10) + ' ' * (
+                10 - int(upvote_percentage // 10))
+            downvote_bar = '█' * int(downvote_percentage // 10) + ' ' * (
+                10 - int(downvote_percentage // 10))
+
             feedback_embed = self.feedback_message.embeds[0]
             feedback_embed.set_footer(
-                text=f"Upvotes: {self.upvotes} | Downvotes: {self.downvotes}")
+                text=
+                f"Initiated by {interaction.guild.get_member(self.user_id)} at <t:{int(interaction.created_at.timestamp())}:f>\nUpvotes: {self.upvotes} ({upvote_percentage:.1f}%) | Downvotes: {self.downvotes} ({downvote_percentage:.1f}%)"
+            )
+
+            # Update the existing fields for upvote and downvote meters
+            feedback_embed.set_field_at(
+                0,
+                name="Upvote Meter",
+                value=f"{upvote_bar} {upvote_percentage:.1f}%",
+                inline=False)
+            feedback_embed.set_field_at(
+                1,
+                name="Downvote Meter",
+                value=f"{downvote_bar} {downvote_percentage:.1f}%",
+                inline=False)
+
             await self.feedback_message.edit(embed=feedback_embed, view=self)
             await interaction.response.defer()
 
@@ -190,7 +248,9 @@ class Feedback(commands.Cog):
             save_config(self.config)
             await ctx.send("Feedback channel has been removed.")
         else:
-            await ctx.send("```py\nFeedback channel is not set.```")
+            await ctx.send(
+                "```py\nFeedback channel is not set. Please set a feedback channel using the setfeedbackchannel command.```"
+            )
 
 
 async def setup(bot: commands.Bot):
