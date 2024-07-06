@@ -136,24 +136,6 @@ class CommandDeletion(commands.Cog):
                 ephemeral=True)
 
     @commands.hybrid_command(
-        name='toggle_deletion',
-        description='Toggle command message auto-deletion on or off')
-    async def toggle_deletion(self, ctx: commands.Context):
-        await ctx.defer()
-        guild_config = self.get_guild_config(ctx.guild.id)
-        if guild_config['enabled']:
-            guild_config['enabled'] = False
-            guild_config['commands'].clear()
-            guild_config['categories'].clear()
-            status = "disabled"
-        else:
-            guild_config['enabled'] = True
-            status = "enabled"
-        save_config(self.config)
-        await ctx.send(f"Command message auto-deletion has been {status}.",
-                       ephemeral=True)
-
-    @commands.hybrid_command(
         name='show_deletion_setup',
         description='Show the current auto-deletion setup')
     async def show_deletion_setup(self, ctx: commands.Context):
@@ -204,7 +186,9 @@ class CommandDeletion(commands.Cog):
             title="Auto-Deletion Setup Wizard",
             description=
             ("Select the categories you want to set up for auto-deletion.\n\n"
-             "To add single categories, use `/add_deletion_category`."),
+             "To add single categories, use `/add_deletion_category`.\n\n"
+             "**Disclaimer:** Disabling auto-deletion will clear all previously set commands and categories."
+             ),
             color=discord.Color.blue())
         embed.set_footer(
             text=f"Number of categories to choose from: {categories_count}")
@@ -277,6 +261,8 @@ class ToggleAutoDeletionButton(Button):
             self.guild_id)
         if guild_config['enabled']:
             guild_config['enabled'] = False
+            guild_config['commands'].clear()
+            guild_config['categories'].clear()
             status = "disabled"
         else:
             guild_config['enabled'] = True

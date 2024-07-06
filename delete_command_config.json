@@ -1,11 +1,8 @@
 {
     "947671145669328906": {
-        "enabled": true,
+        "enabled": false,
         "delay": 3,
         "commands": [],
-        "categories": [
-            "moderation",
-            "fun"
-        ]
+        "categories": []
     }
 }
