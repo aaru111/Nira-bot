@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 # C extensions
+discord_error.log
 *.so
 
 # Distribution / packaging
