@@ -1,8 +1,2 @@
-2024-07-06 03:22:50,713:ERROR:discord: Command: emojify
-2024-07-06 03:22:50,713:ERROR:discord: Author: _aarav33 (ID: 754188594461147217)
-2024-07-06 03:22:50,713:ERROR:discord: Channel: 💻┃commands (ID: 971651546939031562)
-2024-07-06 03:22:50,713:ERROR:discord: Guild: Aarav's Comm (ID: 947671145669328906)
-2024-07-06 03:23:19,191:ERROR:discord: Command: collatz
-2024-07-06 03:23:19,191:ERROR:discord: Author: _aarav33 (ID: 754188594461147217)
-2024-07-06 03:23:19,192:ERROR:discord: Channel: 💻┃commands (ID: 971651546939031562)
-2024-07-06 03:23:19,192:ERROR:discord: Guild: Aarav's Comm (ID: 947671145669328906)
+2024-07-06 05:44:49,305:INFO:discord.gateway: Shard ID None has connected to Gateway (Session ID: 973f7dcaf231da6890b18a128d1cd79d).
+2024-07-06 05:45:08,641:INFO:discord: Feedback from _aarav33 (ID: 754188594461147217) in Aarav's Comm (ID: 947671145669328906) - Subject: th, Details: ht
