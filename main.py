@@ -21,7 +21,7 @@ class Bot(commands.Bot):
         """
         Performs initial setup tasks for the bot.
         """
-        await self.tree.sync() # Example asynchronous operation
+        # Example asynchronous operation
         await self.load_extension("jishaku") # Example asynchronous operation
         await self.load_all_cogs() # Example asynchronous operation
 
