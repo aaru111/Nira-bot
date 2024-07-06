@@ -61,7 +61,7 @@ async def main():
     Main function to set up and start the Discord bot.
     """
     # Define the necessary intents for the bot
-    intents = discord.Intents.default()
+    intents = discord.Intents.all()
     intents.message_content = True # Enable if your bot needs to read message content
 
     # Create bot instance
