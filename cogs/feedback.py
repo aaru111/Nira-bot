@@ -5,6 +5,7 @@ import logging
 import json
 from pathlib import Path
 from discord.ui import Modal, TextInput, View, Button
+from typing import Optional
 
 # Set up logging
 logger = logging.getLogger('discord')
@@ -17,7 +18,7 @@ logger.addHandler(handler)
 CONFIG_FILE = Path('config.json')
 
 
-def load_config():
+def load_config() -> dict:
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
@@ -26,7 +27,7 @@ def load_config():
         return {}
 
 
-def save_config(config):
+def save_config(config: dict):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
 
@@ -37,7 +38,7 @@ EMBED_COLOR = 0x2f3131
 
 class FeedbackModal(Modal):
 
-    def __init__(self, bot, config):
+    def __init__(self, bot: commands.Bot, config: dict):
         super().__init__(title="Feedback Form")
         self.bot = bot
         self.config = config
@@ -82,7 +83,7 @@ class FeedbackModal(Modal):
                 feedback_embed.add_field(
                     name="Guild",
                     value=
-                    f"{interaction.guild.name if interaction.guild else 'Direct Message'} (ID: {interaction.guild.id if interaction.guild else 'N/A'})",  # Corrected line
+                    f"{guild.name if guild else 'Direct Message'} (ID: {guild.id if guild else 'N/A'})",
                     inline=False)
                 feedback_embed.set_footer(text="Upvotes: 0 | Downvotes: 0")
 
@@ -103,35 +104,41 @@ class FeedbackModal(Modal):
 
 class FeedbackView(View):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         super().__init__(timeout=None)
         self.bot = bot
-        self.feedback_message = None
+        self.feedback_message: Optional[discord.Message] = None
         self.upvotes = 0
         self.downvotes = 0
-
+        self.user_votes = {}  # Track user votes
+    
     @discord.ui.button(label="Upvote", style=discord.ButtonStyle.green)
     async def upvote_button(self, interaction: discord.Interaction,
                             button: Button):
+        user_id = interaction.user.id
+        if self.user_votes.get(user_id) == "downvote":
+            self.downvotes -= 1
+        self.user_votes[user_id] = "upvote"
         self.upvotes += 1
-        if self.feedback_message:  # Check if feedback_message is set
-            await self.update_feedback_message(interaction)
-
+        await self.update_feedback_message(interaction)
+    
     @discord.ui.button(label="Downvote", style=discord.ButtonStyle.red)
     async def downvote_button(self, interaction: discord.Interaction,
                               button: Button):
+        user_id = interaction.user.id
+        if self.user_votes.get(user_id) == "upvote":
+            self.upvotes -= 1
+        self.user_votes[user_id] = "downvote"
         self.downvotes += 1
-        if self.feedback_message:  # Check if feedback_message is set
-            await self.update_feedback_message(interaction)
-
+        await self.update_feedback_message(interaction)
+    
     async def update_feedback_message(self, interaction: discord.Interaction):
-        if self.feedback_message:  # Check if feedback_message is set
+        if self.feedback_message:
             feedback_embed = self.feedback_message.embeds[0]
             feedback_embed.set_footer(
                 text=f"Upvotes: {self.upvotes} | Downvotes: {self.downvotes}")
             await self.feedback_message.edit(embed=feedback_embed, view=self)
-            await interaction.response.defer(
-            )  # Use defer() instead of defer_update()
+            await interaction.response.defer()
 
 
 class Feedback(commands.Cog):
