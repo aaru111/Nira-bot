@@ -1,2 +1,5 @@
-2024-07-06 09:28:14,005:INFO:discord.gateway: Shard ID None has connected to Gateway (Session ID: acfdd636dacb8087ee11d0f92631f4b5).
-2024-07-06 09:29:43,082:INFO:discord: Feedback from _aarav33 (ID: 754188594461147217) in Aarav's Comm (ID: 947671145669328906) - Subject: h, Details: dfg
+2024-07-06 10:10:19,923:INFO:discord.gateway: Shard ID None has connected to Gateway (Session ID: 554d19b21d1424a3939e841c9ab4ea07).
+2024-07-06 10:13:13,969:ERROR:discord: Command: timeout
+2024-07-06 10:13:13,969:ERROR:discord: Author: _aarav33 (ID: 754188594461147217)
+2024-07-06 10:13:13,969:ERROR:discord: Channel: 💬┃general (ID: 1259086476063539262)
+2024-07-06 10:13:13,969:ERROR:discord: Guild: Aarav's Comm (ID: 947671145669328906)
