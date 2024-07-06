@@ -1,12 +1,18 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import logging
 import json
 from pathlib import Path
-from main import Bot
+from discord.ui import Modal, TextInput, View, Button
 
 # Set up logging
 logger = logging.getLogger('discord')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(
+    logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(handler)
 
 CONFIG_FILE = Path('config.json')
 
@@ -15,7 +21,9 @@ def load_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
-    return {}
+    else:
+        CONFIG_FILE.touch()
+        return {}
 
 
 def save_config(config):
@@ -27,57 +35,110 @@ def save_config(config):
 EMBED_COLOR = 0x2f3131
 
 
-class Feedback(commands.Cog):
+class FeedbackModal(Modal):
 
-    def __init__(self, bot: Bot):
+    def __init__(self, bot, config):
+        super().__init__(title="Feedback Form")
         self.bot = bot
-        self.config = load_config()
+        self.config = config
+        self.add_item(
+            TextInput(label="Subject",
+                      style=discord.TextStyle.short,
+                      placeholder="Brief summary of your feedback"))
+        self.add_item(
+            TextInput(label="Details",
+                      style=discord.TextStyle.long,
+                      placeholder="Detailed feedback"))
 
-    @commands.command(name='feedback')
-    async def feedback(self, ctx: commands.Context, *, message: str):
-        # Send a confirmation message to the user
+    async def on_submit(self, interaction: discord.Interaction):
+        subject = self.children[0].value
+        details = self.children[1].value
+        user = interaction.user
+        guild = interaction.guild
+
         embed = discord.Embed(
             title="Feedback Received",
             description=
             "Thank you for your feedback! Our team will review it soon.",
             color=EMBED_COLOR)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-        # Log the feedback
         logger.info(
-            f"Feedback from {ctx.author} (ID: {ctx.author.id}) in {ctx.guild} (ID: {ctx.guild.id}): {message}"
+            f"Feedback from {user} (ID: {user.id}) in {guild} (ID: {guild.id}) - Subject: {subject}, Details: {details}"
         )
 
-        # Optionally, send the feedback to a specific channel
         feedback_channel_id = self.config.get('feedback_channel_id')
         if feedback_channel_id:
             feedback_channel = self.bot.get_channel(feedback_channel_id)
             if feedback_channel:
-                feedback_embed = discord.Embed(title="New Feedback",
-                                               description=message,
-                                               color=EMBED_COLOR)
-                feedback_embed.add_field(
-                    name="User",
-                    value=f"{ctx.author} (ID: {ctx.author.id})",
-                    inline=False)
+                feedback_embed = discord.Embed(
+                    title="New Feedback",
+                    description=
+                    f"**Subject:** {subject}\n\n**Details:** {details}",
+                    color=EMBED_COLOR)
+                feedback_embed.add_field(name="User",
+                                         value=f"{user} (ID: {user.id})",
+                                         inline=False)
                 feedback_embed.add_field(
                     name="Guild",
-                    value=f"{ctx.guild.name} (ID: {ctx.guild.id})",
+                    value=f"{guild.name} (ID: {guild.id})",
                     inline=False)
-                feedback_message = await feedback_channel.send(
-                    embed=feedback_embed)
+                feedback_embed.set_footer(text="Upvotes: 0 | Downvotes: 0")
 
-                # Add thumbs up and thumbs down reactions for voting
-                await feedback_message.add_reaction('👍')
-                await feedback_message.add_reaction('👎')
+                feedback_view = FeedbackView(self.bot)
+                feedback_message = await feedback_channel.send(
+                    embed=feedback_embed, view=feedback_view)
+
+                feedback_view.feedback_message = feedback_message
             else:
-                await ctx.send(
+                await interaction.followup.send(
                     "```py\nError: Feedback channel not found. Please set a valid feedback channel using the setfeedbackchannel command.```"
                 )
         else:
-            await ctx.send(
+            await interaction.followup.send(
                 "```py\nError: Feedback channel is not set. Please set a feedback channel using the setfeedbackchannel command.```"
             )
+
+
+class FeedbackView(View):
+
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.feedback_message = None
+        self.upvotes = 0
+        self.downvotes = 0
+
+    @discord.ui.button(label="Upvote", style=discord.ButtonStyle.green)
+    async def upvote_button(self, button: Button,
+                            interaction: discord.Interaction):
+        self.upvotes += 1
+        await self.update_feedback_message(interaction)
+
+    @discord.ui.button(label="Downvote", style=discord.ButtonStyle.red)
+    async def downvote_button(self, button: Button,
+                              interaction: discord.Interaction):
+        self.downvotes += 1
+        await self.update_feedback_message(interaction)
+
+    async def update_feedback_message(self, interaction: discord.Interaction):
+        feedback_embed = self.feedback_message.embeds[0]
+        feedback_embed.set_footer(
+            text=f"Upvotes: {self.upvotes} | Downvotes: {self.downvotes}")
+        await self.feedback_message.edit(embed=feedback_embed, view=self)
+        await interaction.defer_update()
+
+
+class Feedback(commands.Cog):
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.config = load_config()
+
+    @app_commands.command(name='feedback', description='Submit your feedback')
+    async def feedback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            FeedbackModal(self.bot, self.config))
 
     @commands.command(name='setfeedbackchannel')
     @commands.has_permissions(administrator=True)
@@ -118,3 +179,7 @@ class Feedback(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Feedback(bot))
+
+
+async def register_commands(bot: commands.Bot):
+    await bot.tree.sync()
