@@ -6,13 +6,14 @@ from main import Bot
 
 class Sync(commands.Cog):
 
-    def __init__(self, bot: Bot):
+    def __init__(self, bot):
         self.bot = bot
 
     @commands.command()
     @commands.guild_only()
     @commands.is_owner()
-    async def sync(self, ctx: commands.Context,
+    async def sync(self,
+                   ctx: commands.Context,
                    guilds: commands.Greedy[discord.Object],
                    spec: Optional[Literal["~", "*", "^"]] = None) -> None:
         if not guilds:
@@ -46,4 +47,4 @@ class Sync(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-  await bot.add_cog(Sync(bot))
+    await bot.add_cog(Sync(bot))

@@ -15,7 +15,7 @@ from asciify import asciify
 
 class Fun(commands.Cog):
 
-    def __init__(self, bot: Bot):
+    def __init__(self, bot):
         self.bot = bot
         self.session = aiohttp.ClientSession()
 
@@ -135,7 +135,6 @@ class Fun(commands.Cog):
             await ctx.send(msg)
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
-
 
 
 async def setup(bot: commands.Bot):
