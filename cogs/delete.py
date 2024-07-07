@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 from discord.ui import View, Select, Button, Modal, TextInput
 import json
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import Dict, Any
 
 # Define the path to the configuration file
 CONFIG_FILE = Path('delete_command_config.json')
+EMBED_COLOR = 0x2b2d31
 
 
 # Function to load the configuration from the file
@@ -52,44 +52,6 @@ class CommandDeletion(commands.Cog):
             save_config(self.config)
         return self.config[str(guild_id)]
 
-    @commands.hybrid_command(
-        name='add_deletion_command',
-        description='Add a command to the auto-deletion list')
-    async def add_deletion_command(self, ctx: commands.Context,
-                                   command_name: str) -> None:
-        await ctx.defer()
-        guild_config = self.get_guild_config(ctx.guild.id)
-        command_name = command_name.lower()
-        if command_name not in guild_config['commands']:
-            guild_config['commands'].append(command_name)
-            save_config(self.config)
-            await ctx.send(
-                f"Command '{command_name}' added to the auto-deletion list.",
-                ephemeral=True)
-        else:
-            await ctx.send(
-                f"Command '{command_name}' is already in the auto-deletion list.",
-                ephemeral=True)
-
-    @commands.hybrid_command(
-        name='remove_deletion_command',
-        description='Remove a command from the auto-deletion list')
-    async def remove_deletion_command(self, ctx: commands.Context,
-                                      command_name: str) -> None:
-        await ctx.defer()
-        guild_config = self.get_guild_config(ctx.guild.id)
-        command_name = command_name.lower()
-        if command_name in guild_config['commands']:
-            guild_config['commands'].remove(command_name)
-            save_config(self.config)
-            await ctx.send(
-                f"Command '{command_name}' removed from the auto-deletion list.",
-                ephemeral=True)
-        else:
-            await ctx.send(
-                f"Command '{command_name}' is not in the auto-deletion list.",
-                ephemeral=True)
-
     @commands.Cog.listener()
     async def on_command_completion(self, ctx: commands.Context) -> None:
         guild_config = self.get_guild_config(ctx.guild.id)
@@ -113,18 +75,17 @@ class CommandDeletion(commands.Cog):
         guild_config = self.get_guild_config(ctx.guild.id)
         enabled_status = "enabled" if guild_config['enabled'] else "disabled"
 
-        # Create a view with a dropdown for selecting categories
+        # Create a view with a dropdown for selecting categories or commands
         view = DeletionSetupView(self.bot, ctx.guild.id,
-                                 guild_config['enabled'], ctx.message)
+                                 guild_config['enabled'])
         embed = discord.Embed(
             title="Auto-Deletion Setup Wizard",
             description=
             (f"Current Status: **{enabled_status}**\n\n"
-             "Select the categories you want to set up for auto-deletion.\n\n"
-             "To add single commands, use `/add_deletion_command`.\n\n"
+             "Select the type you want to set up for auto-deletion.\n\n"
              "**Disclaimer:** Disabling auto-deletion will clear all previously set commands and reset the delay."
              ),
-            color=discord.Color.blue())
+            color=EMBED_COLOR)
         message = await ctx.send(embed=embed, view=view)
         view.message = message
         view.start_timeout()
@@ -132,15 +93,15 @@ class CommandDeletion(commands.Cog):
 
 class DeletionSetupView(View):
 
-    def __init__(self, bot: commands.Bot, guild_id: int, enabled: bool,
-                 message: discord.Message) -> None:
+    def __init__(self, bot: commands.Bot, guild_id: int,
+                 enabled: bool) -> None:
         super().__init__(timeout=None)
         self.bot = bot
         self.guild_id = guild_id
         self.enabled = enabled
-        self.message = message
+        self.message = None
         self.timeout_task = None
-        self.add_item(DeletionCategorySelect(bot, guild_id, enabled))
+        self.add_item(DeletionTypeSelect(bot, guild_id, enabled))
         self.add_item(ToggleAutoDeletionButton(bot, guild_id))
         self.add_item(SetDelayButton(bot, guild_id))
         self.add_item(ShowDeletionSetupButton(bot, guild_id))
@@ -159,18 +120,88 @@ class DeletionSetupView(View):
 
     async def delete_after_timeout(self):
         await discord.utils.sleep_until(discord.utils.utcnow() +
-                                        discord.utils.utcnow() +
                                         discord.timedelta(minutes=10))
         try:
-            await self.message.delete()
+            if self.message:
+                await self.message.delete()
+        except discord.NotFound:
+            pass
+
+
+class DeletionTypeSelect(Select):
+
+    def __init__(self, bot: commands.Bot, guild_id: int,
+                 enabled: bool) -> None:
+        self.bot = bot
+        self.guild_id = guild_id
+        options = [
+            discord.SelectOption(label='Categories',
+                                 value='categories',
+                                 emoji='📂'),
+            discord.SelectOption(label='Commands', value='commands', emoji='📝')
+        ]
+        super().__init__(placeholder='Select the type to configure...',
+                         min_values=1,
+                         max_values=1,
+                         options=options,
+                         disabled=not enabled)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == 'categories':
+            view = CategorySelectView(self.bot, self.guild_id)
+            embed = discord.Embed(
+                title="Categories",
+                description="Select categories to auto-delete",
+                color=EMBED_COLOR)
+        elif self.values[0] == 'commands':
+            view = CommandSelectView(self.bot, self.guild_id)
+            embed = discord.Embed(title="Commands",
+                                  description="Select commands to auto-delete",
+                                  color=EMBED_COLOR)
+        message = await interaction.response.edit_message(embed=embed,
+                                                          view=view)
+        view.message = message
+
+
+class CategorySelectView(View):
+
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.guild_id = guild_id
+        self.message = None
+        self.add_item(DeletionCategorySelect(bot, guild_id))
+        self.add_item(BackToSetupButton(bot, guild_id))
+
+    async def on_timeout(self) -> None:
+        try:
+            if self.message:
+                await self.message.delete()
+        except discord.NotFound:
+            pass
+
+
+class CommandSelectView(View):
+
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.guild_id = guild_id
+        self.message = None
+        self.add_item(DeletionCommandSelect(bot, guild_id))
+        self.add_item(BackToSetupButton(bot, guild_id))
+
+    async def on_timeout(self) -> None:
+        try:
+            if self.message:
+                await self.message.delete()
         except discord.NotFound:
             pass
 
 
 class DeletionCategorySelect(Select):
 
-    def __init__(self, bot: commands.Bot, guild_id: int,
-                 enabled: bool) -> None:
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
         self.bot = bot
         self.guild_id = guild_id
         categories = {
@@ -186,7 +217,6 @@ class DeletionCategorySelect(Select):
             'Moderation': '🔨',
             'Music': '🎵',
             'Economy': '💰',
-            # Add more categories and their corresponding emojis as needed
         }
         options = [
             discord.SelectOption(label=cat,
@@ -197,8 +227,7 @@ class DeletionCategorySelect(Select):
         super().__init__(placeholder='Select categories to auto-delete...',
                          min_values=1,
                          max_values=len(options),
-                         options=options,
-                         disabled=not enabled)
+                         options=options)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         guild_config = self.bot.get_cog('CommandDeletion').get_guild_config(
@@ -210,6 +239,36 @@ class DeletionCategorySelect(Select):
         save_config(self.bot.get_cog('CommandDeletion').config)
         await interaction.response.send_message(
             "Categories have been updated for auto-deletion.", ephemeral=True)
+
+
+class DeletionCommandSelect(Select):
+
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
+        self.bot = bot
+        self.guild_id = guild_id
+        commands = [
+            cmd.name for cmd in bot.commands
+            if cmd.cog_name and cmd.cog_name.lower() != 'sync' and cmd.cog_name
+            .lower() != 'jishaku' and cmd.cog_name.lower() != 'commanddeletion'
+        ]
+        options = [
+            discord.SelectOption(label=cmd, value=cmd) for cmd in commands
+        ]
+        super().__init__(placeholder='Select commands to auto-delete...',
+                         min_values=1,
+                         max_values=len(options),
+                         options=options)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        guild_config = self.bot.get_cog('CommandDeletion').get_guild_config(
+            self.guild_id)
+        for value in self.values:
+            command_name = value.lower()
+            if command_name not in guild_config['commands']:
+                guild_config['commands'].append(command_name)
+        save_config(self.bot.get_cog('CommandDeletion').config)
+        await interaction.response.send_message(
+            "Commands have been updated for auto-deletion.", ephemeral=True)
 
 
 class ToggleAutoDeletionButton(Button):
@@ -257,8 +316,7 @@ class ToggleAutoDeletionButton(Button):
         await interaction.message.edit(embed=embed,
                                        view=DeletionSetupView(
                                            self.bot, self.guild_id,
-                                           guild_config['enabled'],
-                                           interaction.message))
+                                           guild_config['enabled']))
 
 
 class SetDelayButton(Button):
@@ -321,29 +379,53 @@ class ShowDeletionSetupButton(Button):
             guild_config['commands']) or "No commands set."
         categories_list = '\n'.join(
             guild_config['categories']) or "No categories set."
-        embed = discord.Embed(title="Auto-Deletion Setup",
-                              color=discord.Color.green())
+        delay = guild_config['delay']
+        embed = discord.Embed(title="Auto-Deletion Setup", color=EMBED_COLOR)
         embed.add_field(name="Commands", value=commands_list, inline=False)
         embed.add_field(name="Categories", value=categories_list, inline=False)
+        embed.add_field(name="Deletion Delay",
+                        value=f"{delay} seconds",
+                        inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class BackToSetupButton(Button):
+
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
+        self.bot = bot
+        self.guild_id = guild_id
+        super().__init__(label="Back to Setup",
+                         style=discord.ButtonStyle.secondary,
+                         emoji="🔙")
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        guild_config = self.bot.get_cog('CommandDeletion').get_guild_config(
+            self.guild_id)
+        view = DeletionSetupView(self.bot, self.guild_id,
+                                 guild_config['enabled'])
+        enabled_status = "enabled" if guild_config['enabled'] else "disabled"
+        embed = discord.Embed(
+            title="Auto-Deletion Setup Wizard",
+            description=
+            (f"Current Status: **{enabled_status}**\n\n"
+             "Select the type you want to set up for auto-deletion.\n\n"
+             "**Disclaimer:** Disabling auto-deletion will clear all previously set commands and reset the delay."
+             ),
+            color=EMBED_COLOR)
+        message = await interaction.response.edit_message(embed=embed,
+                                                          view=view)
+        view.message = message
 
 
 class DeleteEmbedButton(Button):
 
     def __init__(self) -> None:
-        super().__init__(label="Delete this Message",
+        super().__init__(label=" ",
                          style=discord.ButtonStyle.danger,
                          emoji="🗑️")
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.message.delete()
-
-
-class CommandDeletionBot(commands.Bot):
-
-    def __init__(self) -> None:
-        intents = discord.Intents.default()
-        super().__init__(command_prefix="!", intents=intents)
 
 
 async def setup(bot: commands.Bot) -> None:
