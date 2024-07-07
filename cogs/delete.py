@@ -30,52 +30,57 @@ def save_config(config: Dict[str, Any]) -> None:
 def get_default_settings() -> Dict[str, Any]:
     return {
         "enabled": False,  # Disabled by default
-        "delay": 3,
-        "commands": [],
-        "categories": []
+        "delay": 3,  # Default delay in seconds
+        "commands": [],  # List of commands to auto-delete
+        "categories": []  # List of categories to auto-delete
     }
 
 
-# Cog class to handle command deletion
+# Cog class to handle command deletion functionality
 class CommandDeletion(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.config = load_config()
 
+    # Ensure the command can only be run by the bot owner
     def cog_check(self, ctx: commands.Context) -> bool:
         return ctx.author.id == self.bot.owner_id
 
+    # Get or create configuration for a specific guild
     def get_guild_config(self, guild_id: int) -> Dict[str, Any]:
         if str(guild_id) not in self.config:
             self.config[str(guild_id)] = get_default_settings()
             save_config(self.config)
         return self.config[str(guild_id)]
 
+    # Listener for when a command is completed
     @commands.Cog.listener()
     async def on_command_completion(self, ctx: commands.Context) -> None:
         guild_config = self.get_guild_config(ctx.guild.id)
         if not guild_config['enabled']:
             return
 
-        # Check if the command is in the deletion list
+        # Check if the command is in the auto-deletion list
         if ctx.command and ctx.command.name.lower(
         ) in guild_config['commands']:
             await ctx.message.delete(delay=guild_config['delay'])
 
+    # Listener for when the bot joins a new guild
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
         if str(guild.id) not in self.config:
             self.config[str(guild.id)] = get_default_settings()
             save_config(self.config)
 
+    # Command to setup auto-deletion configuration
     @commands.hybrid_command(name='deletion_setup')
     async def deletion_setup(self, ctx: commands.Context) -> None:
         await ctx.defer()
         guild_config = self.get_guild_config(ctx.guild.id)
         enabled_status = "enabled" if guild_config['enabled'] else "disabled"
 
-        # Create a view with a dropdown for selecting categories or commands
+        # Create a view with dropdowns and buttons for configuration
         view = DeletionSetupView(self.bot, ctx.guild.id,
                                  guild_config['enabled'])
         embed = discord.Embed(
@@ -91,6 +96,7 @@ class CommandDeletion(commands.Cog):
         view.start_timeout()
 
 
+# View class for the deletion setup interface
 class DeletionSetupView(View):
 
     def __init__(self, bot: commands.Bot, guild_id: int,
@@ -107,6 +113,7 @@ class DeletionSetupView(View):
         self.add_item(ShowDeletionSetupButton(bot, guild_id))
         self.add_item(DeleteEmbedButton())
 
+    # Check interactions and reset timeout
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
         if self.timeout_task:
@@ -114,10 +121,12 @@ class DeletionSetupView(View):
         self.start_timeout()
         return True
 
+    # Start a timeout to delete the setup message
     def start_timeout(self):
         self.timeout_task = self.bot.loop.create_task(
             self.delete_after_timeout())
 
+    # Delete the setup message after timeout
     async def delete_after_timeout(self):
         await discord.utils.sleep_until(discord.utils.utcnow() +
                                         discord.timedelta(minutes=10))
@@ -128,6 +137,7 @@ class DeletionSetupView(View):
             pass
 
 
+# Select class for choosing deletion type (categories or commands)
 class DeletionTypeSelect(Select):
 
     def __init__(self, bot: commands.Bot, guild_id: int,
@@ -163,6 +173,7 @@ class DeletionTypeSelect(Select):
         view.message = message
 
 
+# View class for selecting categories
 class CategorySelectView(View):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -181,6 +192,7 @@ class CategorySelectView(View):
             pass
 
 
+# View class for selecting commands
 class CommandSelectView(View):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -199,6 +211,7 @@ class CommandSelectView(View):
             pass
 
 
+# Select class for choosing categories to auto-delete
 class DeletionCategorySelect(Select):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -241,6 +254,7 @@ class DeletionCategorySelect(Select):
             "Categories have been updated for auto-deletion.", ephemeral=True)
 
 
+# Select class for choosing commands to auto-delete
 class DeletionCommandSelect(Select):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -271,6 +285,7 @@ class DeletionCommandSelect(Select):
             "Commands have been updated for auto-deletion.", ephemeral=True)
 
 
+# Button to toggle auto-deletion on and off
 class ToggleAutoDeletionButton(Button):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -319,6 +334,7 @@ class ToggleAutoDeletionButton(Button):
                                            guild_config['enabled']))
 
 
+# Button to set the deletion delay
 class SetDelayButton(Button):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -333,6 +349,7 @@ class SetDelayButton(Button):
             SetDelayModal(self.bot, self.guild_id))
 
 
+# Modal to set the deletion delay
 class SetDelayModal(Modal):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -363,6 +380,7 @@ class SetDelayModal(Modal):
                 ephemeral=True)
 
 
+# Button to show the current deletion setup
 class ShowDeletionSetupButton(Button):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -389,6 +407,7 @@ class ShowDeletionSetupButton(Button):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+# Button to go back to the main setup view
 class BackToSetupButton(Button):
 
     def __init__(self, bot: commands.Bot, guild_id: int) -> None:
@@ -417,6 +436,7 @@ class BackToSetupButton(Button):
         view.message = message
 
 
+# Button to delete the setup embed
 class DeleteEmbedButton(Button):
 
     def __init__(self) -> None:
@@ -428,5 +448,6 @@ class DeleteEmbedButton(Button):
         await interaction.message.delete()
 
 
+# Function to add the CommandDeletion cog to the bot
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(CommandDeletion(bot))
