@@ -1,8 +1,10 @@
 {
     "947671145669328906": {
-        "enabled": false,
+        "enabled": true,
         "delay": 3,
         "commands": [],
-        "categories": []
+        "categories": [
+            "giveaway"
+        ]
     }
 }
