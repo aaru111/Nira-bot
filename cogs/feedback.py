@@ -1,4 +1,3 @@
-#good
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -38,7 +37,7 @@ def save_config(config: dict):
 
 
 # Define the color for embeds
-EMBED_COLOR = 0xFF00FF
+EMBED_COLOR = 0x2b2d31
 
 
 # Modal class for feedback submission
@@ -72,10 +71,7 @@ class FeedbackModal(Modal):
             "Thank you for your feedback! Our team will review it soon.",
             color=EMBED_COLOR,
             timestamp=discord.utils.utcnow())
-        embed.set_footer(
-            text=
-            f"Initiated by {user} at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        embed.set_footer(text=f"Initiated by {user}")
         await interaction.response.send_message(embed=embed)
 
         # Log the feedback submission
@@ -90,9 +86,8 @@ class FeedbackModal(Modal):
             if feedback_channel:
                 # Create an embed to post in the feedback channel
                 feedback_embed = discord.Embed(
-                    title="New Feedback",
-                    description=
-                    f"**Subject:** {subject}\n\n**Details:** {details}",
+                    title=f"{subject}",
+                    description=f"**Details:** {details}",
                     color=EMBED_COLOR,
                     timestamp=discord.utils.utcnow())
                 feedback_embed.add_field(name="Upvote Meter",
@@ -101,14 +96,6 @@ class FeedbackModal(Modal):
                 feedback_embed.add_field(name="Downvote Meter",
                                          value="────────── 0.0%",
                                          inline=False)
-                feedback_embed.add_field(name="User",
-                                         value=f"{user} (ID: {user.id})",
-                                         inline=False)
-                feedback_embed.add_field(
-                    name="Guild",
-                    value=
-                    f"{guild.name if guild else 'Direct Message'} (ID: {guild.id if guild else 'N/A'})",
-                    inline=False)
                 feedback_embed.set_footer(text=f"Initiated by {user}",
                                           icon_url=user.avatar)
 
@@ -127,21 +114,22 @@ class FeedbackModal(Modal):
                 feedback_view.user_id = user.id
             else:
                 await interaction.followup.send(
-                    "```py\nError: Feedback channel not found. Please set a valid feedback channel using the /setfeedbackchannel command.```",
+                    "```py\nError: Feedback channel not found. Please set a valid feedback channel using the setup wizard.```",
                     ephemeral=True)
         else:
             await interaction.followup.send(
-                "```py\nError: Feedback channel is not set. Please set a feedback channel using the /setfeedbackchannel command.```",
+                "```py\nError: Feedback channel is not set. Please set a feedback channel using the setup wizard.```",
                 ephemeral=True)
 
 
 # Modal class for setting feedback channel
 class SetFeedbackChannelModal(Modal):
 
-    def __init__(self, bot: commands.Bot, config: dict):
+    def __init__(self, bot: commands.Bot, config: dict, setup_view):
         super().__init__(title="Set Feedback Channel")
         self.bot = bot
         self.config = config
+        self.setup_view = setup_view
         # Add input field for channel ID
         self.add_item(
             TextInput(label="Channel ID",
@@ -160,6 +148,9 @@ class SetFeedbackChannelModal(Modal):
                 await interaction.response.send_message(
                     f"Feedback channel has been set to {channel.mention}",
                     ephemeral=True)
+                # Update the embed with the new channel info
+                await self.setup_view.update_embed(
+                    interaction, channel_mention=channel.mention)
             else:
                 await interaction.response.send_message(
                     "```py\nError: Channel not found. Please enter a valid channel ID.```",
@@ -245,17 +236,68 @@ class FeedbackView(View):
             # Update the existing fields for upvote and downvote meters
             feedback_embed.set_field_at(
                 0,
-                name="Upvote Meter",
+                name="Upvotes",
                 value=f"{upvote_bar} {upvote_percentage:.1f}%",
                 inline=False)
             feedback_embed.set_field_at(
                 1,
-                name="Downvote Meter",
+                name="Downvotes",
                 value=f"{downvote_bar} {downvote_percentage:.1f}%",
                 inline=False)
 
             await self.feedback_message.edit(embed=feedback_embed, view=self)
             await interaction.response.defer()
+
+
+# View class for the feedback setup buttons
+class FeedbackSetupView(View):
+
+    def __init__(self, bot: commands.Bot, config: dict):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.config = config
+
+    @discord.ui.button(label="Set Channel",
+                       style=discord.ButtonStyle.primary,
+                       emoji="🔧")
+    async def set_channel(self, interaction: discord.Interaction,
+                          button: Button):
+        await interaction.response.send_modal(
+            SetFeedbackChannelModal(self.bot, self.config, self))
+
+    @discord.ui.button(label="Remove Channel",
+                       style=discord.ButtonStyle.danger,
+                       emoji="🗑️")
+    async def remove_channel(self, interaction: discord.Interaction,
+                             button: Button):
+        if 'feedback_channel_id' in self.config:
+            del self.config['feedback_channel_id']
+            save_config(self.config)
+            await interaction.response.send_message(
+                "Feedback channel has been removed.", ephemeral=True)
+            # Update the embed to reflect removal of the channel
+            await self.update_embed(interaction)
+        else:
+            await interaction.response.send_message(
+                "```py\nFeedback channel is not set.```", ephemeral=True)
+
+    # Add a method to update the embed with the current channel info
+    async def update_embed(self,
+                           interaction: discord.Interaction,
+                           channel_mention: Optional[str] = None):
+        feedback_channel_id = self.config.get('feedback_channel_id')
+        if not channel_mention:
+            channel_mention = "Not set"
+            if feedback_channel_id and (
+                    channel := self.bot.get_channel(feedback_channel_id)):
+                channel_mention = channel.mention
+
+        embed = discord.Embed(
+            title="Configure Feedback Settings",
+            description=
+            f"Use the buttons below to configure the feedback settings.\n\n**Current Feedback Channel:** {channel_mention}",
+            color=EMBED_COLOR)
+        await interaction.edit_original_response(embed=embed, view=self)
 
 
 # Cog class to handle feedback commands
@@ -271,44 +313,14 @@ class Feedback(commands.Cog):
         await interaction.response.send_modal(
             FeedbackModal(self.bot, self.config))
 
-    @app_commands.command(name='setfeedbackchannel',
-                          description='Set the feedback channel')
+    @app_commands.command(name='feedback_setup',
+                          description='Configure feedback settings')
     @commands.has_permissions(administrator=True)
-    async def set_feedback_channel(self, interaction: discord.Interaction):
-        # Show the modal to get the channel ID
-        await interaction.response.send_modal(
-            SetFeedbackChannelModal(self.bot, self.config))
-
-    @app_commands.command(name='getfeedbackchannel',
-                          description='Get the current feedback channel')
-    @commands.has_permissions(administrator=True)
-    async def get_feedback_channel(self, interaction: discord.Interaction):
-        # Get the current feedback channel from the configuration
-        feedback_channel_id = self.config.get('feedback_channel_id')
-        if feedback_channel_id and (channel :=
-                                    self.bot.get_channel(feedback_channel_id)):
-            await interaction.response.send_message(
-                f"The current feedback channel is {channel.mention}",
-                ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                "```py\nError: Feedback channel not set or not found. Please set a feedback channel using the /setfeedbackchannel command.```",
-                ephemeral=True)
-
-    @app_commands.command(name='removefeedbackchannel',
-                          description='Remove the feedback channel')
-    @commands.has_permissions(administrator=True)
-    async def remove_feedback_channel(self, interaction: discord.Interaction):
-        # Remove the feedback channel from the configuration
-        if 'feedback_channel_id' in self.config:
-            del self.config['feedback_channel_id']
-            save_config(self.config)
-            await interaction.response.send_message(
-                "Feedback channel has been removed.", ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                "```py\nFeedback channel is not set. Please set a feedback channel using the /setfeedbackchannel command.```",
-                ephemeral=True)
+    async def feedback_setup(self, interaction: discord.Interaction):
+        view = FeedbackSetupView(self.bot, self.config)
+        await interaction.response.send_message(
+            "Configuring feedback settings...", ephemeral=True)
+        await view.update_embed(interaction)
 
 
 # Function to set up the feedback cog
