@@ -230,7 +230,7 @@ class FeedbackView(View):
             feedback_embed = self.feedback_message.embeds[0]
             feedback_embed.set_footer(
                 text=
-                f"Initiated by {interaction.guild.get_member(self.user_id)} at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}\nUpvotes: {self.upvotes} ({upvote_percentage:.1f}%) | Downvotes: {self.downvotes} ({downvote_percentage:.1f}%)"
+                f"Initiated by {interaction.guild.get_member(self.user_id)}\nUpvotes: {self.upvotes} ({upvote_percentage:.1f}%) | Downvotes: {self.downvotes} ({downvote_percentage:.1f}%)"
             )
 
             # Update the existing fields for upvote and downvote meters
