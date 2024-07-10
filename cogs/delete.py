@@ -75,6 +75,7 @@ class CommandDeletion(commands.Cog):
 
     # Command to setup auto-deletion configuration
     @commands.hybrid_command(name='deletion_setup')
+    @discord.app_commands.guild_only()
     async def deletion_setup(self, ctx: commands.Context) -> None:
         await ctx.defer()
         guild_config = self.get_guild_config(ctx.guild.id)

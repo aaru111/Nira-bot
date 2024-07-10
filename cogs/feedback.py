@@ -308,6 +308,7 @@ class Feedback(commands.Cog):
         self.config = load_config()
 
     @app_commands.command(name='feedback', description='Submit your feedback')
+    @app_commands.guild_only()
     async def feedback(self, interaction: discord.Interaction):
         # Show the feedback modal to the user
         await interaction.response.send_modal(
@@ -316,6 +317,7 @@ class Feedback(commands.Cog):
     @app_commands.command(name='feedback_setup',
                           description='Configure feedback settings')
     @commands.has_permissions(administrator=True)
+    @app_commands.guild_only()
     async def feedback_setup(self, interaction: discord.Interaction):
         view = FeedbackSetupView(self.bot, self.config)
         await interaction.response.send_message(
