@@ -58,7 +58,7 @@ class WeatherModal(discord.ui.Modal, title="Weather Forecast"):
             forecasts = self.parse_forecast(data)
             view = WeatherPaginator(forecasts)
             await interaction.response.send_message(embed=view.embeds[0],
-                                                    view=view)
+                                                    view=view, ephemeral=True)
 
     def parse_forecast(self, data):
         forecasts = []
