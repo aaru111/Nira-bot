@@ -2,12 +2,17 @@ import discord
 from discord.ext import commands
 from main import Bot
 from datetime import timedelta
+import aiohttp
 
 
 class Moderation(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.session = aiohttp.ClientSession()
+
+    async def close(self):
+        await self.session.close()
 
     # --------------------------------------------------------------------------------------------------------------------------
 

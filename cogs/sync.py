@@ -2,12 +2,17 @@ from typing import Literal, Optional
 import discord
 from discord.ext import commands
 from main import Bot
+import aiohttp
 
 
 class Sync(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.session = aiohttp.ClientSession()
+
+    async def close(self):
+        await self.session.close()
 
     @commands.command()
     @commands.guild_only()

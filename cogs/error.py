@@ -4,6 +4,7 @@ import logging
 import traceback
 from typing import Optional, Union
 from main import Bot
+import aiohttp
 from difflib import get_close_matches
 
 # Set up logging
@@ -24,6 +25,7 @@ class Errors(commands.Cog):
 
   def __init__(self, bot):
     self.bot: Bot = bot
+    self.session = aiohttp.ClientSession()
 
   async def send_error_embed(self, ctx: commands.Context, title: str,
                              description: str) -> None:
@@ -31,6 +33,9 @@ class Errors(commands.Cog):
                           description=f"```py\n{description}```",
                           color=EMBED_COLOR)
     await ctx.send(embed=embed)
+
+  async def close(self):
+    await self.session.close()
 
   @commands.Cog.listener()
   async def on_command_error(self, ctx: commands.Context,

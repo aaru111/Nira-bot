@@ -4,6 +4,7 @@ from discord.ui import View, Select, Button, Modal, TextInput
 import json
 from pathlib import Path
 from typing import Dict, Any
+import aiohttp
 
 # Define the path to the configuration file
 CONFIG_FILE = Path('delete_command_config.json')
@@ -41,7 +42,11 @@ class CommandDeletion(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session = aiohttp.ClientSession()
         self.config = load_config()
+
+    async def close(self):
+        await self.session.close()
 
     # Ensure the command can only be run by the bot owner
     def cog_check(self, ctx: commands.Context) -> bool:

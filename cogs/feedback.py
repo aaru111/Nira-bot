@@ -7,6 +7,7 @@ from pathlib import Path
 from discord.ui import Modal, TextInput, View, Button
 from typing import Optional
 from datetime import datetime  # Import datetime for timestamp
+import aiohttp
 
 # Set up logging for the bot
 logger = logging.getLogger('discord')
@@ -47,6 +48,7 @@ class FeedbackModal(Modal):
         super().__init__(title="Feedback Form")
         self.bot = bot
         self.config = config
+        self.session = aiohttp.ClientSession()
         # Add input fields for subject and details
         self.add_item(
             TextInput(label="Subject",
@@ -56,6 +58,9 @@ class FeedbackModal(Modal):
             TextInput(label="Details",
                       style=discord.TextStyle.long,
                       placeholder="Detailed feedback"))
+
+    async def close(self):
+        await self.session.close()
 
     # Event that runs when the form is submitted
     async def on_submit(self, interaction: discord.Interaction):
@@ -267,7 +272,7 @@ class FeedbackSetupView(View):
 
     @discord.ui.button(label="Remove Channel",
                        style=discord.ButtonStyle.danger,
-                       emoji="🗑️")
+                       emoji="a")
     async def remove_channel(self, interaction: discord.Interaction,
                              button: Button):
         if 'feedback_channel_id' in self.config:
