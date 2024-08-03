@@ -2,6 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import aiohttp
+from datetime import datetime
+import pytz
+import pycountry
 
 
 class Weather(commands.Cog):
@@ -28,20 +31,36 @@ class Weather(commands.Cog):
                                                     )
             return
 
+        # Extract data from API response
         weather_description = data["weather"][0]["description"].capitalize()
         icon = data["weather"][0]["icon"]
         temp = data["main"]["temp"]
         feels_like = data["main"]["feels_like"]
         humidity = data["main"]["humidity"]
         wind_speed = data["wind"]["speed"]
+        country_code = data["sys"]["country"]
+        country_name = self.get_country_name(
+            country_code)  # Get full country name
 
+        # Adjust the title to use country full name
+        title = f"Weather in {location.capitalize()} - {country_name}"
+
+        # Calculate the time of the last update
+        last_updated = datetime.utcfromtimestamp(data["dt"])
+        local_tz = pytz.timezone(
+            'Asia/Kolkata')  # Change this to your preferred timezone
+        last_updated_local = last_updated.astimezone(local_tz)
+        last_updated_time = last_updated_local.strftime(
+            '%I:%M %p')  # 12-hour format with AM/PM
+        last_updated_date = last_updated_local.strftime('%Y-%m-%d')
+
+        # Determine the embed color based on the weather description
         embed_color = self.get_embed_color(weather_description)
 
-        embed = discord.Embed(title=f"Weather in {location.capitalize()}",
-                              color=embed_color)
+        # Create the embed
+        embed = discord.Embed(title=title, color=embed_color)
         embed.set_thumbnail(
             url=f"http://openweathermap.org/img/wn/{icon}@2x.png")
-
         embed.add_field(name="Description",
                         value=weather_description,
                         inline=False)
@@ -49,32 +68,45 @@ class Weather(commands.Cog):
         embed.add_field(name="Feels Like",
                         value=f"{feels_like}°C",
                         inline=True)
-        embed.add_field(name="\u200b", value="\u200b",
-                        inline=True)  # Empty field for spacing
         embed.add_field(name="Humidity", value=f"{humidity}%", inline=True)
         embed.add_field(name="Wind Speed",
                         value=f"{wind_speed} m/s",
                         inline=True)
+        embed.set_footer(
+            text=
+            f"Forecast by openweathermap.org | Last updated: {last_updated_date} {last_updated_time}"
+        )
 
         await interaction.response.send_message(embed=embed)
 
+    def get_country_name(self, country_code):
+        # Use pycountry to get the country name from the country code
+        try:
+            country = pycountry.countries.get(alpha_2=country_code)
+            return country.name if country else 'Unknown Country'
+        except LookupError:
+            return 'Unknown Country'
+
     def get_embed_color(self, weather_description):
-        if 'clear' in weather_description.lower():
-            return discord.Color.blue()
-        elif 'clouds' in weather_description.lower():
-            return discord.Color.light_grey()
-        elif 'rain' in weather_description.lower(
-        ) or 'drizzle' in weather_description.lower():
-            return discord.Color.blue()
-        elif 'thunderstorm' in weather_description.lower():
-            return discord.Color.dark_purple()
-        elif 'snow' in weather_description.lower():
-            return discord.Color.teal()
-        elif 'mist' in weather_description.lower(
-        ) or 'fog' in weather_description.lower():
-            return discord.Color.light_grey()
-        else:
-            return discord.Color.default()
+        color_map = {
+            'clear': '#00BFFF',  # Sky Blue
+            'clouds': '#D3D3D3',  # Light Grey
+            'rain': '#1E90FF',  # Dodger Blue
+            'drizzle': '#1E90FF',  # Dodger Blue
+            'thunderstorm': '#8A2BE2',  # Blue Violet
+            'snow': '#00CED1',  # Dark Turquoise
+            'mist': '#B0E0E6',  # Powder Blue
+            'fog': '#B0E0E6',  # Powder Blue
+            'haze': '#F5F5DC',  # Beige
+            'sand': '#F4A460',  # Sandy Brown
+            'dust': '#D2B48C',  # Tan
+            'tornado': '#FF4500',  # Orange Red
+            'hurricane': '#FF6347'  # Tomato
+        }
+        for key, color in color_map.items():
+            if key in weather_description.lower():
+                return discord.Color(int(color[1:], 16))  # Convert hex to int
+        return discord.Color.default()
 
 
 async def setup(bot: commands.Bot):
