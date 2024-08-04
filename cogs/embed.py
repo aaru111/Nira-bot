@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from discord.ui import View, Select, Modal, TextInput, Button
+import aiohttp
 
 
 class EmbedCreator(commands.Cog):
@@ -9,6 +10,10 @@ class EmbedCreator(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.embed = discord.Embed()
+        self.session = aiohttp.ClientSession()
+
+    async def close(self):
+        await self.session.close()
 
     @app_commands.command(name="embed",
                           description="Create a custom embed message")
@@ -226,5 +231,5 @@ class AddFieldsButton(Button):
         await interaction.response.send_modal(AddFieldsModal(self.embed))
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(EmbedCreator(bot))
