@@ -1,2 +1,2 @@
-# stellar
-stellar bot repo still in testing phase
+# Nira
+Nira bot repo still in testing phase
