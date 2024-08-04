@@ -198,10 +198,14 @@ class Moderation(commands.Cog):
                                                 invite, 'unique', False),
                                             reason=reason)
 
-        # Send a message with the webhook URLs
-        webhook_message = f"Channel has been nuked by {ctx.author.mention}\n\nWebhooks:\n" + "\n".join(
-            webhook_urls)
+        # Send a message with the webhook URLs if there are any webhooks
+        webhook_message = f"Channel has been nuked by {ctx.author.mention}\n\n"
+        if webhook_urls:
+            webhook_message += "Webhooks:\n" + "\n".join(webhook_urls)
         await new_channel.send(webhook_message)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
 
 
 async def setup(bot: commands.Bot):
