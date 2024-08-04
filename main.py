@@ -3,6 +3,7 @@ import logging
 import discord
 from discord.ext import commands
 import asyncio
+from typing import Any
 
 # Setup logging
 logging.basicConfig(level=logging.INFO,
@@ -16,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
 class Bot(commands.Bot):
 
     def __init__(self, command_prefix: str, intents: discord.Intents,
-                 **kwargs):
+                 **kwargs: Any) -> None:
         super().__init__(command_prefix=command_prefix,
                          intents=intents,
                          **kwargs)
@@ -35,7 +36,7 @@ class Bot(commands.Bot):
         Loads all cog extensions from the 'cogs' directory.
         """
 
-        async def load_cog(filename):
+        async def load_cog(filename: str) -> None:
             cog_name = f'cogs.{filename[:-3]}'
             try:
                 await self.load_extension(cog_name)
@@ -47,14 +48,18 @@ class Bot(commands.Bot):
                                for filename in os.listdir('./cogs')
                                if filename.endswith('.py')))
 
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         """
         Event handler triggered when the bot is ready.
         """
-        logging.info('Bot is ready.')
-        logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
+        if self.user:
+            logging.info('Bot is ready.')
+            logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
+        else:
+            logging.error('Bot user is not available.')
 
-    async def on_error(self, event_method, *args, **kwargs):
+    async def on_error(self, event_method: str, *args: Any,
+                       **kwargs: Any) -> None:
         """
         Error handler for unhandled exceptions.
         """
@@ -66,7 +71,7 @@ class Bot(commands.Bot):
 # -------------------------
 
 
-async def main():
+async def main() -> None:
     """
     Main function to set up and start the Discord bot.
     """

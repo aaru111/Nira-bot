@@ -24,6 +24,10 @@ def process_image(image_data: bytes, new_width: int) -> Image.Image:
 def create_ascii_art(image: Image.Image) -> str:
     ascii_chars = ["@", "#", "S", "%", "?", "*", "+", ";", ":", ",", "."]
     pixels = list(image.getdata())
+
+    if not all(isinstance(pixel, int) for pixel in pixels):
+        raise ValueError("Image data contains non-integer pixel values")
+
     ascii_str = ''.join([ascii_chars[pixel // 25] for pixel in pixels])
     ascii_art = '\n'.join([
         ascii_str[i:i + image.width]
@@ -48,6 +52,7 @@ async def asciify(ctx: commands.Context,
         with BytesIO() as buffer:
             buffer.write(ascii_art.encode('utf-8'))
             buffer.seek(0)
-            await ctx.send(file=File(buffer, "ascii_art.txt"))
+            file = File(buffer, filename="ascii_art.txt")
+            await ctx.send(file=file)
     except Exception as e:
         await ctx.send(f"Error: {str(e)}")
