@@ -23,7 +23,7 @@ EMBED_COLOR = 0x2f3131
 
 class Errors(commands.Cog):
 
-  def __init__(self, bot):
+  def __init__(self, bot: Bot):
     self.bot: Bot = bot
     self.session = aiohttp.ClientSession()
 
@@ -34,16 +34,20 @@ class Errors(commands.Cog):
                           color=EMBED_COLOR)
     await ctx.send(embed=embed)
 
-  async def close(self):
+  async def close(self) -> None:
     await self.session.close()
 
   @commands.Cog.listener()
   async def on_command_error(self, ctx: commands.Context,
                              error: commands.CommandError) -> None:
+    command_name = ctx.command.qualified_name if ctx.command else "Unknown Command"
+    command_signature = getattr(ctx.command, 'signature',
+                                '') if ctx.command else ""
+
     if isinstance(error, commands.MissingRequiredArgument):
       await self.send_error_embed(
           ctx, "Missing Required Argument",
-          f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{ctx.command.qualified_name} {ctx.command.signature}"
+          f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
       )
 
     elif isinstance(error, commands.CommandNotFound):
@@ -108,7 +112,7 @@ class Errors(commands.Cog):
 
     else:
       # Log the error with traceback
-      logger.error(f"Ignoring exception in command {ctx.command}:")
+      logger.error(f"Ignoring exception in command {command_name}:")
       logger.error(error)
       traceback_str = ''.join(
           traceback.format_exception(type(error), error, error.__traceback__))
@@ -121,22 +125,20 @@ class Errors(commands.Cog):
       )
 
       # Notify developers
-      dev_channel: Optional[Union[
-          discord.TextChannel,
-          discord.Thread, discord.VoiceChannel]] = self.bot.get_channel(
-              971651546939031562)  # Replace with your developer channel ID
-      if dev_channel:
+      dev_channel = self.bot.get_channel(
+          971651546939031562)  # Replace with your developer channel ID
+      if dev_channel and isinstance(dev_channel, discord.TextChannel):
         await dev_channel.send(
-            f"Error in command `{ctx.command}` triggered by {ctx.author} in {ctx.channel}:\n{traceback_str}"
+            f"Error in command `{command_name}` triggered by {ctx.author} in {ctx.channel}:\n{traceback_str}"
         )
 
     # Additional error details for logs
-    logger.error(f"Command: {ctx.command}")
+    logger.error(f"Command: {command_name}")
     logger.error(f"Author: {ctx.author} (ID: {ctx.author.id})")
     logger.error(f"Channel: {ctx.channel} (ID: {ctx.channel.id})")
     logger.error(f"Guild: {ctx.guild} (ID: {ctx.guild.id})" if ctx.
                  guild else "Guild: None")
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: Bot) -> None:
   await bot.add_cog(Errors(bot))
