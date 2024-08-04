@@ -88,11 +88,11 @@ class Moderation(commands.Cog):
     @commands.has_guild_permissions(ban_members=True)
     async def unban(self, ctx, user: int):
         guild = ctx.guild
-        user = discord.Object(user)
+        user_obj = discord.Object(user)
         try:
-            await guild.unban(user)
+            await guild.unban(user_obj)
             await ctx.channel.send(
-                f"<@{user.id}> **Has Been** *Successfully* **UnBanned!**",
+                f"<@{user}> **Has Been** *Successfully* **UnBanned!**",
                 delete_after=4)
         except discord.NotFound:
             await ctx.send("This user is not banned", delete_after=4)
@@ -156,6 +156,9 @@ class Moderation(commands.Cog):
         # Fetch the invites
         invites = await channel.invites()
 
+        # Fetch pinned messages
+        pinned_messages = await channel.pins()
+
         # Delete the channel
         await channel.delete()
 
@@ -180,13 +183,13 @@ class Moderation(commands.Cog):
 
         # Recreate the webhooks in the new channel and store their URLs
         webhook_urls = []
-        for webhook in webhooks:
+        for i, webhook in enumerate(webhooks, start=1):
             webhook_name = webhook.name or "Default Webhook Name"
             new_webhook = await new_channel.create_webhook(
                 name=webhook_name,
                 avatar=await webhook.avatar.read() if webhook.avatar else None,
                 reason=reason)
-            webhook_urls.append(new_webhook.url)
+            webhook_urls.append(f"{i}. [{webhook_name}]({new_webhook.url})")
 
         # Recreate the invites in the new channel
         for invite in invites:
@@ -197,6 +200,11 @@ class Moderation(commands.Cog):
                                             unique=getattr(
                                                 invite, 'unique', False),
                                             reason=reason)
+
+        # Repost and pin the pinned messages in the new channel
+        for message in pinned_messages:
+            new_msg = await new_channel.send(message.content)
+            await new_msg.pin()
 
         # Send a message with the webhook URLs if there are any webhooks
         webhook_message = f"Channel has been nuked by {ctx.author.mention}\n\n"
