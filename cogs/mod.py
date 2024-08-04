@@ -127,22 +127,6 @@ class Moderation(commands.Cog):
     # ---------------------------------------------------------------------------------------------------------------------------
 
     @commands.command()
-    @commands.has_permissions(moderate_members=True)
-    async def timeout(self,
-                      ctx: commands.Context,
-                      member: discord.Member,
-                      duration: int,
-                      *,
-                      reason: str = None):
-        """Temporarily prevents a member from interacting for a specified duration in seconds."""
-        await member.timeout(timedelta(seconds=duration), reason=reason)
-        await ctx.send(
-            f"{member.mention} has been timed out for {duration} seconds.\nReason: {reason}"
-        )
-
-    # ---------------------------------------------------------------------------------------------------------------------------
-
-    @commands.command()
     @commands.has_permissions(manage_channels=True)
     async def nuke(self, ctx, channel: discord.TextChannel = None):
         """Deletes and recreates a channel with the same properties"""
@@ -169,6 +153,9 @@ class Moderation(commands.Cog):
         # Fetch the webhooks
         webhooks = await channel.webhooks()
 
+        # Fetch the invites
+        invites = await channel.invites()
+
         # Delete the channel
         await channel.delete()
 
@@ -191,16 +178,30 @@ class Moderation(commands.Cog):
         if announcement_channel:
             await new_channel.edit(type=discord.ChannelType.news)
 
-        # Recreate the webhooks in the new channel
+        # Recreate the webhooks in the new channel and store their URLs
+        webhook_urls = []
         for webhook in webhooks:
             webhook_name = webhook.name or "Default Webhook Name"
-            await new_channel.create_webhook(
+            new_webhook = await new_channel.create_webhook(
                 name=webhook_name,
                 avatar=await webhook.avatar.read() if webhook.avatar else None,
                 reason=reason)
+            webhook_urls.append(new_webhook.url)
 
-        await new_channel.send(
-            f'Channel has been nuked by {ctx.author.mention}')
+        # Recreate the invites in the new channel
+        for invite in invites:
+            await new_channel.create_invite(max_age=invite.max_age or 0,
+                                            max_uses=invite.max_uses or 0,
+                                            temporary=invite.temporary
+                                            or False,
+                                            unique=getattr(
+                                                invite, 'unique', False),
+                                            reason=reason)
+
+        # Send a message with the webhook URLs
+        webhook_message = f"Channel has been nuked by {ctx.author.mention}\n\nWebhooks:\n" + "\n".join(
+            webhook_urls)
+        await new_channel.send(webhook_message)
 
 
 async def setup(bot: commands.Bot):
