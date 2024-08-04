@@ -140,8 +140,67 @@ class Moderation(commands.Cog):
             f"{member.mention} has been timed out for {duration} seconds.\nReason: {reason}"
         )
 
+    # ---------------------------------------------------------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------------------------------------------------------
+    @commands.command()
+    @commands.has_permissions(manage_channels=True)
+    async def nuke(self, ctx, channel: discord.TextChannel = None):
+        """Deletes and recreates a channel with the same properties"""
+        if channel is None:
+            channel = ctx.channel
+
+        # Save the channel properties
+        name = channel.name
+        category = channel.category
+        position = channel.position
+        overwrites = {
+            target: overwrite
+            for target, overwrite in channel.overwrites.items()
+            if isinstance(target, (discord.Role, discord.Member))
+        }
+        topic = channel.topic or ""  # Ensure topic is a string
+        nsfw = channel.is_nsfw()
+        slowmode_delay = channel.slowmode_delay
+        reason = f"Channel nuked by {ctx.author}"
+        permissions_synced = channel.permissions_synced
+        announcement_channel = channel.is_news()
+        guild = channel.guild
+
+        # Fetch the webhooks
+        webhooks = await channel.webhooks()
+
+        # Delete the channel
+        await channel.delete()
+
+        # Create a new channel with the same properties
+        if category:
+            new_channel = await category.create_text_channel(
+                name, overwrites=overwrites, reason=reason)
+        else:
+            new_channel = await guild.create_text_channel(
+                name, overwrites=overwrites, reason=reason)
+
+        # Edit the new channel with the saved properties
+        await new_channel.edit(position=position,
+                               topic=topic,
+                               nsfw=nsfw,
+                               slowmode_delay=slowmode_delay,
+                               sync_permissions=permissions_synced)
+
+        # Set the new channel as an announcement channel if it was one before
+        if announcement_channel:
+            await new_channel.edit(type=discord.ChannelType.news)
+
+        # Recreate the webhooks in the new channel
+        for webhook in webhooks:
+            webhook_name = webhook.name or "Default Webhook Name"
+            await new_channel.create_webhook(
+                name=webhook_name,
+                avatar=await webhook.avatar.read() if webhook.avatar else None,
+                reason=reason)
+
+        await new_channel.send(
+            f'Channel has been nuked by {ctx.author.mention}')
 
 
 async def setup(bot: commands.Bot):
