@@ -137,5 +137,5 @@ class Fun(commands.Cog):
             await ctx.send(f"Error: {str(e)}")
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Fun(bot))

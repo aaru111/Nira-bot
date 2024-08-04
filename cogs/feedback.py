@@ -331,5 +331,5 @@ class Feedback(commands.Cog):
 
 
 # Function to set up the feedback cog
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Feedback(bot))

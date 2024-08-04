@@ -109,5 +109,5 @@ class Weather(commands.Cog):
         return discord.Color.default()
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Weather(bot))

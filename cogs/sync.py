@@ -51,5 +51,5 @@ class Sync(commands.Cog):
         await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Sync(bot))
