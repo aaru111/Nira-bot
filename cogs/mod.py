@@ -3,6 +3,7 @@ from discord.ext import commands
 from main import Bot
 from datetime import timedelta
 import aiohttp
+from typing import Optional
 
 
 class Moderation(commands.Cog):
@@ -17,12 +18,12 @@ class Moderation(commands.Cog):
     # --------------------------------------------------------------------------------------------------------------------------
 
     @commands.command(aliases=['av', 'pfp'])
-    async def avatar(self, ctx, user: discord.User = None):
+    async def avatar(self, ctx, user: Optional[discord.User] = None):
         user = user or ctx.author
         em = discord.Embed(title=f"{user}'s Profile Picture: ", color=0x2f3131)
-        em.set_image(url=user.display_avatar)
+        em.set_image(url=user.display_avatar.url)  # Access URL property
         em.set_footer(text=f"Requested by -> {ctx.author.name}",
-                      icon_url=ctx.author.avatar)
+                      icon_url=ctx.author.avatar.url)  # Access URL property
         await ctx.send(embed=em)
 
     # --------------------------------------------------------------------------------------------------------------------------
@@ -33,10 +34,11 @@ class Moderation(commands.Cog):
                    ctx: commands.Context,
                    member: discord.Member,
                    *,
-                   Reason: str = None):
-        await member.kick(reason=Reason)
+                   Reason: Optional[str] = None):
+        reason_text = Reason if Reason else "No reason provided"
+        await member.kick(reason=reason_text)
         await ctx.send(
-            f"{member} You have been Kicked by **{ctx.author}**.\nReason: {Reason}"
+            f"{member.mention}, you have been kicked by **{ctx.author}**.\nReason: {reason_text}"
         )
 
     # --------------------------------------------------------------------------------------------------------------------------
@@ -47,40 +49,45 @@ class Moderation(commands.Cog):
                   ctx: commands.Context,
                   member: discord.Member,
                   *,
-                  Reason: str = None):
+                  Reason: str = "No reason provided"):
         await member.ban(reason=Reason)
         await ctx.send(
             f"<@{member.id}> **Has Been** *Successfully* **Banned From The Guild**",
             delete_after=4)
 
-    # --------------------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------
 
-    @commands.command()
-    @commands.has_permissions(kick_members=True)
-    async def warn(self,
-                   ctx: commands.Context,
-                   member: discord.Member,
-                   *,
-                   Reason: str = None):
-        await ctx.send(
-            f"{member} You have been Warned by **{ctx.author}**.\nReason: {Reason}"
-        )
+        @commands.command()
+        @commands.has_permissions(kick_members=True)
+        async def warn(self,
+                       ctx: commands.Context,
+                       member: discord.Member,
+                       *,
+                       Reason: Optional[str] = None):
+            reason_text = Reason if Reason else "No reason provided"
+            await ctx.send(
+                f"{member.mention}, you have been warned by **{ctx.author}**.\nReason: {reason_text}"
+            )
 
     # --------------------------------------------------------------------------------------------------------------------------
 
     @commands.command(aliases=['clear', 'clr'])
     @commands.has_permissions(manage_messages=True)
     async def purge(self, ctx: commands.Context, amount: int = 2):
-        user = ctx.author.name
-        embed = discord.Embed(
-            title="**Messages Has Been Deleted** *Successfully*!!",
-            description=f"```py\nAmount Deleted: {amount}```")
-        embed.set_footer(
-            text=
-            f"This Message Will Be Deleted Shortly After 4 Seconds..  •  Moderator: {user}"
-        )
-        await ctx.channel.purge(limit=amount)
-        await ctx.send(embed=embed, delete_after=4)
+        if isinstance(ctx.channel, discord.TextChannel):
+            user = ctx.author.name
+            embed = discord.Embed(
+                title="**Messages Has Been Deleted** *Successfully*!!",
+                description=f"```py\nAmount Deleted: {amount}```")
+            embed.set_footer(
+                text=
+                f"This Message Will Be Deleted Shortly After 4 Seconds..  •  Moderator: {user}"
+            )
+            await ctx.channel.purge(limit=amount)
+            await ctx.send(embed=embed, delete_after=4)
+        else:
+            await ctx.send("This command can only be used in text channels.",
+                           delete_after=4)
 
     # --------------------------------------------------------------------------------------------------------------------------
 
