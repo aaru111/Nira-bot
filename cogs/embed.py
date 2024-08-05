@@ -102,7 +102,8 @@ class AuthorModal(Modal):
         await interaction.response.edit_message(content="Author configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
-                                                    self.embed))
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class BodyModal(Modal):
@@ -128,7 +129,7 @@ class BodyModal(Modal):
                                                     ephemeral=True)
             return
 
-        self.embed.titl = self.title.value
+        self.embed.title = self.titl.value
         self.embed.description = self.description.value
         self.embed.url = self.url.value or None
         if self.colour.value:
@@ -137,7 +138,8 @@ class BodyModal(Modal):
         await interaction.response.edit_message(content="Body configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
-                                                    self.embed))
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class ImagesModal(Modal):
@@ -174,7 +176,8 @@ class ImagesModal(Modal):
         await interaction.response.edit_message(content="Images configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
-                                                    self.embed))
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class FooterModal(Modal):
@@ -210,7 +213,8 @@ class FooterModal(Modal):
         await interaction.response.edit_message(content="Footer configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
-                                                    self.embed))
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class FieldsModal(Modal):
@@ -243,7 +247,8 @@ class FieldsModal(Modal):
         await interaction.response.edit_message(content="Fields configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
-                                                    self.embed))
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class InlineModal(Modal):
@@ -268,7 +273,7 @@ class InlineModal(Modal):
         await interaction.response.edit_message(
             content="Inline fields configured.",
             embed=self.embed,
-            view=create_embed_view(self.embed))
+            view=create_embed_view(self.embed, interaction.client))
 
 
 class AddFieldsModal(Modal):
@@ -301,7 +306,7 @@ class AddFieldsModal(Modal):
         await interaction.response.edit_message(
             content="Additional fields configured.",
             embed=self.embed,
-            view=create_embed_view(self.embed))
+            view=create_embed_view(self.embed, interaction.client))
 
 
 class SendButton(Button):
@@ -313,8 +318,17 @@ class SendButton(Button):
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction):
+        if not self.embed.title and not self.embed.description and not self.embed.fields:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="Error",
+                description="Nothing has been configured yet.",
+                color=discord.Color.red()),
+                                                    ephemeral=True)
+            return
+
         await interaction.channel.send(embed=self.embed)
-        await interaction.response.send_message("Embed sent!", ephemeral=True)
+        await interaction.response.edit_message(content="Embed sent!",
+                                                view=None)
 
 
 class AddFieldsButton(Button):
@@ -341,8 +355,19 @@ class InlineFieldsButton(Button):
         await interaction.response.send_modal(InlineModal(self.embed))
 
 
-def create_embed_view(embed):
+def create_embed_view(embed, bot):
     view = View()
+    select_options = [
+        discord.SelectOption(label="Author", value="author", emoji="📝"),
+        discord.SelectOption(label="Body", value="body", emoji="📄"),
+        discord.SelectOption(label="Images", value="images", emoji="🖼️"),
+        discord.SelectOption(label="Footer", value="footer", emoji="🔻"),
+        discord.SelectOption(label="Fields", value="fields", emoji="🔠"),
+    ]
+    select = Select(placeholder="Choose a part of the embed to configure...",
+                    options=select_options)
+    select.callback = bot.get_cog('EmbedCreator').dropdown_callback
+    view.add_item(select)
     view.add_item(SendButton(embed))
     view.add_item(AddFieldsButton(embed))
     view.add_item(InlineFieldsButton(embed))
