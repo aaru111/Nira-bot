@@ -17,7 +17,7 @@ class FeedbackModal(Modal):
         self.add_item(
             TextInput(label="Feedback Title", style=discord.TextStyle.short))
         self.add_item(
-            TextInput(label="Your feedback", style=discord.TextStyle.long))
+            TextInput(label="Your Feedback", style=discord.TextStyle.long))
 
     async def on_submit(self, interaction: discord.Interaction):
         title = self.children[0].value
@@ -48,9 +48,15 @@ class FeedbackModal(Modal):
                 embed.add_field(name="Downvote Progress",
                                 value="░░░░░░░░░░ 0%",
                                 inline=False)
+                embed.set_footer(
+                    text=
+                    f"Submitted by {interaction.user} • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                    icon_url=interaction.user.avatar.url)
 
                 view = FeedbackVoteView()
-                await channel.send(embed=embed, view=view)
+                message = await channel.send(embed=embed, view=view)
+                await message.create_thread(name=title,
+                                            auto_archive_duration=1440)
             else:
                 await interaction.response.send_message(
                     "Feedback channel not found.", ephemeral=True)
@@ -103,10 +109,14 @@ class FeedbackVoteButton(Button):
 
         upvotes = int(embed.fields[0].value)
         downvotes = int(embed.fields[1].value)
-        upvoters = embed.fields[4].value.split(
-            ", ") if embed.fields[4].value != "None" else []
-        downvoters = embed.fields[5].value.split(
-            ", ") if embed.fields[5].value != "None" else []
+        upvoters = []
+        downvoters = []
+
+        if len(embed.fields) > 4:
+            upvoters = embed.fields[4].value.split(
+                ", ") if embed.fields[4].value != "None" else []
+            downvoters = embed.fields[5].value.split(
+                ", ") if embed.fields[5].value != "None" else []
 
         user_mention = interaction.user.mention
 
@@ -153,6 +163,26 @@ class FeedbackVoteButton(Button):
             value=
             f"▓{'▓' * (downvote_percentage // 10)}{'░' * (10 - (downvote_percentage // 10))} {downvote_percentage}%",
             inline=False)
+
+        if len(embed.fields) > 4:
+            embed.set_field_at(
+                4,
+                name="Upvoters",
+                value=", ".join(upvoters) if upvoters else "None",
+                inline=False)
+            embed.set_field_at(
+                5,
+                name="Downvoters",
+                value=", ".join(downvoters) if downvoters else "None",
+                inline=False)
+        else:
+            embed.add_field(name="Upvoters",
+                            value=", ".join(upvoters) if upvoters else "None",
+                            inline=False)
+            embed.add_field(
+                name="Downvoters",
+                value=", ".join(downvoters) if downvoters else "None",
+                inline=False)
 
         await interaction.response.edit_message(embed=embed, view=self.view)
 
