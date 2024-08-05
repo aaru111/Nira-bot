@@ -6,11 +6,14 @@ import json
 import os
 import aiohttp
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 
 class FeedbackModal(Modal):
+    """A modal dialog for submitting feedback."""
 
-    def __init__(self, feedback_type):
+    def __init__(self, feedback_type: str) -> None:
+        """Initialize the modal with the specified feedback type."""
         super().__init__(title=f"{feedback_type} Feedback Form")
         self.feedback_type = feedback_type
 
@@ -19,7 +22,8 @@ class FeedbackModal(Modal):
         self.add_item(
             TextInput(label="Your Feedback", style=discord.TextStyle.long))
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Handle the submission of the feedback form."""
         title = self.children[0].value
         feedback = self.children[1].value
         await interaction.response.send_message(
@@ -49,9 +53,12 @@ class FeedbackModal(Modal):
                                 value="░░░░░░░░░░ 0%",
                                 inline=False)
                 embed.set_footer(
-                    text=
-                    f"Submitted by {interaction.user} • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                    icon_url=interaction.user.avatar.url)
+                    text=(
+                        f"Submitted by {interaction.user} • "
+                        f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    ),
+                    icon_url=interaction.user.avatar.url,
+                )
 
                 view = FeedbackVoteView()
                 message = await channel.send(embed=embed, view=view)
@@ -66,8 +73,10 @@ class FeedbackModal(Modal):
 
 
 class FeedbackDropdown(Select):
+    """A dropdown menu for selecting feedback type."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the dropdown menu with feedback options."""
         options = [
             discord.SelectOption(label="Bug Report 🐞",
                                  description="Report a bug in the bot"),
@@ -82,35 +91,42 @@ class FeedbackDropdown(Select):
                          options=options,
                          custom_id="feedback_dropdown")
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle the selection of a feedback type."""
         selected_option = self.values[0]
         await interaction.response.send_modal(FeedbackModal(selected_option))
 
 
 class FeedbackView(View):
+    """A view containing the feedback dropdown menu."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the view with the feedback dropdown."""
         super().__init__(
             timeout=None)  # Persistent views should have no timeout
         self.add_item(FeedbackDropdown())
 
 
 class FeedbackVoteButton(Button):
+    """A button for voting on feedback."""
 
-    def __init__(self, label, emoji, style, custom_id):
+    def __init__(self, label: str, emoji: str, style: discord.ButtonStyle,
+                 custom_id: str) -> None:
+        """Initialize the button with the specified label, emoji, style, and custom ID."""
         super().__init__(label=label,
                          emoji=emoji,
                          style=style,
                          custom_id=custom_id)
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle the click of the vote button."""
         message = interaction.message
         embed = message.embeds[0]
 
         upvotes = int(embed.fields[0].value)
         downvotes = int(embed.fields[1].value)
-        upvoters = []
-        downvoters = []
+        upvoters: List[str] = []
+        downvoters: List[str] = []
 
         if len(embed.fields) > 4:
             upvoters = embed.fields[4].value.split(
@@ -136,7 +152,8 @@ class FeedbackVoteButton(Button):
                 downvoters.append(user_mention)
         elif self.custom_id == "show_votes_button":
             await interaction.response.send_message(
-                f"Upvoted by: {', '.join(upvoters) if upvoters else 'None'}\nDownvoted by: {', '.join(downvoters) if downvoters else 'None'}",
+                f"Upvoted by: {', '.join(upvoters) if upvoters else 'None'}\n"
+                f"Downvoted by: {', '.join(downvoters) if downvoters else 'None'}",
                 ephemeral=True)
             return
 
@@ -188,8 +205,10 @@ class FeedbackVoteButton(Button):
 
 
 class FeedbackVoteView(View):
+    """A view containing the voting buttons for feedback."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the view with the vote buttons."""
         super().__init__(timeout=None)
         self.add_item(
             FeedbackVoteButton(label="Upvote",
@@ -209,14 +228,17 @@ class FeedbackVoteView(View):
 
 
 class RemoveChannelButton(Button):
+    """A button for removing the feedback channel."""
 
-    def __init__(self, cog):
+    def __init__(self, cog: commands.Cog) -> None:
+        """Initialize the button and associate it with the Feedback cog."""
         super().__init__(label="Remove Channel",
                          emoji="❌",
                          style=discord.ButtonStyle.danger)
         self.cog = cog
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle the click of the remove channel button."""
         guild_id = str(interaction.guild.id)
         if os.path.exists('feedback_channels.json'):
             with open('feedback_channels.json', 'r') as f:
@@ -228,10 +250,10 @@ class RemoveChannelButton(Button):
                     json.dump(feedback_channels, f, indent=4)
                 embed = interaction.message.embeds[0]
                 embed.description = "No feedback channel set."
-                embed.set_footer(
-                    text=
-                    f"Powered By Nira • Requested By {interaction.user} • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                    icon_url=interaction.user.avatar.url)
+                embed.set_footer(text=(
+                    f"Powered By Nira • Requested By {interaction.user} • "
+                    f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"),
+                                 icon_url=interaction.user.avatar.url)
                 await interaction.response.edit_message(embed=embed, view=None)
             else:
                 await interaction.response.send_message(
@@ -242,21 +264,24 @@ class RemoveChannelButton(Button):
 
 
 class Feedback(commands.Cog):
+    """A cog for managing feedback-related commands and functionality."""
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
+        """Initialize the Feedback cog with the bot and set up the views."""
         self.bot = bot
         self.session = aiohttp.ClientSession()
         self.bot.add_view(FeedbackView())  # Register the persistent view
         self.bot.add_view(
             FeedbackVoteView())  # Register the persistent vote view
 
-    async def close(self):
+    async def close(self) -> None:
+        """Close the aiohttp session when the cog is unloaded."""
         await self.session.close()
 
     @app_commands.command(name="feedback",
                           description="Send feedback using a dropdown")
-    async def feedback(self, interaction: discord.Interaction):
-        """Send feedback using a dropdown"""
+    async def feedback(self, interaction: discord.Interaction) -> None:
+        """Send feedback using a dropdown."""
         if interaction.guild is None:
             await interaction.response.send_message(
                 "This command cannot be used in DMs.", ephemeral=True)
@@ -270,10 +295,11 @@ class Feedback(commands.Cog):
         name="feedback_setup",
         description="Set or remove the channel for feedback logs (Admin only)")
     @app_commands.default_permissions(administrator=True)
-    async def feedback_setup(self,
-                             interaction: discord.Interaction,
-                             channel: discord.TextChannel = None):
-        """Set or remove the channel for feedback logs (Admin only)"""
+    async def feedback_setup(
+            self,
+            interaction: discord.Interaction,
+            channel: Optional[discord.TextChannel] = None) -> None:
+        """Set or remove the channel for feedback logs (Admin only)."""
         if interaction.guild is None:
             await interaction.response.send_message(
                 "This command cannot be used in DMs.", ephemeral=True)
@@ -281,7 +307,7 @@ class Feedback(commands.Cog):
 
         guild_id = str(interaction.guild.id)
 
-        feedback_channels = {}
+        feedback_channels: Dict[str, Any] = {}
         if os.path.exists('feedback_channels.json'):
             with open('feedback_channels.json', 'r') as f:
                 feedback_channels = json.load(f)
@@ -297,15 +323,15 @@ class Feedback(commands.Cog):
                 description=
                 f"Feedback channel has been set to {channel.mention}.",
                 color=discord.Color.green())
-            embed.set_footer(
-                text=
-                f"Powered By Nira • Requested By {interaction.user} • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                icon_url=interaction.user.avatar.url)
+            embed.set_footer(text=(
+                f"Powered By Nira • Requested By {interaction.user} • "
+                f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"),
+                             icon_url=interaction.user.avatar.url)
             embed.set_author(name=self.bot.user.name,
                              icon_url=self.bot.user.avatar.url)
             embed.add_field(
                 name="Usage",
-                value="Use `/feedback_setup` to set feedback channel.",
+                value="Use /feedback_setup to set feedback channel.",
                 inline=False)
             view = View()
             view.add_item(RemoveChannelButton(self))
@@ -318,16 +344,15 @@ class Feedback(commands.Cog):
                 title="Feedback Channel Not Set",
                 description="No feedback channel has been set.",
                 color=discord.Color.red())
-            embed.set_footer(
-                text=
-                f"Powered By Nira • Requested By {interaction.user} • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                icon_url=interaction.user.avatar.url)
+            embed.set_footer(text=(
+                f"Powered By Nira • Requested By {interaction.user} • "
+                f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"),
+                             icon_url=interaction.user.avatar.url)
             embed.set_author(name=self.bot.user.name,
                              icon_url=self.bot.user.avatar.url)
             embed.add_field(
                 name="Usage",
-                value=
-                "Use `/feedback_setup <channel>` to set feedback channel.",
+                value="Use /feedback_setup <channel> to set feedback channel.",
                 inline=False)
             view = View()
             view.add_item(RemoveChannelButton(self))
@@ -337,8 +362,10 @@ class Feedback(commands.Cog):
                                                     ephemeral=True)
 
     @feedback_setup.error
-    async def feedback_setup_error(self, interaction: discord.Interaction,
-                                   error):
+    async def feedback_setup_error(
+            self, interaction: discord.Interaction,
+            error: app_commands.AppCommandError) -> None:
+        """Handle errors for the feedback_setup command."""
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
                 "You do not have the necessary permissions to use this command.",
@@ -349,5 +376,5 @@ class Feedback(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    cog = Feedback(bot)
-    await bot.add_cog(cog)
+    """Add the Feedback cog to the bot."""
+    await bot.add_cog(Feedback(bot))
