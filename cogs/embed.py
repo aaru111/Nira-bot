@@ -10,7 +10,7 @@ class EmbedCreator(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.embed = discord.Embed()
+        self.embed_object = discord.Embed()
         self.session = aiohttp.ClientSession()
 
     async def close(self):
@@ -33,9 +33,8 @@ class EmbedCreator(commands.Cog):
 
         view = View()
         view.add_item(select)
-        view.add_item(SendButton(self.embed))
-        view.add_item(AddFieldsButton(self.embed))
-        view.add_item(InlineFieldsButton(self.embed))
+        view.add_item(SendButton(self.embed_object))
+        view.add_item(AddFieldsButton(self.embed_object))
 
         await interaction.response.send_message("Configure your embed:",
                                                 view=view,
@@ -44,15 +43,19 @@ class EmbedCreator(commands.Cog):
     async def dropdown_callback(self, interaction: discord.Interaction):
         value = interaction.data["values"][0]
         if value == "author":
-            await interaction.response.send_modal(AuthorModal(self.embed))
+            await interaction.response.send_modal(
+                AuthorModal(self.embed_object))
         elif value == "body":
-            await interaction.response.send_modal(BodyModal(self.embed))
+            await interaction.response.send_modal(BodyModal(self.embed_object))
         elif value == "images":
-            await interaction.response.send_modal(ImagesModal(self.embed))
+            await interaction.response.send_modal(
+                ImagesModal(self.embed_object))
         elif value == "footer":
-            await interaction.response.send_modal(FooterModal(self.embed))
+            await interaction.response.send_modal(
+                FooterModal(self.embed_object))
         elif value == "fields":
-            await interaction.response.send_modal(FieldsModal(self.embed))
+            await interaction.response.send_modal(
+                FieldsModal(self.embed_object))
 
 
 def is_valid_url(url):
@@ -222,11 +225,16 @@ class FieldsModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Configure Fields")
         self.embed = embed
-        self.field_1 = TextInput(label="<Field Name>, <Field Value>")
-        self.field_2 = TextInput(label="<Field Name>, <Field Value>")
-        self.field_3 = TextInput(label="<Field Name>, <Field Value>")
-        self.field_4 = TextInput(label="<Field Name>, <Field Value>")
-        self.field_5 = TextInput(label="<Field Name>, <Field Value>")
+        self.field_1 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_2 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_3 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_4 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_5 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
@@ -281,11 +289,16 @@ class AddFieldsModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Add More Fields")
         self.embed = embed
-        self.field_1 = TextInput(label="Field 1")
-        self.field_2 = TextInput(label="Field 2")
-        self.field_3 = TextInput(label="Field 3")
-        self.field_4 = TextInput(label="Field 4")
-        self.field_5 = TextInput(label="Field 5")
+        self.field_1 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_2 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_3 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_4 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
+        self.field_5 = TextInput(label="<Field Name>, <Field Value>",
+                                 required=False)
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
@@ -343,18 +356,6 @@ class AddFieldsButton(Button):
         await interaction.response.send_modal(AddFieldsModal(self.embed))
 
 
-class InlineFieldsButton(Button):
-
-    def __init__(self, embed):
-        super().__init__(label="Set Inline Fields",
-                         style=discord.ButtonStyle.blurple,
-                         emoji="➖")
-        self.embed = embed
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(InlineModal(self.embed))
-
-
 def create_embed_view(embed, bot):
     view = View()
     select_options = [
@@ -370,7 +371,6 @@ def create_embed_view(embed, bot):
     view.add_item(select)
     view.add_item(SendButton(embed))
     view.add_item(AddFieldsButton(embed))
-    view.add_item(InlineFieldsButton(embed))
     return view
 
 
