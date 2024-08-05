@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import logging
 import traceback
-from typing import Optional, Union
+from typing import Optional, Union, List
 from main import Bot
 import aiohttp
 from difflib import get_close_matches
@@ -22,33 +22,74 @@ EMBED_COLOR = 0x2f3131
 
 
 class Errors(commands.Cog):
+  """
+    A cog to handle and report errors occurring during command execution.
+    """
 
-  def __init__(self, bot: Bot):
+  def __init__(self, bot: Bot) -> None:
+    """
+        Initialize the Errors cog.
+
+        Args:
+            bot (Bot): The instance of the bot.
+        """
     self.bot: Bot = bot
-    self.session = aiohttp.ClientSession()
+    self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
   async def send_error_embed(self, ctx: commands.Context, title: str,
                              description: str) -> None:
+    """
+        Send an embed with error information to the context channel.
+
+        Args:
+            ctx (commands.Context): The context in which the command was invoked.
+            title (str): The title of the embed.
+            description (str): The description of the embed.
+        """
     embed = discord.Embed(title=title,
                           description=f"```py\n{description}```",
                           color=EMBED_COLOR)
     await ctx.send(embed=embed)
 
   async def close(self) -> None:
+    """
+        Close the aiohttp client session.
+        """
     await self.session.close()
+
+  async def handle_error(self, ctx: commands.Context, command_name: str,
+                         description: str, title: str) -> None:
+    """
+        Send an error embed and log the error.
+
+        Args:
+            ctx (commands.Context): The context in which the command was invoked.
+            command_name (str): The name of the command that triggered the error.
+            description (str): The description of the error.
+            title (str): The title of the error.
+        """
+    await self.send_error_embed(ctx, title, description)
+    logger.error(f"Ignoring exception in command {command_name}:")
+    logger.error(description)
 
   @commands.Cog.listener()
   async def on_command_error(self, ctx: commands.Context,
                              error: commands.CommandError) -> None:
+    """
+        Handle errors that occur during command execution.
+
+        Args:
+            ctx (commands.Context): The context in which the command was invoked.
+            error (commands.CommandError): The error that was raised.
+        """
     command_name = ctx.command.qualified_name if ctx.command else "Unknown Command"
     command_signature = getattr(ctx.command, 'signature',
                                 '') if ctx.command else ""
 
     if isinstance(error, commands.MissingRequiredArgument):
-      await self.send_error_embed(
-          ctx, "Missing Required Argument",
-          f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
-      )
+      description = f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
+      await self.handle_error(ctx, command_name, description,
+                              "Missing Required Argument")
 
     elif isinstance(error, commands.CommandNotFound):
       description = "Command not found. Please check your command and try again."
@@ -58,71 +99,65 @@ class Errors(commands.Cog):
           cutoff=0.6)
       if similar_commands:
         description += "\n\nDid you mean?\n" + '\n'.join(similar_commands)
-      await self.send_error_embed(ctx, "Command Not Found", description)
+      await self.handle_error(ctx, command_name, description,
+                              "Command Not Found")
 
     elif isinstance(error, commands.MissingPermissions):
       perms = ', '.join(error.missing_permissions)
-      await self.send_error_embed(
-          ctx, "Missing Permissions",
-          f"You need the following permissions to execute this command: {perms}"
-      )
+      description = f"You need the following permissions to execute this command: {perms}"
+      await self.handle_error(ctx, command_name, description,
+                              "Missing Permissions")
 
     elif isinstance(error, commands.BotMissingPermissions):
       perms = ', '.join(error.missing_permissions)
-      await self.send_error_embed(
-          ctx, "Bot Missing Permissions",
-          f"I need the following permissions to execute this command: {perms}")
+      description = f"I need the following permissions to execute this command: {perms}"
+      await self.handle_error(ctx, command_name, description,
+                              "Bot Missing Permissions")
 
     elif isinstance(error, commands.CommandOnCooldown):
-      await self.send_error_embed(
-          ctx, "Command on Cooldown",
-          f"This command is on cooldown. Try again after {error.retry_after:.2f} seconds."
-      )
+      description = f"This command is on cooldown. Try again after {error.retry_after:.2f} seconds."
+      await self.handle_error(ctx, command_name, description,
+                              "Command on Cooldown")
 
     elif isinstance(error, commands.NotOwner):
-      await self.send_error_embed(ctx, "Not Owner",
-                                  "Only the bot owner can use this command.")
+      description = "Only the bot owner can use this command."
+      await self.handle_error(ctx, command_name, description, "Not Owner")
 
     elif isinstance(error, commands.NoPrivateMessage):
-      await self.send_error_embed(
-          ctx, "No Private Message",
-          "This command cannot be used in private messages.")
+      description = "This command cannot be used in private messages."
+      await self.handle_error(ctx, command_name, description,
+                              "No Private Message")
 
     elif isinstance(error, commands.BadArgument):
-      await self.send_error_embed(ctx, "Bad Argument", str(error))
+      await self.handle_error(ctx, command_name, str(error), "Bad Argument")
 
     elif isinstance(error, commands.CheckFailure):
-      await self.send_error_embed(
-          ctx, "Check Failure",
-          "You do not have permission to execute this command.")
+      description = "You do not have permission to execute this command."
+      await self.handle_error(ctx, command_name, description, "Check Failure")
 
     elif isinstance(error, commands.DisabledCommand):
-      await self.send_error_embed(ctx, "Disabled Command",
-                                  "This command is currently disabled.")
+      description = "This command is currently disabled."
+      await self.handle_error(ctx, command_name, description,
+                              "Disabled Command")
 
     elif isinstance(error, commands.UserInputError):
-      await self.send_error_embed(ctx, "User Input Error", str(error))
+      await self.handle_error(ctx, command_name, str(error),
+                              "User Input Error")
 
     elif isinstance(error, commands.InvalidEndOfQuotedStringError):
-      await self.send_error_embed(ctx, "Invalid End of Quoted String",
-                                  str(error))
+      await self.handle_error(ctx, command_name, str(error),
+                              "Invalid End of Quoted String")
 
     elif isinstance(error, commands.ExpectedClosingQuoteError):
-      await self.send_error_embed(ctx, "Expected Closing Quote", str(error))
+      await self.handle_error(ctx, command_name, str(error),
+                              "Expected Closing Quote")
 
     else:
       # Log the error with traceback
-      logger.error(f"Ignoring exception in command {command_name}:")
-      logger.error(error)
       traceback_str = ''.join(
           traceback.format_exception(type(error), error, error.__traceback__))
-      logger.error(traceback_str)
-
-      # Send a generic error message to the user
-      await self.send_error_embed(
-          ctx, "Unexpected Error",
-          "An unexpected error occurred. The incident has been logged and will be looked into."
-      )
+      await self.handle_error(ctx, command_name, traceback_str,
+                              "Unexpected Error")
 
       # Notify developers
       dev_channel = self.bot.get_channel(
@@ -141,4 +176,10 @@ class Errors(commands.Cog):
 
 
 async def setup(bot: Bot) -> None:
+  """
+    Load the Errors cog.
+
+    Args:
+        bot (Bot): The instance of the bot.
+    """
   await bot.add_cog(Errors(bot))
