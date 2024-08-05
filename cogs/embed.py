@@ -110,11 +110,11 @@ class BodyModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Configure Body")
         self.embed = embed
-        self.title = TextInput(label="Title")
+        self.titl = TextInput(label="Title")
         self.description = TextInput(label="Description")
         self.url = TextInput(label="URL", required=False)
         self.colour = TextInput(label="Colour (hex code)", required=False)
-        self.add_item(self.title)
+        self.add_item(self.titl)
         self.add_item(self.description)
         self.add_item(self.url)
         self.add_item(self.colour)
@@ -128,7 +128,7 @@ class BodyModal(Modal):
                                                     ephemeral=True)
             return
 
-        self.embed.title = self.title.value
+        self.embed.titl = self.title.value
         self.embed.description = self.description.value
         self.embed.url = self.url.value or None
         if self.colour.value:
