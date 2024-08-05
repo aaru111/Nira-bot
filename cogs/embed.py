@@ -35,6 +35,8 @@ class EmbedCreator(commands.Cog):
         view.add_item(select)
         view.add_item(SendButton(self.embed_object))
         view.add_item(AddFieldsButton(self.embed_object))
+        view.add_item(InlineFieldsButton(self.embed_object))
+        view.add_item(ResetButton(self.embed_object))
 
         await interaction.response.send_message("Configure your embed:",
                                                 view=view,
@@ -225,16 +227,16 @@ class FieldsModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Configure Fields")
         self.embed = embed
-        self.field_1 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_2 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_3 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_4 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_5 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
+        self.field_1 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_2 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_3 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_4 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_5 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
@@ -248,10 +250,12 @@ class FieldsModal(Modal):
         ]
         for field in fields:
             if field:
-                parts = field.split(",")
+                parts = field.split(",", 2)
                 name = parts[0].strip()
                 value = parts[1].strip() if len(parts) > 1 else ""
-                self.embed.add_field(name=name, value=value)
+                inline = parts[2].strip().lower() == "true" if len(
+                    parts) > 2 else False
+                self.embed.add_field(name=name, value=value, inline=inline)
         await interaction.response.edit_message(content="Fields configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -264,20 +268,22 @@ class InlineModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Configure Inline Fields")
         self.embed = embed
-        self.field_no = TextInput(label="Field Number to Inline",
-                                  placeholder="e.g. 1, 2, 3")
-        self.add_item(self.field_no)
+        self.field_names = TextInput(
+            label="Field Names to Inline (comma-separated)")
+        self.add_item(self.field_names)
 
     async def on_submit(self, interaction: discord.Interaction):
-        field_numbers = self.field_no.value.split(",")
-        for field_no in field_numbers:
-            field_index = int(field_no.strip()) - 1
-            if 0 <= field_index < len(self.embed.fields):
-                field = self.embed.fields[field_index]
-                self.embed.set_field_at(index=field_index,
-                                        name=field.name,
-                                        value=field.value,
-                                        inline=True)
+        field_names = [
+            name.strip() for name in self.field_names.value.split(",")
+        ]
+        for field_name in field_names:
+            for i, field in enumerate(self.embed.fields):
+                if field.name == field_name:
+                    self.embed.set_field_at(index=i,
+                                            name=field.name,
+                                            value=field.value,
+                                            inline=True)
+                    break
         await interaction.response.edit_message(
             content="Inline fields configured.",
             embed=self.embed,
@@ -289,16 +295,16 @@ class AddFieldsModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Add More Fields")
         self.embed = embed
-        self.field_1 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_2 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_3 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_4 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
-        self.field_5 = TextInput(label="<Field Name>, <Field Value>",
-                                 required=False)
+        self.field_1 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_2 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_3 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_4 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
+        self.field_5 = TextInput(
+            label="<Field Name>, <Field Value>, <true/false>", required=False)
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
@@ -312,10 +318,12 @@ class AddFieldsModal(Modal):
         ]
         for field in fields:
             if field:
-                parts = field.split(",")
+                parts = field.split(",", 2)
                 name = parts[0].strip()
                 value = parts[1].strip() if len(parts) > 1 else ""
-                self.embed.add_field(name=name, value=value)
+                inline = parts[2].strip().lower() == "true" if len(
+                    parts) > 2 else False
+                self.embed.add_field(name=name, value=value, inline=inline)
         await interaction.response.edit_message(
             content="Additional fields configured.",
             embed=self.embed,
@@ -356,6 +364,43 @@ class AddFieldsButton(Button):
         await interaction.response.send_modal(AddFieldsModal(self.embed))
 
 
+class InlineFieldsButton(Button):
+
+    def __init__(self, embed):
+        super().__init__(label="Set Inline Fields",
+                         style=discord.ButtonStyle.blurple,
+                         emoji="➖")
+        self.embed = embed
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(InlineModal(self.embed))
+
+
+class ResetButton(Button):
+
+    def __init__(self, embed):
+        super().__init__(label="Reset Embed",
+                         style=discord.ButtonStyle.red,
+                         emoji="🔄")
+        self.embed = embed
+
+    async def callback(self, interaction: discord.Interaction):
+        self.embed.clear_fields()
+        self.embed.title = None
+        self.embed.description = None
+        self.embed.url = None
+        self.embed.color = None
+        self.embed.set_author(name=None)
+        self.embed.set_footer(text=None)
+        self.embed.set_image(url=None)
+        self.embed.set_thumbnail(url=None)
+        await interaction.response.edit_message(content="Embed reset.",
+                                                embed=self.embed,
+                                                view=create_embed_view(
+                                                    self.embed,
+                                                    interaction.client))
+
+
 def create_embed_view(embed, bot):
     view = View()
     select_options = [
@@ -371,6 +416,8 @@ def create_embed_view(embed, bot):
     view.add_item(select)
     view.add_item(SendButton(embed))
     view.add_item(AddFieldsButton(embed))
+    view.add_item(InlineFieldsButton(embed))
+    view.add_item(ResetButton(embed))
     return view
 
 
