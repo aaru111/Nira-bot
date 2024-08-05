@@ -222,11 +222,11 @@ class FieldsModal(Modal):
     def __init__(self, embed):
         super().__init__(title="Configure Fields")
         self.embed = embed
-        self.field_1 = TextInput(label="Field 1")
-        self.field_2 = TextInput(label="Field 2")
-        self.field_3 = TextInput(label="Field 3")
-        self.field_4 = TextInput(label="Field 4")
-        self.field_5 = TextInput(label="Field 5")
+        self.field_1 = TextInput(label="<Field Name>, <Field Value>")
+        self.field_2 = TextInput(label="<Field Name>, <Field Value>")
+        self.field_3 = TextInput(label="<Field Name>, <Field Value>")
+        self.field_4 = TextInput(label="<Field Name>, <Field Value>")
+        self.field_5 = TextInput(label="<Field Name>, <Field Value>")
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
