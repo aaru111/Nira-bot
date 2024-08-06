@@ -4,7 +4,9 @@ from discord import app_commands
 from discord.ui import View, Select, Modal, TextInput, Button
 import aiohttp
 from urllib.parse import urlparse
-from discord import ButtonStyle
+import webcolors
+import random
+from custom_colors import custom_colors  # Import custom colors from custom_colors.py
 
 
 class EmbedCreator(commands.Cog):
@@ -18,12 +20,10 @@ class EmbedCreator(commands.Cog):
         """Close the aiohttp session."""
         await self.session.close()
 
-    @app_commands.command(name="embed",
-                          description="Create a custom embed message")
+    @app_commands.command(name="embed", description="Create a custom embed message")
     async def embed(self, interaction: discord.Interaction) -> None:
         """Command to start the embed creation process."""
-        self.embed_object = discord.Embed(
-            description=" ")  # Ensure description is not empty
+        self.embed_object = discord.Embed(description=" ")  # Ensure description is not empty
         options = [
             discord.SelectOption(label="Author", value="author", emoji="📝"),
             discord.SelectOption(label="Body", value="body", emoji="📄"),
@@ -33,7 +33,8 @@ class EmbedCreator(commands.Cog):
         ]
         select = Select(
             placeholder="Choose a part of the embed to configure...",
-            options=options)
+            options=options
+        )
         select.callback = self.dropdown_callback
 
         view = View()
@@ -43,29 +44,21 @@ class EmbedCreator(commands.Cog):
         view.add_item(ResetButton(self.embed_object))
         view.add_item(SelectiveResetButton(self.embed_object))
 
-        await interaction.response.send_message("Configure your embed:",
-                                                view=view,
-                                                ephemeral=True)
+        await interaction.response.send_message("Configure your embed:", view=view, ephemeral=True)
 
-    async def dropdown_callback(self,
-                                interaction: discord.Interaction) -> None:
+    async def dropdown_callback(self, interaction: discord.Interaction) -> None:
         """Callback for the dropdown to open the respective modal for configuration."""
         value = interaction.data["values"][0]
         if value == "author":
-            await interaction.response.send_modal(
-                AuthorModal(self.embed_object))
+            await interaction.response.send_modal(AuthorModal(self.embed_object))
         elif value == "body":
             await interaction.response.send_modal(BodyModal(self.embed_object))
         elif value == "images":
-            await interaction.response.send_modal(
-                ImagesModal(self.embed_object))
+            await interaction.response.send_modal(ImagesModal(self.embed_object))
         elif value == "footer":
-            await interaction.response.send_modal(
-                FooterModal(self.embed_object))
+            await interaction.response.send_modal(FooterModal(self.embed_object))
         elif value == "fields":
-            await interaction.response.send_modal(
-                FieldsModal(self.embed_object))
-
+            await interaction.response.send_modal(FieldsModal(self.embed_object))
 
 def is_valid_url(url: str) -> bool:
     """Check if a URL is valid."""
@@ -74,6 +67,27 @@ def is_valid_url(url: str) -> bool:
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
+
+def is_valid_hex_color(color: str) -> bool:
+    """Check if a string is a valid hex color code."""
+    if color.startswith("#"):
+        color = color[1:]
+    return len(color) == 6 and all(c in "0123456789ABCDEFabcdef" for c in color)
+
+def get_color_from_name(name: str) -> discord.Color:
+    """Return a discord.Color object based on a color name."""
+    try:
+        # Check if color name is in custom colors
+        if name in custom_colors:
+            rgb = custom_colors[name]
+            return discord.Color.from_rgb(*rgb)
+
+        # Normalize the name by replacing spaces with hyphens
+        name = name.replace(" ", "-")
+        rgb = webcolors.name_to_rgb(name)
+        return discord.Color.from_rgb(rgb.red, rgb.green, rgb.blue)
+    except ValueError:
+        return None
 
 
 class AuthorModal(Modal):
@@ -84,8 +98,7 @@ class AuthorModal(Modal):
         self.embed = embed
         self.author = TextInput(label="Author")
         self.author_url = TextInput(label="Author URL", required=False)
-        self.author_icon_url = TextInput(label="Author Icon URL",
-                                         required=False)
+        self.author_icon_url = TextInput(label="Author Icon URL", required=False)
         self.add_item(self.author)
         self.add_item(self.author_url)
         self.add_item(self.author_icon_url)
@@ -96,21 +109,18 @@ class AuthorModal(Modal):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="Error",
-                    description=
-                    f"Invalid URL in Author URL: {self.author_url.value}",
+                    description=f"Invalid URL in Author URL: {self.author_url.value}",
                     color=discord.Color.red(),
                 ),
                 ephemeral=True,
             )
             return
 
-        if self.author_icon_url.value and not is_valid_url(
-                self.author_icon_url.value):
+        if self.author_icon_url.value and not is_valid_url(self.author_icon_url.value):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="Error",
-                    description=
-                    f"Invalid URL in Author Icon URL: {self.author_icon_url.value}",
+                    description=f"Invalid URL in Author Icon URL: {self.author_icon_url.value}",
                     color=discord.Color.red(),
                 ),
                 ephemeral=True,
@@ -128,7 +138,6 @@ class AuthorModal(Modal):
             view=create_embed_view(self.embed, interaction.client),
         )
 
-
 class BodyModal(Modal):
     """Modal to configure the body part of the embed."""
 
@@ -138,7 +147,7 @@ class BodyModal(Modal):
         self.titl = TextInput(label="Title", max_length=256)
         self.description = TextInput(label="Description", max_length=4000)
         self.url = TextInput(label="URL", required=False)
-        self.colour = TextInput(label="Colour (hex code)", required=False)
+        self.colour = TextInput(label="Colour (hex code, name, or 'random')", required=False)
         self.add_item(self.titl)
         self.add_item(self.description)
         self.add_item(self.url)
@@ -157,18 +166,35 @@ class BodyModal(Modal):
             )
             return
 
-        self.embed.title = self.titl.value
-        self.embed.description = self.description.value or " "
-        self.embed.url = self.url.value or None
         if self.colour.value:
-            self.embed.color = discord.Color(
-                int(self.colour.value.strip("#"), 16))
+            if self.colour.value.lower() == "random":
+                self.embed.color = discord.Color.random()
+            elif is_valid_hex_color(self.colour.value):
+                self.embed.color = discord.Color(int(self.colour.value.strip("#"), 16))
+            else:
+                color = get_color_from_name(self.colour.value)
+                if color:
+                    self.embed.color = color
+                else:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description=f"Invalid colour value: {self.colour.value}",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
+                    return
+
+        self.embed.title = self.titl.value
+        self.embed.description = self.description.value or None
+        self.embed.url = self.url.value or None
+
         await interaction.response.edit_message(
             content="✅ Body configured.",
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client),
         )
-
 
 class ImagesModal(Modal):
     """Modal to configure the images part of the embed."""
@@ -187,21 +213,18 @@ class ImagesModal(Modal):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="Error",
-                    description=
-                    f"Invalid URL in Image URL: {self.image_url.value}",
+                    description=f"Invalid URL in Image URL: {self.image_url.value}",
                     color=discord.Color.red(),
                 ),
                 ephemeral=True,
             )
             return
 
-        if self.thumbnail_url.value and not is_valid_url(
-                self.thumbnail_url.value):
+        if self.thumbnail_url.value and not is_valid_url(self.thumbnail_url.value):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="Error",
-                    description=
-                    f"Invalid URL in Thumbnail URL: {self.thumbnail_url.value}",
+                    description=f"Invalid URL in Thumbnail URL: {self.thumbnail_url.value}",
                     color=discord.Color.red(),
                 ),
                 ephemeral=True,
@@ -216,7 +239,6 @@ class ImagesModal(Modal):
             view=create_embed_view(self.embed, interaction.client),
         )
 
-
 class FooterModal(Modal):
     """Modal to configure the footer part of the embed."""
 
@@ -226,21 +248,18 @@ class FooterModal(Modal):
         self.footer = TextInput(label="Footer", max_length=2048)
         self.timestamp = TextInput(
             label="Timestamp (YYYY-MM-DD hh:mm or 'auto')", required=False)
-        self.footer_icon_url = TextInput(label="Footer Icon URL",
-                                         required=False)
+        self.footer_icon_url = TextInput(label="Footer Icon URL", required=False)
         self.add_item(self.footer)
         self.add_item(self.timestamp)
         self.add_item(self.footer_icon_url)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle the submission of the modal."""
-        if self.footer_icon_url.value and not is_valid_url(
-                self.footer_icon_url.value):
+        if self.footer_icon_url.value and not is_valid_url(self.footer_icon_url.value):
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="Error",
-                    description=
-                    f"Invalid URL in Footer Icon URL: {self.footer_icon_url.value}",
+                    description=f"Invalid URL in Footer Icon URL: {self.footer_icon_url.value}",
                     color=discord.Color.red(),
                 ),
                 ephemeral=True,
@@ -254,14 +273,12 @@ class FooterModal(Modal):
         if self.timestamp.value.lower() == "auto":
             self.embed.timestamp = discord.utils.utcnow()
         elif self.timestamp.value:
-            self.embed.timestamp = discord.utils.parse_time(
-                self.timestamp.value)
+            self.embed.timestamp = discord.utils.parse_time(self.timestamp.value)
         await interaction.response.edit_message(
             content="✅ Footer configured.",
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client),
         )
-
 
 class FieldsModal(Modal):
     """Modal to configure the fields part of the embed."""
@@ -299,15 +316,13 @@ class FieldsModal(Modal):
                 parts = field.split(",", 2)
                 name = parts[0].strip()
                 value = parts[1].strip() if len(parts) > 1 else ""
-                inline = parts[2].strip().lower() == "true" if len(
-                    parts) > 2 else False
+                inline = parts[2].strip().lower() == "true" if len(parts) > 2 else False
                 self.embed.add_field(name=name, value=value, inline=inline)
         await interaction.response.edit_message(
             content="✅ Fields configured.",
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client),
         )
-
 
 class AddFieldsModal(Modal):
     """Modal to add more fields to the embed."""
@@ -345,8 +360,7 @@ class AddFieldsModal(Modal):
                 parts = field.split(",", 2)
                 name = parts[0].strip()
                 value = parts[1].strip() if len(parts) > 1 else ""
-                inline = parts[2].strip().lower() == "true" if len(
-                    parts) > 2 else False
+                inline = parts[2].strip().lower() == "true" if len(parts) > 2 else False
                 self.embed.add_field(name=name, value=value, inline=inline)
         await interaction.response.edit_message(
             content="✅ Additional fields configured.",
@@ -354,24 +368,21 @@ class AddFieldsModal(Modal):
             view=create_embed_view(self.embed, interaction.client),
         )
 
-
 class SendButton(Button):
     """Button to send the configured embed."""
 
     def __init__(self, embed: discord.Embed) -> None:
-        super().__init__(label="Send",
-                         style=discord.ButtonStyle.green,
-                         emoji="🚀")
+        super().__init__(label="Send", style=discord.ButtonStyle.green, emoji="🚀")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event."""
         # Check if any component is configured
         if not any([
-                self.embed.title,
-                self.embed.description.strip(), self.embed.fields,
-                self.embed.author.name, self.embed.thumbnail.url,
-                self.embed.image.url, self.embed.footer.text
+            self.embed.title,
+            self.embed.description.strip(), self.embed.fields,
+            self.embed.author.name, self.embed.thumbnail.url,
+            self.embed.image.url, self.embed.footer.text
         ]):
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -383,37 +394,34 @@ class SendButton(Button):
             )
             return
 
+        # Ensure description is not empty
+        if not self.embed.description.strip():
+            self.embed.description = None
+
         await interaction.channel.send(embed=self.embed)
-        self.embed = discord.Embed(
-            description=" ")  # Reset embed with non-empty description
+        self.embed = discord.Embed(description=" ")  # Reset embed with non-empty description
         await interaction.response.edit_message(
             content="✅ Embed sent!",
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client),
         )
 
-
 class AddFieldsButton(Button):
     """Button to add more fields to the embed."""
 
     def __init__(self, embed: discord.Embed) -> None:
-        super().__init__(label="Add More Fields",
-                         style=discord.ButtonStyle.blurple,
-                         emoji="➕")
+        super().__init__(label="Add More Fields", style=discord.ButtonStyle.blurple, emoji="➕")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event."""
         await interaction.response.send_modal(AddFieldsModal(self.embed))
 
-
 class ResetButton(Button):
     """Button to reset the entire embed."""
 
     def __init__(self, embed: discord.Embed) -> None:
-        super().__init__(label="Reset Embed",
-                         style=discord.ButtonStyle.red,
-                         emoji="🔄")
+        super().__init__(label="Reset Embed", style=discord.ButtonStyle.red, emoji="🔄")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -434,7 +442,6 @@ class ResetButton(Button):
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client),
         )
-
 
 class SelectiveResetModal(Modal):
     """Modal to selectively reset parts of the embed."""
@@ -510,20 +517,16 @@ class SelectiveResetModal(Modal):
             view=create_embed_view(self.embed, interaction.client),
         )
 
-
 class SelectiveResetButton(Button):
     """Button to open the selective reset modal."""
 
     def __init__(self, embed: discord.Embed) -> None:
-        super().__init__(label="Selective Reset",
-                         style=discord.ButtonStyle.red,
-                         emoji="🔄")
+        super().__init__(label="Selective Reset", style=discord.ButtonStyle.red, emoji="🔄")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event."""
         await interaction.response.send_modal(SelectiveResetModal(self.embed))
-
 
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     """Create the view for the embed configuration interface."""
@@ -535,8 +538,7 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
         discord.SelectOption(label="Footer", value="footer", emoji="🔻"),
         discord.SelectOption(label="Fields", value="fields", emoji="🔠"),
     ]
-    select = Select(placeholder="Choose a part of the embed to configure...",
-                    options=select_options)
+    select = Select(placeholder="Choose a part of the embed to configure...", options=select_options)
     select.callback = bot.get_cog("EmbedCreator").dropdown_callback
     view.add_item(select)
     view.add_item(SendButton(embed))
@@ -544,7 +546,6 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view.add_item(ResetButton(embed))
     view.add_item(SelectiveResetButton(embed))
     return view
-
 
 async def setup(bot: commands.Bot) -> None:
     """Set up the cog."""
