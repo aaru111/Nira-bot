@@ -8,6 +8,8 @@ import random
 
 CONFIG_FILE = "reaction_roles.json"
 
+SUGGESTED_EMOJIS = ["👍", "👎", "❤️", "😂", "🔥", "🎉", "❗", "✅", "🔔", "⭐"]
+
 
 class ReactionRoleButton(discord.ui.Button):
     """
@@ -133,17 +135,43 @@ class ReactionRole(commands.Cog):
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=4)
 
+    def delete_message_from_config(self, guild_id, message_id):
+        """
+        Deletes a message configuration from the JSON file.
+        """
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r") as f:
+                config = json.load(f)
+
+            if str(guild_id) in config and str(message_id) in config[str(
+                    guild_id)]:
+                del config[str(guild_id)][str(message_id)]
+                if not config[str(guild_id)]:
+                    del config[str(guild_id)]
+
+                with open(CONFIG_FILE, "w") as f:
+                    json.dump(config, f, indent=4)
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload):
+        """
+        Event listener for when a message is deleted.
+        """
+        self.delete_message_from_config(payload.guild_id, payload.message_id)
+
     @app_commands.command(
         name="reaction_role",
-        description="Assign buttons to a message for role assignment.")
+        description=
+        "Assign buttons to a message for role assignment or remove them.")
     async def reaction_role(self,
                             interaction: discord.Interaction,
-                            message_link: str,
-                            role: discord.Role,
-                            emoji: str = "🔘",
-                            colour: str = None):
+                            message_link: str = None,
+                            role: discord.Role = None,
+                            emoji: str = None,
+                            colour: str = None,
+                            remove: str = None):
         """
-        Command to add reaction role buttons to a specified message.
+        Command to add or remove reaction role buttons to/from a specified message.
 
         Parameters:
             interaction (discord.Interaction): The interaction object.
@@ -151,8 +179,38 @@ class ReactionRole(commands.Cog):
             role (discord.Role): The role to assign/remove.
             emoji (str): The emoji for the button.
             colour (str): The colour of the button.
+            remove (str): The link to the message from which to remove reaction roles.
         """
         try:
+            if remove:
+                # Parse message link to get channel ID and message ID
+                parts = remove.split('/')
+                channel_id = int(parts[-2])
+                message_id = int(parts[-1])
+                channel = self.bot.get_channel(channel_id)
+                message = await channel.fetch_message(message_id)
+
+                # Remove the reaction roles
+                self.delete_message_from_config(interaction.guild.id,
+                                                message_id)
+                await message.edit(view=None)
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="Reaction Roles Removed",
+                    description=
+                    f"Reaction roles have been removed from [this message]({remove})",
+                    color=discord.Color.blue()),
+                                                        ephemeral=True)
+                return
+
+            if not message_link or not role:
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="Missing Parameters",
+                    description=
+                    "Please provide both a message link and a role.",
+                    color=discord.Color.red()),
+                                                        ephemeral=True)
+                return
+
             # Parse message link to get channel ID and message ID
             parts = message_link.split('/')
             channel_id = int(parts[-2])
@@ -170,6 +228,10 @@ class ReactionRole(commands.Cog):
                 "grey": discord.ButtonStyle.grey
             }
             button_colour = colour_map.get(colour, discord.ButtonStyle.grey)
+
+            # Default emoji if not provided
+            if emoji is None:
+                emoji = random.choice(SUGGESTED_EMOJIS)
 
             # Create a new button
             button = ReactionRoleButton(role.id, emoji, button_colour)
