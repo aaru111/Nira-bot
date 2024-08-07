@@ -5,6 +5,7 @@ from discord.ext import commands
 import asyncio
 from aiohttp import ClientSession
 from typing import Any
+import aiohttp
 
 # Setup logging
 logging.basicConfig(
@@ -37,8 +38,19 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=command_prefix,
                          intents=intents,
                          **kwargs)
-        self.session = session
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.command_prefix = command_prefix
+
+        async def close(self):
+            await self.session.close()
+
+        @commands.Cog.listener()
+        async def on_shutdown(self):
+            await self.close()
+
+        @commands.Cog.listener()
+        async def on_disconnect(self):
+            await self.close()
 
     async def setup_hook(self) -> None:
         """
