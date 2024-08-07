@@ -53,7 +53,8 @@ class EmbedCreator(commands.Cog):
     async def dropdown_callback(self,
                                 interaction: discord.Interaction) -> None:
         """Callback for the dropdown to open the respective modal for configuration."""
-        value = interaction.data["values"][0]
+        data = interaction.data
+        value = data["values"][0] if isinstance(data, dict) and "values" in data else None
         if value == "author":
             await interaction.response.send_modal(
                 AuthorModal(self.embed_object))
@@ -100,7 +101,7 @@ def get_color_from_name(name: str) -> discord.Color:
         rgb = webcolors.name_to_rgb(name)
         return discord.Color.from_rgb(rgb.red, rgb.green, rgb.blue)
     except ValueError:
-        return None
+        return discord.Color.default()
 
 
 class AuthorModal(Modal):
