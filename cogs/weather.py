@@ -9,12 +9,20 @@ import pycountry
 
 class Weather(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.session = aiohttp.ClientSession()
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
     async def close(self):
         await self.session.close()
+
+    @commands.Cog.listener()
+    async def on_shutdown(self):
+        await self.close()
+
+    @commands.Cog.listener()
+    async def on_disconnect(self):
+        await self.close()
 
     @app_commands.command(
         name="weather", description="Get the weather for a specified location")

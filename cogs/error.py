@@ -57,6 +57,14 @@ class Errors(commands.Cog):
         """
     await self.session.close()
 
+  @commands.Cog.listener()
+  async def on_shutdown(self):
+      await self.close()
+
+  @commands.Cog.listener()
+  async def on_disconnect(self):
+      await self.close()
+
   async def handle_error(self, ctx: commands.Context, command_name: str,
                          description: str, title: str) -> None:
     """
@@ -183,3 +191,5 @@ async def setup(bot: Bot) -> None:
         bot (Bot): The instance of the bot.
     """
   await bot.add_cog(Errors(bot))
+
+

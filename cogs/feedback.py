@@ -269,7 +269,7 @@ class Feedback(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         """Initialize the Feedback cog with the bot and set up the views."""
         self.bot = bot
-        self.session = aiohttp.ClientSession()
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.bot.add_view(FeedbackView())  # Register the persistent view
         self.bot.add_view(
             FeedbackVoteView())  # Register the persistent vote view
@@ -277,6 +277,14 @@ class Feedback(commands.Cog):
     async def close(self) -> None:
         """Close the aiohttp session when the cog is unloaded."""
         await self.session.close()
+
+    @commands.Cog.listener()
+    async def on_shutdown(self):
+        await self.close()
+
+    @commands.Cog.listener()
+    async def on_disconnect(self):
+        await self.close()
 
     @app_commands.command(name="feedback",
                           description="Send feedback using a dropdown")
@@ -378,3 +386,5 @@ class Feedback(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     """Add the Feedback cog to the bot."""
     await bot.add_cog(Feedback(bot))
+
+

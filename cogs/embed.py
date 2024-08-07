@@ -14,11 +14,20 @@ class EmbedCreator(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session = aiohttp.ClientSession()
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
 
     async def close(self) -> None:
         """Close the aiohttp session."""
         await self.session.close()
+
+    @commands.Cog.listener()
+    async def on_shutdown(self):
+        await self.close()
+
+    @commands.Cog.listener()
+    async def on_disconnect(self):
+        await self.close()
 
     @app_commands.command(name="embed",
                           description="Create a custom embed message")
@@ -438,7 +447,7 @@ class SendButton(Button):
             self.embed.description = None
 
         await interaction.channel.send(embed=self.embed)
-        self.embed = discord.Embed(description="Configure another embed."
+        self.embed = discord.Embed(description="Configure another embed. ⤵️"
                                    )  # Reset embed with non-empty description
         await interaction.response.edit_message(
             content="✅ Embed sent!",
@@ -782,3 +791,6 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
 async def setup(bot: commands.Bot) -> None:
     """Set up the cog."""
     await bot.add_cog(EmbedCreator(bot))
+
+
+
