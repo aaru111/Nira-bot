@@ -54,7 +54,8 @@ class EmbedCreator(commands.Cog):
                                 interaction: discord.Interaction) -> None:
         """Callback for the dropdown to open the respective modal for configuration."""
         data = interaction.data
-        value = data["values"][0] if isinstance(data, dict) and "values" in data else None
+        value = data["values"][0] if isinstance(
+            data, dict) and "values" in data else None
         if value == "author":
             await interaction.response.send_modal(
                 AuthorModal(self.embed_object))
@@ -437,8 +438,8 @@ class SendButton(Button):
             self.embed.description = None
 
         await interaction.channel.send(embed=self.embed)
-        self.embed = discord.Embed(
-            description=" ")  # Reset embed with non-empty description
+        self.embed = discord.Embed(description="Configure another embed."
+                                   )  # Reset embed with non-empty description
         await interaction.response.edit_message(
             content="✅ Embed sent!",
             embed=self.embed,
@@ -663,8 +664,9 @@ def get_help_embed(page: int) -> discord.Embed:
     }]
 
     embed = discord.Embed(title=help_pages[page - 1]["title"],
-                          description=help_pages[page - 1]["description"], color=discord.Color.from_rgb(*random.choice(list(custom_colors.values())))
-)
+                          description=help_pages[page - 1]["description"],
+                          color=discord.Color.from_rgb(
+                              *random.choice(list(custom_colors.values()))))
 
     embed.set_footer(text=f"Page {page}/{total_pages}")
     return embed
