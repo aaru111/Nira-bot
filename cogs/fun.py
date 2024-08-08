@@ -6,11 +6,15 @@ from io import BytesIO
 from PIL import Image
 from main import Bot
 from typing import Union
-from emojify import emojify_image
+from scripts.emojify import emojify_image
 from jokeapi import Jokes
 import aiohttp
 import requests
-from asciify import asciify
+from scripts.asciify import asciify
+import os
+from scripts.collatz import is_collatz_conjecture
+import aiofiles
+import asyncio
 
 
 class Fun(commands.Cog):
@@ -18,7 +22,6 @@ class Fun(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-
 
     async def close(self):
         await self.session.close()
@@ -31,32 +34,68 @@ class Fun(commands.Cog):
     async def on_disconnect(self):
         await self.close()
 
+    class Fun(commands.Cog):
+
+        def __init__(self, bot):
+            self.bot = bot
+
     @commands.command()
     async def wanted(self, ctx: commands.Context, *, member: discord.Member):
         await ctx.defer()
-        wanted = Image.open("wanted.jpg")
-        data = BytesIO(await member.display_avatar.read())
-        pfp = Image.open(data)
-        pfp = pfp.resize((2691, 2510))
-        wanted.paste(pfp, (750, 1867))
-        wanted.save("profile.jpg")
-        await ctx.send(file=discord.File("profile.jpg"))
 
-    def is_collatz_conjecture(self, number):
-        steps = []
-        while number > 1:
-            steps.append(number)
-            if number % 2 == 0:
-                number //= 2
-            else:
-                number = 3 * number + 1
-        return number == 1
+        # Define the paths for the images
+        wanted_image_path = "images/wanted.jpg"
+        profile_image_path = "images/profile.jpg"  # Updated path
+
+        # Check if the wanted image file exists
+        if not os.path.exists(wanted_image_path):
+            await ctx.send(
+                f"File {wanted_image_path} not found. Please check the file path."
+            )
+            return
+
+        try:
+            # Open the wanted poster image asynchronously
+            async with aiofiles.open(wanted_image_path, mode='rb') as f:
+                wanted_bytes = await f.read()
+                wanted = Image.open(BytesIO(wanted_bytes))
+        except IOError:
+            await ctx.send(
+                f"Failed to open {wanted_image_path}. Please check the file.")
+            return
+
+        try:
+            # Read the member's avatar
+            avatar_bytes = BytesIO(await member.display_avatar.read())
+            pfp = Image.open(avatar_bytes)
+            pfp = pfp.resize((2691, 2510))
+            wanted.paste(pfp, (750, 1867))
+        except IOError:
+            await ctx.send(
+                "Failed to process the avatar image. Please try again.")
+            return
+
+        try:
+            # Save the combined image asynchronously
+            async with aiofiles.open(profile_image_path, mode='wb') as f:
+                output_bytes = BytesIO()
+                wanted.save(output_bytes, format='JPEG')
+                await f.write(output_bytes.getvalue())
+        except IOError:
+            await ctx.send(
+                f"Failed to save the profile image to {profile_image_path}.")
+            return
+
+        try:
+            await ctx.send(file=discord.File(profile_image_path))
+        except discord.DiscordException:
+            await ctx.send("Failed to send the image. Please try again.")
 
     @commands.command()
     async def collatz(self, ctx, number: int):
         await ctx.defer()
         original_number = int(number)
-        if self.is_collatz_conjecture(original_number):
+        if is_collatz_conjecture(original_number):
             steps = []
             while original_number > 1:
                 steps.append(original_number)
@@ -65,9 +104,23 @@ class Fun(commands.Cog):
                 else:
                     original_number = 3 * original_number + 1
             steps.append(1)
-            await ctx.send(
-                f"The number {number} holds true for **Collatz conjecture**.\n**Steps:**\n```py\n{steps}```\nReached 1 successfully!!"
-            )
+
+            steps_message = (
+                f"The number {number} holds true for **Collatz conjecture**.\n"
+                f"**Steps:**\n```py\n{steps}```\nReached 1 successfully!!")
+
+            if len(steps_message) > 2000:
+                with open("collatztxt.py", "w") as file:
+                    file.write("steps = [\n")
+                    for i in range(0, len(steps), 7):
+                        file.write(", ".join(map(str, steps[i:i + 7])) + ",\n")
+                    file.write("]\n")
+                await ctx.send(
+                    "The steps are too long to display here, so I've uploaded them as a file:",
+                    file=discord.File("collatztxt.py"))
+                os.remove("collatztxt.py")
+            else:
+                await ctx.send(steps_message)
         else:
             await ctx.send(f"The number {number} is not a Collatz conjecture.")
 
@@ -148,6 +201,3 @@ class Fun(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Fun(bot))
-
-
-

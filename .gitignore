@@ -162,5 +162,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-.reaction_roles.json
+__pycache__/
+*.pyc
+.env
+discord_errors.log
+
 

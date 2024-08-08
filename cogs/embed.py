@@ -6,7 +6,7 @@ import aiohttp
 from urllib.parse import urlparse
 import webcolors
 import random
-from custom_colors import custom_colors  # Import custom colors from custom_colors.py
+from data.custom_colors import custom_colors  # Import custom colors from custom_colors.py
 
 
 class EmbedCreator(commands.Cog):

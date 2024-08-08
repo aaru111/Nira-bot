@@ -127,13 +127,20 @@ class Moderation(commands.Cog):
     # -------------------------------------------------------------------------------------------------------------------------
 
     @commands.command()
-    async def slowmode(self, ctx, channel: discord.TextChannel, delay: int):
+    async def slowmode(self, ctx, channel: discord.TextChannel,
+                       delay: int):
         """Changes the slowmode of the mentioned channel.
 
         Args:
             channel: The channel to slowmode.
             delay: The new slowmode delay in seconds.
         """
+        if delay < 0:
+            await ctx.send(
+                "The slowmode delay must be greater than or equal to 0 seconds."
+            )
+            return
+
         await channel.edit(slowmode_delay=delay)
         await ctx.send(
             f"Slowmode for {channel.name} has been changed to {delay} seconds."
