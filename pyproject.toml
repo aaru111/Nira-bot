@@ -14,6 +14,7 @@ beautifulsoup4 = "^4.12.3"
 requests = "^2.32.3"
 youtube-dl = "^2021.12.17"
 colorlog = "^6.8.2"
+flask = "^3.0.3"
 
 
 [build-system]
