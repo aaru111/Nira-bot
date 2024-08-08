@@ -5,59 +5,30 @@ from discord.ext import commands
 import asyncio
 from aiohttp import ClientSession
 from typing import Any
-import aiohttp
 from webserver import keep_alive
 
-# Setup logging
+# -------------------------
+# Logging Configuration
+# -------------------------
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.INFO,  # Adjust to ERROR or WARNING in production
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 # -------------------------
 # Bot Class Definition
 # -------------------------
-
-
 class Bot(commands.Bot):
-    """
-    Custom Bot class inheriting from commands.Bot.
-    Handles setup, logging, and event management for the Discord bot.
-    """
 
     def __init__(self, command_prefix: str, intents: discord.Intents,
                  session: ClientSession, **kwargs: Any) -> None:
-        """
-        Initializes the bot with a command prefix and intents.
-
-        Args:
-            command_prefix (str): The prefix for bot commands.
-            intents (discord.Intents): The intents required for the bot.
-            session (ClientSession): The aiohttp ClientSession for HTTP requests.
-            **kwargs (Any): Additional keyword arguments for the Bot class.
-        """
         super().__init__(command_prefix=command_prefix,
                          intents=intents,
                          **kwargs)
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-        self.command_prefix = command_prefix
-
-        async def close(self):
-            await self.session.close()
-
-        @commands.Cog.listener()
-        async def on_shutdown(self):
-            await self.close()
-
-        @commands.Cog.listener()
-        async def on_disconnect(self):
-            await self.close()
+        self.session = session
 
     async def setup_hook(self) -> None:
-        """
-        Performs initial setup tasks for the bot.
-        Loads extensions and cogs as part of the setup process.
-        """
         try:
             await self.load_extension("jishaku")
             logger.info("Extension 'jishaku' loaded successfully.")
@@ -67,86 +38,46 @@ class Bot(commands.Bot):
         await self.load_all_cogs()
 
     async def load_all_cogs(self) -> None:
-        """
-        Loads all cog extensions from the 'cogs' directory.
-        Logs the status of each cog loading attempt.
-        """
+        cog_files = [f for f in os.listdir('./cogs') if f.endswith('.py')]
+        await asyncio.gather(*(self.load_cog(f) for f in cog_files))
 
-        async def load_cog(filename: str) -> None:
-            """
-            Loads a single cog extension.
-
-            Args:
-                filename (str): The filename of the cog to be loaded.
-            """
-            cog_name = f'cogs.{filename[:-3]}'
-            try:
-                await self.load_extension(cog_name)
-                logger.info(f"{cog_name} loaded successfully.")
-            except Exception as e:
-                logger.error(f"Failed to load {cog_name}: {e}")
-
-        await asyncio.gather(*(load_cog(filename)
-                               for filename in os.listdir('./cogs')
-                               if filename.endswith('.py')))
+    async def load_cog(self, filename: str) -> None:
+        cog_name = f'cogs.{filename[:-3]}'
+        try:
+            await self.load_extension(cog_name)
+            logger.info(f"{cog_name} loaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load {cog_name}: {e}")
 
     async def on_ready(self) -> None:
-        """
-        Event handler triggered when the bot is ready.
-        Logs bot readiness status and user details.
-        """
-        if self.user:
-            logger.info(f'Bot is ready as {self.user} (ID: {self.user.id}).')
-        else:
-            logger.error('Bot user is not available.')
+        logger.info(f'Bot is ready as {self.user} (ID: {self.user.id}).')
 
     async def on_error(self, event_method: str, *args: Any,
                        **kwargs: Any) -> None:
-        """
-        Error handler for unhandled exceptions.
-        Logs error details and traceback information.
+        logger.error('Unhandled exception in %s.', event_method, exc_info=True)
 
-        Args:
-            event_method (str): The name of the event method where the error occurred.
-            *args (Any): Additional arguments.
-            **kwargs (Any): Additional keyword arguments.
-        """
-        logger.error('Unhandled exception occurred in %s.',
-                     event_method,
-                     exc_info=True)
+    async def close(self) -> None:
+        await self.session.close()
+        await super().close()
 
 
 # -------------------------
 # Main Function and Execution
 # -------------------------
-
-
 async def main() -> None:
-    """
-    Main function to set up and start the Discord bot.
-    Defines bot intents, creates the bot instance, and starts the bot.
-    """
-    # Define the necessary intents for the bot
-    intents = discord.Intents.all()
-    intents.message_content = True  # Enable if your bot needs to read message content
+    intents = discord.Intents.default()
+    intents.message_content = True  # Enable only if your bot needs this
 
-    # Load environment variables
     token = os.getenv('DISCORD_BOT_TOKEN')
-
-    # Check if token is provided
     if not token:
         logger.error("DISCORD_BOT_TOKEN environment variable not set.")
         return
 
-    # Create a single aiohttp ClientSession for the bot
-    async with ClientSession() as session:
-        # Create bot instance
+    async with ClientSession() as session:  # Create session here
         bot = Bot(command_prefix=".",
                   case_insensitive=True,
                   intents=intents,
                   session=session)
-
-        # Attempt to start the bot
         try:
             await bot.start(token)
         except discord.LoginFailure:
@@ -159,13 +90,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    """
-    Entry point for the script.
-    Runs the main function asynchronously.
-    """
-    # Start the keep_alive server
-    keep_alive()
-
+    keep_alive()  # Start the webserver for keeping the bot alive
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
