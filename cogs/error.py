@@ -84,13 +84,13 @@ class Errors(commands.Cog):
         minor_errors = [
             "Missing Required Argument", "Command Not Found",
             "User Input Error", "Invalid End of Quoted String",
-            "Expected Closing Quote", "Unexpected Quote", "Invalid Argument"
+            "Expected Closing Quote", "Unexpected Quote", "Bad Argument"
         ]
 
         major_errors = [
             "Missing Permissions", "Bot Missing Permissions",
-            "Command on Cooldown", "No Private Message", "Bad Argument",
-            "Check Failure", "Disabled Command", "NSFW Channel Required"
+            "Command on Cooldown", "No Private Message", "Check Failure",
+            "Disabled Command", "NSFW Channel Required"
         ]
 
         critical_errors = [
@@ -201,15 +201,6 @@ class Errors(commands.Cog):
             await self.handle_error(ctx, command_name, str(error),
                                     "Unexpected Quote")
 
-        elif isinstance(error, commands.InvalidArgument):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "Invalid Argument")
-
-        elif isinstance(error, commands.NSFWChannelRequired):
-            description = "This command can only be used in NSFW channels."
-            await self.handle_error(ctx, command_name, description,
-                                    "NSFW Channel Required")
-
         elif isinstance(error, discord.Forbidden):
             description = "I do not have permission to do that."
             await self.handle_error(ctx, command_name, description,
@@ -242,14 +233,14 @@ class HelpButton(discord.ui.Button):
         self.ctx = ctx
         self.title = title
         self.description = description
-    
+
     async def callback(self, interaction: discord.Interaction):
         help_message = self.get_help_message(self.title)
         embed = discord.Embed(title=f'Help: {self.title}',
                               description=help_message,
                               color=EMBED_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+
     def get_help_message(self, error_title: str) -> str:
         help_messages = {
             "Missing Required Argument":
@@ -295,12 +286,11 @@ class HelpButton(discord.ui.Button):
             "Unexpected Error":
             "An unexpected error occurred. Please report the issue to the developers."
         }
-    
+
         return help_messages.get(
             error_title,
             "This error cannot be fixed by the user. Please report the issue to the developers."
         )
-
 
 
 async def setup(bot: commands.Bot) -> None:

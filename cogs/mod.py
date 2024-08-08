@@ -4,6 +4,7 @@ from main import Bot
 from datetime import timedelta
 import aiohttp
 from typing import Optional
+import time
 
 
 class Moderation(commands.Cog):
@@ -127,8 +128,7 @@ class Moderation(commands.Cog):
     # -------------------------------------------------------------------------------------------------------------------------
 
     @commands.command()
-    async def slowmode(self, ctx, channel: discord.TextChannel,
-                       delay: int):
+    async def slowmode(self, ctx, channel: discord.TextChannel, delay: int):
         """Changes the slowmode of the mentioned channel.
 
         Args:
@@ -236,6 +236,27 @@ class Moderation(commands.Cog):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------
+
+    @commands.command(name='ping')
+    async def ping(self, ctx):
+        # Measure WebSocket latency
+        websocket_latency = round(self.bot.latency * 1000, 2)
+
+        # Measure response time
+        start_time = time.time()
+        message = await ctx.send("Pinging...")
+        end_time = time.time()
+        response_time = round((end_time - start_time) * 1000, 2)
+
+        # Create embed
+        embed = discord.Embed(title="🏓 Pong!", color=0x2f3131)
+        embed.add_field(name="WebSocket Latency",
+                        value=f"`{websocket_latency} ms`")
+        embed.add_field(name="Response Time", value=f"`{response_time} ms`")
+        embed.set_footer(text="Bot Latency Information")
+
+        # Edit the original message with the embed
+        await message.edit(content=None, embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
