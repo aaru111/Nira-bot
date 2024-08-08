@@ -6,6 +6,7 @@ import asyncio
 from aiohttp import ClientSession
 from typing import Any
 import aiohttp
+from webserver import keep_alive
 
 # Setup logging
 logging.basicConfig(
@@ -162,6 +163,9 @@ if __name__ == "__main__":
     Entry point for the script.
     Runs the main function asynchronously.
     """
+    # Start the keep_alive server
+    keep_alive()
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
