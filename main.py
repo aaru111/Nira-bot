@@ -6,6 +6,7 @@ import asyncio
 from aiohttp import ClientSession
 from typing import Any
 from webserver import keep_alive
+import aiohttp
 
 # -------------------------
 # Logging Configuration
@@ -26,7 +27,7 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=command_prefix,
                          intents=intents,
                          **kwargs)
-        self.session = session
+        self.session = aiohttp.ClientSession()
 
     async def setup_hook(self) -> None:
         try:
@@ -50,6 +51,10 @@ class Bot(commands.Bot):
             logger.error(f"Failed to load {cog_name}: {e}")
 
     async def on_ready(self) -> None:
+        if self.user is None:
+            logger.error("Bot user is not set. This should not happen.")
+            return
+
         logger.info(f'Bot is ready as {self.user} (ID: {self.user.id}).')
 
     async def on_error(self, event_method: str, *args: Any,

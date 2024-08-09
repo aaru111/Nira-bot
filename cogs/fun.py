@@ -40,12 +40,19 @@ class Fun(commands.Cog):
             self.bot = bot
 
     @commands.command()
-    async def wanted(self, ctx: commands.Context, *, member: discord.Member):
+    async def wanted(self,
+                     ctx: commands.Context,
+                     *,
+                     member: discord.Member = None):
         await ctx.defer()
 
         # Define the paths for the images
         wanted_image_path = "images/wanted.jpg"
-        profile_image_path = "images/profile.jpg"  # Updated path
+        profile_image_path = "images/profile.jpg"
+
+        # If no member is mentioned, use the command issuer's profile picture
+        if member is None:
+            member = ctx.author
 
         # Check if the wanted image file exists
         if not os.path.exists(wanted_image_path):
