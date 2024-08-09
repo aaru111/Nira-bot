@@ -1,17 +1,39 @@
 import discord
 from discord.ext import commands
-from main import Bot
-from datetime import timedelta
-import aiohttp
 from typing import Optional
+from discord.ui import Button, View
+import aiohttp
 import time
+import random  # Import random module
+
+
+class AvatarView(View):
+
+    def __init__(self, user_avatar_url: str):
+        super().__init__()
+
+        # List of Button styles to choose from
+        button_styles = [
+            discord.ButtonStyle.primary, discord.ButtonStyle.secondary,
+            discord.ButtonStyle.success, discord.ButtonStyle.danger
+        ]
+
+        # Randomly select a button style
+        random_style = random.choice(button_styles)
+
+        download_button = Button(
+            label="Download",
+            emoji="⬇️",
+            style=random_style,  # Set the random style
+            url=user_avatar_url)
+        self.add_item(download_button)
 
 
 class Moderation(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession()
 
     async def close(self):
         await self.session.close()
@@ -24,18 +46,17 @@ class Moderation(commands.Cog):
     async def on_disconnect(self):
         await self.close()
 
-    # --------------------------------------------------------------------------------------------------------------------------
-
     @commands.command(aliases=['av', 'pfp'])
     async def avatar(self, ctx, user: Optional[discord.User] = None):
         user = user or ctx.author
-        em = discord.Embed(title=f"{user}'s Profile Picture: ", color=0x2f3131)
-        em.set_image(url=user.display_avatar.url)  # Access URL property
-        em.set_footer(text=f"Requested by -> {ctx.author.name}",
-                      icon_url=ctx.author.avatar.url)  # Access URL property
-        await ctx.send(embed=em)
+        embed = discord.Embed(title=f"{user}'s Profile Picture:",
+                              color=discord.Color.random())
+        embed.set_image(url=user.display_avatar.url)
+        embed.set_footer(text=f"Requested by -> {ctx.author.name}",
+                         icon_url=ctx.author.avatar.url)
 
-    # --------------------------------------------------------------------------------------------------------------------------
+        view = AvatarView(user.display_avatar.url)
+        await ctx.send(embed=embed, view=view)
 
     @commands.command()
     @commands.has_permissions(kick_members=True)
@@ -50,8 +71,6 @@ class Moderation(commands.Cog):
             f"{member.mention}, you have been kicked by **{ctx.author}**.\nReason: {reason_text}"
         )
 
-    # --------------------------------------------------------------------------------------------------------------------------
-
     @commands.command()
     @commands.has_permissions(ban_members=True)
     async def ban(self,
@@ -64,41 +83,31 @@ class Moderation(commands.Cog):
             f"<@{member.id}> **Has Been** *Successfully* **Banned From The Guild**",
             delete_after=4)
 
-        # --------------------------------------------------------------------------------------------------------------------------
-
-        @commands.command()
-        @commands.has_permissions(kick_members=True)
-        async def warn(self,
-                       ctx: commands.Context,
-                       member: discord.Member,
-                       *,
-                       Reason: Optional[str] = None):
-            reason_text = Reason if Reason else "No reason provided"
-            await ctx.send(
-                f"{member.mention}, you have been warned by **{ctx.author}**.\nReason: {reason_text}"
-            )
-
-    # --------------------------------------------------------------------------------------------------------------------------
+    @commands.command()
+    @commands.has_permissions(kick_members=True)
+    async def warn(self,
+                   ctx: commands.Context,
+                   member: discord.Member,
+                   *,
+                   Reason: Optional[str] = None):
+        reason_text = Reason if Reason else "No reason provided"
+        await ctx.send(
+            f"{member.mention}, you have been warned by **{ctx.author}**.\nReason: {reason_text}"
+        )
 
     @commands.command(aliases=['clear', 'clr'])
     @commands.has_permissions(manage_messages=True)
     async def purge(self, ctx: commands.Context, amount: int = 2):
         if isinstance(ctx.channel, discord.TextChannel):
-            user = ctx.author.name
+            await ctx.channel.purge(limit=amount)
             embed = discord.Embed(
                 title="**Messages Has Been Deleted** *Successfully*!!",
                 description=f"```py\nAmount Deleted: {amount}```")
             embed.set_footer(
                 text=
-                f"This Message Will Be Deleted Shortly After 4 Seconds..  •  Moderator: {user}"
+                f"This Message Will Be Deleted Shortly After 4 Seconds..  •  Moderator: {ctx.author.name}"
             )
-            await ctx.channel.purge(limit=amount)
             await ctx.send(embed=embed, delete_after=4)
-        else:
-            await ctx.send("This command can only be used in text channels.",
-                           delete_after=4)
-
-    # --------------------------------------------------------------------------------------------------------------------------
 
     @commands.command()
     @commands.has_guild_permissions(ban_members=True)
@@ -113,49 +122,37 @@ class Moderation(commands.Cog):
         except discord.NotFound:
             await ctx.send("This user is not banned", delete_after=4)
 
-    # ---------------------------------------------------------------------------------------------------------------------------
-
     @commands.command(pass_context=True, aliases=['ch_id', 'channelid'])
     async def channel_id(self, ctx, channel_name: str):
         channel = discord.utils.get(ctx.guild.channels, name=channel_name)
-        if channel is None:
-            await ctx.channel.send("Channel Not Found")
-        else:
+        if channel:
             await ctx.channel.send(
                 f"The Channel <#{channel.id}>'s **ID** Is: ```py\n{channel.id}```"
             )
-
-    # -------------------------------------------------------------------------------------------------------------------------
+        else:
+            await ctx.channel.send("Channel Not Found")
 
     @commands.command()
     async def slowmode(self, ctx, channel: discord.TextChannel, delay: int):
-        """Changes the slowmode of the mentioned channel.
-
-        Args:
-            channel: The channel to slowmode.
-            delay: The new slowmode delay in seconds.
-        """
         if delay < 0:
             await ctx.send(
                 "The slowmode delay must be greater than or equal to 0 seconds."
             )
             return
-
         await channel.edit(slowmode_delay=delay)
         await ctx.send(
             f"Slowmode for {channel.name} has been changed to {delay} seconds."
         )
 
-    # ---------------------------------------------------------------------------------------------------------------------------
-
     @commands.command()
     @commands.has_permissions(manage_channels=True)
-    async def nuke(self, ctx, channel: discord.TextChannel = None):
-        """Deletes and recreates a channel with the same properties"""
-        if channel is None:
-            channel = ctx.channel
+    async def nuke(self, ctx, channel: Optional[discord.TextChannel] = None):
+        channel = channel or ctx.channel  # Use the current channel if none is provided
 
-        # Save the channel properties
+        if not isinstance(channel, discord.TextChannel):
+            await ctx.send("This command can only be used in a text channel.")
+            return
+
         name = channel.name
         category = channel.category
         position = channel.position
@@ -164,7 +161,7 @@ class Moderation(commands.Cog):
             for target, overwrite in channel.overwrites.items()
             if isinstance(target, (discord.Role, discord.Member))
         }
-        topic = channel.topic or ""  # Ensure topic is a string
+        topic = channel.topic or ""
         nsfw = channel.is_nsfw()
         slowmode_delay = channel.slowmode_delay
         reason = f"Channel nuked by {ctx.author}"
@@ -172,19 +169,12 @@ class Moderation(commands.Cog):
         announcement_channel = channel.is_news()
         guild = channel.guild
 
-        # Fetch the webhooks
         webhooks = await channel.webhooks()
-
-        # Fetch the invites
         invites = await channel.invites()
-
-        # Fetch pinned messages
         pinned_messages = await channel.pins()
 
-        # Delete the channel
         await channel.delete()
 
-        # Create a new channel with the same properties
         if category:
             new_channel = await category.create_text_channel(
                 name, overwrites=overwrites, reason=reason)
@@ -192,28 +182,21 @@ class Moderation(commands.Cog):
             new_channel = await guild.create_text_channel(
                 name, overwrites=overwrites, reason=reason)
 
-        # Edit the new channel with the saved properties
         await new_channel.edit(position=position,
                                topic=topic,
                                nsfw=nsfw,
                                slowmode_delay=slowmode_delay,
                                sync_permissions=permissions_synced)
-
-        # Set the new channel as an announcement channel if it was one before
         if announcement_channel:
             await new_channel.edit(type=discord.ChannelType.news)
 
-        # Recreate the webhooks in the new channel and store their URLs
-        webhook_urls = []
-        for i, webhook in enumerate(webhooks, start=1):
-            webhook_name = webhook.name or "Default Webhook Name"
-            new_webhook = await new_channel.create_webhook(
-                name=webhook_name,
+        for webhook in webhooks:
+            name = webhook.name or "Default Webhook Name"
+            await new_channel.create_webhook(
+                name=name,
                 avatar=await webhook.avatar.read() if webhook.avatar else None,
                 reason=reason)
-            webhook_urls.append(f"{i}. [{webhook_name}]({new_webhook.url})")
 
-        # Recreate the invites in the new channel
         for invite in invites:
             await new_channel.create_invite(max_age=invite.max_age or 0,
                                             max_uses=invite.max_uses or 0,
@@ -223,39 +206,24 @@ class Moderation(commands.Cog):
                                                 invite, 'unique', False),
                                             reason=reason)
 
-        # Repost and pin the pinned messages in the new channel
         for message in pinned_messages:
             new_msg = await new_channel.send(message.content)
             await new_msg.pin()
 
-        # Send a message with the webhook URLs if there are any webhooks
-        webhook_message = f"Channel has been nuked by {ctx.author.mention}\n\n"
-        if webhook_urls:
-            webhook_message += "Webhooks:\n" + "\n".join(webhook_urls)
-        await new_channel.send(webhook_message)
-
-
-# ---------------------------------------------------------------------------------------------------------------------------
+        await new_channel.send(
+            f"Channel has been nuked by {ctx.author.mention}")
 
     @commands.command(name='ping')
     async def ping(self, ctx):
-        # Measure WebSocket latency
         websocket_latency = round(self.bot.latency * 1000, 2)
-
-        # Measure response time
         start_time = time.time()
         message = await ctx.send("Pinging...")
-        end_time = time.time()
-        response_time = round((end_time - start_time) * 1000, 2)
-
-        # Create embed
+        response_time = round((time.time() - start_time) * 1000, 2)
         embed = discord.Embed(title="🏓 Pong!", color=0x2f3131)
         embed.add_field(name="WebSocket Latency",
                         value=f"`{websocket_latency} ms`")
         embed.add_field(name="Response Time", value=f"`{response_time} ms`")
         embed.set_footer(text="Bot Latency Information")
-
-        # Edit the original message with the embed
         await message.edit(content=None, embed=embed)
 
 
