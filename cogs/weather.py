@@ -1,3 +1,4 @@
+import os  # Import the os module to access environment variables
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -27,7 +28,13 @@ class Weather(commands.Cog):
     @app_commands.command(
         name="weather", description="Get the weather for a specified location")
     async def weather(self, interaction: discord.Interaction, location: str):
-        api_key = "d5a9ac7eb6359f1ecedcf2226a023e57"
+        api_key = os.getenv(
+            "WEATHER_API_KEY")  # Retrieve the API key from the environment
+        if not api_key:
+            await interaction.response.send_message("Error: API key not found."
+                                                    )
+            return
+
         base_url = "http://api.openweathermap.org/data/2.5/weather"
         params = {"q": location, "appid": api_key, "units": "metric"}
 
@@ -47,25 +54,18 @@ class Weather(commands.Cog):
         humidity = data["main"]["humidity"]
         wind_speed = data["wind"]["speed"]
         country_code = data["sys"]["country"]
-        country_name = self.get_country_name(
-            country_code)  # Get full country name
+        country_name = self.get_country_name(country_code)
 
-        # Adjust the title to use country full name
         title = f"Weather in {location.capitalize()} - {country_name}"
 
-        # Calculate the time of the last update
         last_updated = datetime.utcfromtimestamp(data["dt"])
-        local_tz = pytz.timezone(
-            'Asia/Kolkata')  # Change this to your preferred timezone
+        local_tz = pytz.timezone('Asia/Kolkata')
         last_updated_local = last_updated.astimezone(local_tz)
-        last_updated_time = last_updated_local.strftime(
-            '%I:%M %p')  # 12-hour format with AM/PM
+        last_updated_time = last_updated_local.strftime('%I:%M %p')
         last_updated_date = last_updated_local.strftime('%Y-%m-%d')
 
-        # Determine the embed color based on the weather description
         embed_color = self.get_embed_color(weather_description)
 
-        # Create the embed
         embed = discord.Embed(title=title, color=embed_color)
         embed.set_thumbnail(
             url=f"http://openweathermap.org/img/wn/{icon}@2x.png")
@@ -88,7 +88,6 @@ class Weather(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     def get_country_name(self, country_code):
-        # Use pycountry to get the country name from the country code
         try:
             country = pycountry.countries.get(alpha_2=country_code)
             return country.name if country else 'Unknown Country'
@@ -97,23 +96,23 @@ class Weather(commands.Cog):
 
     def get_embed_color(self, weather_description):
         color_map = {
-            'clear': '#00BFFF',  # Sky Blue
-            'clouds': '#D3D3D3',  # Light Grey
-            'rain': '#1E90FF',  # Dodger Blue
-            'drizzle': '#1E90FF',  # Dodger Blue
-            'thunderstorm': '#8A2BE2',  # Blue Violet
-            'snow': '#00CED1',  # Dark Turquoise
-            'mist': '#B0E0E6',  # Powder Blue
-            'fog': '#B0E0E6',  # Powder Blue
-            'haze': '#F5F5DC',  # Beige
-            'sand': '#F4A460',  # Sandy Brown
-            'dust': '#D2B48C',  # Tan
-            'tornado': '#FF4500',  # Orange Red
-            'hurricane': '#FF6347'  # Tomato
+            'clear': '#00BFFF',
+            'clouds': '#D3D3D3',
+            'rain': '#1E90FF',
+            'drizzle': '#1E90FF',
+            'thunderstorm': '#8A2BE2',
+            'snow': '#00CED1',
+            'mist': '#B0E0E6',
+            'fog': '#B0E0E6',
+            'haze': '#F5F5DC',
+            'sand': '#F4A460',
+            'dust': '#D2B48C',
+            'tornado': '#FF4500',
+            'hurricane': '#FF6347'
         }
         for key, color in color_map.items():
             if key in weather_description.lower():
-                return discord.Color(int(color[1:], 16))  # Convert hex to int
+                return discord.Color(int(color[1:], 16))
         return discord.Color.default()
 
 
