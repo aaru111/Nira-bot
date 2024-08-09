@@ -5,6 +5,7 @@ import aiohttp
 import json
 import os
 import random
+import asyncio
 
 CONFIG_FILE = "data/reaction_roles.json"  # Updated path to be inside the /data folder
 
@@ -242,6 +243,113 @@ class ReactionRole(commands.Cog):
                 f"Reaction role has been added to [this message]({message_link})",
                 color=discord.Color.blue()),
                                                     ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="Error",
+                description=f"An error occurred: {e}",
+                color=discord.Color.red()),
+                                                    ephemeral=True)
+
+    @app_commands.command(
+        name="reaction_role_summary",
+        description="Show a summary of reaction roles set in this server.")
+    async def reaction_role_summary(self, interaction: discord.Interaction):
+        try:
+            if not os.path.exists(CONFIG_FILE):
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="No Reaction Roles",
+                    description=
+                    "No reaction roles have been set up in this server.",
+                    color=discord.Color.red()),
+                                                        ephemeral=True)
+                return
+
+            with open(CONFIG_FILE, "r") as f:
+                config = json.load(f)
+
+            guild_id_str = str(interaction.guild.id)
+            if guild_id_str not in config:
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="No Reaction Roles",
+                    description=
+                    "No reaction roles have been set up in this server.",
+                    color=discord.Color.red()),
+                                                        ephemeral=True)
+                return
+
+            messages = config[guild_id_str]
+            message_keys = list(messages.keys())
+            total_pages = len(message_keys)
+            current_page = 0
+
+            async def get_embed(page_number):
+                embed = discord.Embed(
+                    title="Reaction Roles Summary",
+                    description="List of reaction roles set up in this server:",
+                    color=discord.Color.blue())
+                embed.set_thumbnail(url=interaction.guild.icon.url)
+
+                start_index = page_number * 5
+                end_index = start_index + 5
+                page_keys = message_keys[start_index:end_index]
+
+                for message_key in page_keys:
+                    channel_id, message_id = map(int, message_key.split("-"))
+                    channel = interaction.guild.get_channel(channel_id)
+                    message = await channel.fetch_message(message_id)
+
+                    embed.add_field(
+                        name=f"Message: [Link]({message.jump_url})",
+                        value="\n".join([
+                            f"{str(button['emoji'])} - <@&{button['role_id']}>"
+                            for button in messages[message_key]
+                        ]),
+                        inline=False)
+
+                embed.set_footer(text=f"Page {page_number + 1}/{total_pages}")
+
+                return embed
+
+            async def paginate(page_number):
+                embed = await get_embed(page_number)
+                components = []
+
+                if total_pages > 1:
+                    if page_number > 0:
+                        components.append(
+                            discord.ui.Button(
+                                label="Previous",
+                                custom_id="previous",
+                                style=discord.ButtonStyle.primary))
+                    if page_number < total_pages - 1:
+                        components.append(
+                            discord.ui.Button(
+                                label="Next",
+                                custom_id="next",
+                                style=discord.ButtonStyle.primary))
+
+                view = discord.ui.View()
+                for component in components:
+                    view.add_item(component)
+
+                message = await interaction.response.send_message(embed=embed,
+                                                                  view=view)
+
+                def check(interaction):
+                    return interaction.message.id == message.id and interaction.user == interaction.user
+
+                try:
+                    interaction_response = await self.bot.wait_for(
+                        'interaction', timeout=120, check=check)
+                    if interaction_response.custom_id == "previous" and page_number > 0:
+                        await paginate(page_number - 1)
+                    elif interaction_response.custom_id == "next" and page_number < total_pages - 1:
+                        await paginate(page_number + 1)
+                except asyncio.TimeoutError:
+                    await message.edit(view=None)
+
+            await paginate(current_page)
+
         except Exception as e:
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
