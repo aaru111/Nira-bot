@@ -12,21 +12,25 @@ DATA_PATH = "data/reaction_roles.json"
 class ReactionRole(commands.Cog):
 
     def __init__(self, bot):
+        """Initializes the ReactionRole Cog"""
         self.bot = bot
         self.reaction_roles = self.load_reaction_roles()
         self.bot.loop.create_task(self.setup_reaction_roles())
 
     def load_reaction_roles(self):
+        """Loads the reaction roles from the JSON file"""
         if not os.path.exists(DATA_PATH):
             return {}
         with open(DATA_PATH, "r") as file:
             return json.load(file)
 
     def save_reaction_roles(self):
+        """Saves the reaction roles to the JSON file"""
         with open(DATA_PATH, "w") as file:
             json.dump(self.reaction_roles, file, indent=4)
 
     async def setup_reaction_roles(self):
+        """Sets up reaction roles for messages when the bot starts"""
         await self.bot.wait_until_ready()
         to_delete = []
 
@@ -43,6 +47,7 @@ class ReactionRole(commands.Cog):
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
 
+        # Remove messages that no longer exist
         for guild_id, message_id in to_delete:
             if message_id in self.reaction_roles[guild_id]:
                 del self.reaction_roles[guild_id][message_id]
@@ -53,6 +58,7 @@ class ReactionRole(commands.Cog):
 
     async def add_buttons_to_message(self, message, role_id, emoji, color,
                                      custom_id):
+        """Adds buttons to the message"""
         guild = message.guild
         role = guild.get_role(int(role_id))
         button = discord.ui.Button(style=color,
@@ -77,6 +83,7 @@ class ReactionRole(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        """Listener that runs when the bot is ready"""
         to_delete = []
         for guild_id, messages in list(self.reaction_roles.items()):
             for message_id in list(messages.keys()):
@@ -87,6 +94,7 @@ class ReactionRole(commands.Cog):
                 except discord.NotFound:
                     to_delete.append((guild_id, message_id))
 
+        # Remove messages that no longer exist
         for guild_id, message_id in to_delete:
             if guild_id in self.reaction_roles and message_id in self.reaction_roles[
                     guild_id]:
@@ -98,6 +106,7 @@ class ReactionRole(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
+        """Listener that runs when a message is deleted"""
         guild_id = str(message.guild.id)
         message_id = str(message.id)
 
@@ -121,8 +130,10 @@ class ReactionRole(commands.Cog):
                             role: discord.Role,
                             color: discord.ButtonStyle,
                             emoji: str = None):
+        """Command to add a reaction role to a message"""
         await interaction.response.defer(ephemeral=True)
 
+        # Parse the message link to get message and channel IDs
         if "/" in message_link:
             message_id = int(message_link.split("/")[-1])
             channel_id = int(message_link.split("/")[-2])
@@ -143,6 +154,7 @@ class ReactionRole(commands.Cog):
                                             ephemeral=True)
             return
 
+        # Use a random emoji if none is provided
         if not emoji:
             emoji = random.choice(['😀', '🎉', '🔥', '👍', '❤️'])
 
@@ -151,6 +163,7 @@ class ReactionRole(commands.Cog):
         await self.add_buttons_to_message(message, role.id, emoji, color,
                                           custom_id)
 
+        # Save the reaction role info
         guild_id = str(interaction.guild.id)
         if guild_id not in self.reaction_roles:
             self.reaction_roles[guild_id] = {}
@@ -171,6 +184,7 @@ class ReactionRole(commands.Cog):
         name="reaction-role-summary",
         description="Show a summary of all configured reaction roles")
     async def reaction_role_summary(self, interaction: discord.Interaction):
+        """Command to show a summary of all configured reaction roles"""
         guild_id = str(interaction.guild.id)
 
         if guild_id not in self.reaction_roles or not self.reaction_roles[
@@ -193,5 +207,6 @@ class ReactionRole(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-async def setup(bot) -> None:
+async def setup(bot):
+    """Sets up the ReactionRole cog"""
     await bot.add_cog(ReactionRole(bot))
