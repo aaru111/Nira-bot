@@ -8,7 +8,31 @@ import string
 import asyncio
 
 DATA_PATH = "data/reaction_roles.json"
-TRACKED_MESSAGES_PATH = "data/tracked_messages.json"  # Path for tracked messages
+TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
+
+# Define color choices
+COLOR_CHOICES = [
+    app_commands.Choice(name="Red", value="red"),
+    app_commands.Choice(name="Green", value="green"),
+    app_commands.Choice(name="Blurple", value="blurple"),
+    app_commands.Choice(name="Gray", value="gray"),
+]
+
+COLOR_MAPPING = {
+    "red": discord.ButtonStyle.danger,
+    "green": discord.ButtonStyle.success,
+    "blurple": discord.ButtonStyle.primary,
+    "gray": discord.ButtonStyle.secondary
+}
+
+# Define emoji choices
+EMOJI_CHOICES = [
+    app_commands.Choice(name="Smile", value="😀"),
+    app_commands.Choice(name="Party Popper", value="🎉"),
+    app_commands.Choice(name="Fire", value="🔥"),
+    app_commands.Choice(name="Thumbs Up", value="👍"),
+    app_commands.Choice(name="Heart", value="❤️"),
+]
 
 
 class ReactionRole(commands.Cog):
@@ -65,7 +89,7 @@ class ReactionRole(commands.Cog):
                         color = discord.ButtonStyle(int(details['color']))
                         await self.add_buttons_to_message(
                             message, details['role_id'], details['emoji'],
-                            color, details['custom_id'])
+                            color, details['custom_id'], details.get('link'))
                         self.tracked_messages.add(
                             message.id)  # Track this message
                     except discord.NotFound:
@@ -98,28 +122,40 @@ class ReactionRole(commands.Cog):
             self.save_tracked_messages()
             print(f"Deleted reaction role info for message ID: {message_id}")
 
-    async def add_buttons_to_message(self, message, role_id, emoji, color,
-                                     custom_id):
+    async def add_buttons_to_message(self,
+                                     message,
+                                     role_id,
+                                     emoji,
+                                     color,
+                                     custom_id,
+                                     link=None):
         """Adds buttons to the message"""
         guild = message.guild
         role = guild.get_role(int(role_id))
-        button = discord.ui.Button(style=color,
-                                   emoji=emoji,
-                                   custom_id=custom_id)
-
-        async def button_callback(interaction: discord.Interaction):
-            if role in interaction.user.roles:
-                await interaction.user.remove_roles(role)
-                await interaction.response.send_message(
-                    f"Role {role.name} removed!", ephemeral=True)
-            else:
-                await interaction.user.add_roles(role)
-                await interaction.response.send_message(
-                    f"Role {role.name} assigned!", ephemeral=True)
-
-        button.callback = button_callback
 
         view = discord.ui.View(timeout=None)
+
+        if link:
+            button = discord.ui.Button(label="Click here",
+                                       url=link,
+                                       emoji=emoji)
+        else:
+            button = discord.ui.Button(style=color,
+                                       emoji=emoji,
+                                       custom_id=custom_id)
+
+            async def button_callback(interaction: discord.Interaction):
+                if role in interaction.user.roles:
+                    await interaction.user.remove_roles(role)
+                    await interaction.response.send_message(
+                        f"Role {role.name} removed!", ephemeral=True)
+                else:
+                    await interaction.user.add_roles(role)
+                    await interaction.response.send_message(
+                        f"Role {role.name} assigned!", ephemeral=True)
+
+            button.callback = button_callback
+
         view.add_item(button)
         await message.edit(view=view)
 
@@ -171,13 +207,18 @@ class ReactionRole(commands.Cog):
         message_link="The message link or ID to add the reaction role to",
         role="The role to assign",
         emoji="The emoji to use on the button (optional)",
-        color="The color of the button")
+        color="The color of the button (optional, default is blurple)",
+        link="A URL to make the button a link button (optional)")
+    @app_commands.choices(
+        color=COLOR_CHOICES,
+        emoji=EMOJI_CHOICES)  # Apply color and emoji choices here
     async def reaction_role(self,
                             interaction: discord.Interaction,
                             message_link: str,
                             role: discord.Role,
-                            color: discord.ButtonStyle,
-                            emoji: str = None):
+                            emoji: str = None,
+                            color: str = None,
+                            link: str = None):
         """Command to add a reaction role to a message"""
         await interaction.response.defer(ephemeral=True)
 
@@ -206,33 +247,35 @@ class ReactionRole(commands.Cog):
         if not emoji:
             emoji = random.choice(['😀', '🎉', '🔥', '👍', '❤️'])
 
+        # Default to blurple if no color is provided
+        color = COLOR_MAPPING.get(color.lower(), discord.ButtonStyle.primary)
+
         custom_id = ''.join(
             random.choices(string.ascii_letters + string.digits, k=20))
         await self.add_buttons_to_message(message, role.id, emoji, color,
-                                          custom_id)
+                                          custom_id, link)
 
         # Save the reaction role info
         guild_id = str(interaction.guild.id)
         if guild_id not in self.reaction_roles:
             self.reaction_roles[guild_id] = {}
 
-        self.reaction_roles[guild_id][str(message_id)] = {
-            "channel_id": str(channel_id),
+        self.reaction_roles[guild_id][str(message.id)] = {
             "role_id": str(role.id),
+            "channel_id": str(channel.id),
             "emoji": emoji,
-            "color": str(color.value),
-            "custom_id": custom_id
+            "color": color.value,  # Save the color value for reloading
+            "custom_id": custom_id,
+            "link": link
         }
         self.save_reaction_roles()
 
-        # Track the message for future deletions
+        # Track this message
         self.tracked_messages.add(message.id)
         self.save_tracked_messages()
 
         await interaction.followup.send("Reaction role added successfully!",
                                         ephemeral=True)
 
-
-async def setup(bot):
-    """Sets up the ReactionRole cog"""
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ReactionRole(bot))
