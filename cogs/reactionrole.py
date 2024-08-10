@@ -182,32 +182,6 @@ class ReactionRole(commands.Cog):
         await interaction.followup.send("Reaction role added successfully!",
                                         ephemeral=True)
 
-    @app_commands.command(
-        name="reaction-role-summary",
-        description="Show a summary of all configured reaction roles")
-    async def reaction_role_summary(self, interaction: discord.Interaction):
-        """Command to show a summary of all configured reaction roles"""
-        guild_id = str(interaction.guild.id)
-
-        if guild_id not in self.reaction_roles or not self.reaction_roles[
-                guild_id]:
-            await interaction.response.send_message(
-                "No reaction roles configured in this server.", ephemeral=True)
-            return
-
-        embed = discord.Embed(title="Reaction Roles Summary",
-                              color=discord.Color.blue())
-        for message_id, details in self.reaction_roles[guild_id].items():
-            channel = interaction.guild.get_channel(int(details['channel_id']))
-            message_url = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{message_id}"
-            embed.add_field(
-                name=f"Channel: {channel.name}",
-                value=
-                f"[Message](<{message_url}>)\nRole: <@&{details['role_id']}>\nEmoji: {details['emoji']}",
-                inline=False)
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
 
 async def setup(bot):
     """Sets up the ReactionRole cog"""
