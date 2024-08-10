@@ -8,6 +8,7 @@ import string
 import asyncio
 
 DATA_PATH = "data/reaction_roles.json"
+TRACKED_MESSAGES_PATH = "data/tracked_messages.json"  # Path for tracked messages
 
 
 class ReactionRole(commands.Cog):
@@ -34,16 +35,14 @@ class ReactionRole(commands.Cog):
 
     def load_tracked_messages(self):
         """Loads tracked messages from the JSON file"""
-        tracked_messages_path = "data/tracked_messages.json"
-        if os.path.exists(tracked_messages_path):
-            with open(tracked_messages_path, "r") as file:
+        if os.path.exists(TRACKED_MESSAGES_PATH):
+            with open(TRACKED_MESSAGES_PATH, "r") as file:
                 return json.load(file)
         return []
 
     def save_tracked_messages(self):
         """Saves tracked messages to the JSON file"""
-        tracked_messages_path = "data/tracked_messages.json"
-        with open(tracked_messages_path, "w") as file:
+        with open(TRACKED_MESSAGES_PATH, "w") as file:
             json.dump(list(self.tracked_messages), file, indent=4)
 
     async def setup_reaction_roles(self):
