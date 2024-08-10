@@ -16,7 +16,6 @@ class EmbedCreator(commands.Cog):
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
-
     async def close(self) -> None:
         """Close the aiohttp session."""
         await self.session.close()
@@ -605,7 +604,7 @@ class HelpButton(Button):
 
 def get_help_embed(page: int) -> discord.Embed:
     """Return the help embed for the specified page."""
-    total_pages = 6
+    total_pages = 10  # Updated total pages count
     help_pages = [{
         "title":
         "Embed Creator Wizard Help - Overview",
@@ -619,6 +618,10 @@ def get_help_embed(page: int) -> discord.Embed:
          "4. Images\n"
          "5. Footer\n"
          "6. Fields\n"
+         "7. Send Button\n"
+         "8. Add More Fields Button\n"
+         "9. Reset Embed Button\n"
+         "10. Selective Reset Button\n"
          "```")
     }, {
         "title":
@@ -670,6 +673,37 @@ def get_help_embed(page: int) -> discord.Embed:
          "- Field Value: The value of the field.\n"
          "- Inline: Whether the field should be displayed inline (true/false).\n"
          "```")
+    }, {
+        "title":
+        "Embed Creator Wizard Help - Send Button",
+        "description":
+        ("**Send Button**:\n\n"
+         "This button allows you to send the configured embed to the current channel. It checks if the embed is properly configured and, if valid, sends it as a message.\n\n"
+         "Ensure that you have at least one part of the embed configured before attempting to send it."
+         )
+    }, {
+        "title":
+        "Embed Creator Wizard Help - Add More Fields Button",
+        "description":
+        ("**Add More Fields Button**:\n\n"
+         "Use this button to add additional fields to your embed. Each field consists of a name, value, and an inline option.\n\n"
+         "This is useful for adding more detailed information to your embed in an organized way."
+         )
+    }, {
+        "title":
+        "Embed Creator Wizard Help - Reset Embed Button",
+        "description":
+        ("**Reset Embed Button**:\n\n"
+         "This button resets the entire embed, clearing all the configurations you've made. It essentially gives you a fresh start to create a new embed.\n\n"
+         "Be cautious when using this, as all your settings will be lost.")
+    }, {
+        "title":
+        "Embed Creator Wizard Help - Selective Reset Button",
+        "description":
+        ("**Selective Reset Button**:\n\n"
+         "This button allows you to selectively reset parts of the embed (e.g., author, body, images, footer, fields). A modal will appear where you can choose which parts to reset.\n\n"
+         "This is useful if you want to clear specific sections without losing all your progress."
+         )
     }]
 
     embed = discord.Embed(title=help_pages[page - 1]["title"],
@@ -791,6 +825,3 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
 async def setup(bot: commands.Bot) -> None:
     """Set up the cog."""
     await bot.add_cog(EmbedCreator(bot))
-
-
-
