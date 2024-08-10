@@ -5,6 +5,7 @@ import json
 import os
 import random
 import string
+import asyncio
 
 DATA_PATH = "data/reaction_roles.json"
 
@@ -15,6 +16,7 @@ class ReactionRole(commands.Cog):
         """Initializes the ReactionRole Cog"""
         self.bot = bot
         self.reaction_roles = self.load_reaction_roles()
+        self.tracked_messages = set()  # To track messages with reaction roles
         self.bot.loop.create_task(self.setup_reaction_roles())
 
     def load_reaction_roles(self):
@@ -34,27 +36,47 @@ class ReactionRole(commands.Cog):
         await self.bot.wait_until_ready()
         to_delete = []
 
-        for guild_id, messages in self.reaction_roles.items():
+        for guild_id, messages in list(self.reaction_roles.items()):
+            guild = self.bot.get_guild(int(guild_id))
+            if guild is None:
+                to_delete.append(guild_id)
+                continue
+
             for message_id, details in list(messages.items()):
                 channel = self.bot.get_channel(int(details['channel_id']))
-                if channel is not None:
+                if channel:
                     try:
+                        # Fetch the message to ensure it still exists
                         message = await channel.fetch_message(int(message_id))
                         color = discord.ButtonStyle(int(details['color']))
                         await self.add_buttons_to_message(
                             message, details['role_id'], details['emoji'],
                             color, details['custom_id'])
+                        self.tracked_messages.add(
+                            message.id)  # Track this message
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
+                    await asyncio.sleep(0.1)
 
-        # Remove messages that no longer exist
-        for guild_id, message_id in to_delete:
-            if message_id in self.reaction_roles[guild_id]:
-                del self.reaction_roles[guild_id][message_id]
-            if not self.reaction_roles[guild_id]:
-                del self.reaction_roles[guild_id]
-
+        # Clean up invalid entries
+        for entry in to_delete:
+            if isinstance(entry, tuple):  # Message deletion
+                guild_id, message_id = entry
+                self.delete_reaction_role(guild_id, message_id)
+            else:  # Guild deletion
+                del self.reaction_roles[entry]
         self.save_reaction_roles()
+
+    def delete_reaction_role(self, guild_id, message_id):
+        """Helper function to delete a reaction role from the JSON file"""
+        if guild_id in self.reaction_roles and message_id in self.reaction_roles[
+                guild_id]:
+            del self.reaction_roles[guild_id][message_id]
+            if not self.reaction_roles[
+                    guild_id]:  # If no more messages in guild, delete guild entry
+                del self.reaction_roles[guild_id]
+            self.save_reaction_roles()
+            print(f"Deleted reaction role info for message ID: {message_id}")
 
     async def add_buttons_to_message(self, message, role_id, emoji, color,
                                      custom_id):
@@ -82,40 +104,17 @@ class ReactionRole(commands.Cog):
         await message.edit(view=view)
 
     @commands.Cog.listener()
-    async def on_ready(self):
-        """Listener that runs when the bot is ready"""
-        to_delete = []
-        for guild_id, messages in list(self.reaction_roles.items()):
-            for message_id in list(messages.keys()):
-                channel = self.bot.get_channel(
-                    int(messages[message_id]['channel_id']))
-                try:
-                    await channel.fetch_message(message_id)
-                except discord.NotFound:
-                    to_delete.append((guild_id, message_id))
-
-        # Remove messages that no longer exist
-        for guild_id, message_id in to_delete:
-            if guild_id in self.reaction_roles and message_id in self.reaction_roles[
-                    guild_id]:
-                del self.reaction_roles[guild_id][message_id]
-                if not self.reaction_roles[guild_id]:
-                    del self.reaction_roles[guild_id]
-
-        self.save_reaction_roles()
-
-    @commands.Cog.listener()
     async def on_message_delete(self, message):
         """Listener that runs when a message is deleted"""
         guild_id = str(message.guild.id)
         message_id = str(message.id)
 
+        # Check if the deleted message had a reaction role associated with it
         if guild_id in self.reaction_roles and message_id in self.reaction_roles[
                 guild_id]:
-            del self.reaction_roles[guild_id][message_id]
-            if not self.reaction_roles[guild_id]:
-                del self.reaction_roles[guild_id]
-            self.save_reaction_roles()
+            self.delete_reaction_role(guild_id, message_id)
+            if message.id in self.tracked_messages:
+                self.tracked_messages.remove(message.id)
 
     @app_commands.command(name="reaction-role",
                           description="Add a reaction role to a message")
@@ -176,6 +175,9 @@ class ReactionRole(commands.Cog):
             "custom_id": custom_id
         }
         self.save_reaction_roles()
+
+        # Track the message for future deletions
+        self.tracked_messages.add(message.id)
 
         await interaction.followup.send("Reaction role added successfully!",
                                         ephemeral=True)
