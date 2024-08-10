@@ -16,7 +16,8 @@ class ReactionRole(commands.Cog):
         """Initializes the ReactionRole Cog"""
         self.bot = bot
         self.reaction_roles = self.load_reaction_roles()
-        self.tracked_messages = set()  # To track messages with reaction roles
+        self.tracked_messages = set(
+            self.load_tracked_messages())  # Persistent tracking
         self.bot.loop.create_task(self.setup_reaction_roles())
 
     def load_reaction_roles(self):
@@ -30,6 +31,20 @@ class ReactionRole(commands.Cog):
         """Saves the reaction roles to the JSON file"""
         with open(DATA_PATH, "w") as file:
             json.dump(self.reaction_roles, file, indent=4)
+
+    def load_tracked_messages(self):
+        """Loads tracked messages from the JSON file"""
+        tracked_messages_path = "data/tracked_messages.json"
+        if os.path.exists(tracked_messages_path):
+            with open(tracked_messages_path, "r") as file:
+                return json.load(file)
+        return []
+
+    def save_tracked_messages(self):
+        """Saves tracked messages to the JSON file"""
+        tracked_messages_path = "data/tracked_messages.json"
+        with open(tracked_messages_path, "w") as file:
+            json.dump(list(self.tracked_messages), file, indent=4)
 
     async def setup_reaction_roles(self):
         """Sets up reaction roles for messages when the bot starts"""
@@ -66,6 +81,10 @@ class ReactionRole(commands.Cog):
             else:  # Guild deletion
                 del self.reaction_roles[entry]
         self.save_reaction_roles()
+        self.save_tracked_messages()
+
+        # Periodically check for deleted messages
+        self.bot.loop.create_task(self.periodic_check())
 
     def delete_reaction_role(self, guild_id, message_id):
         """Helper function to delete a reaction role from the JSON file"""
@@ -76,6 +95,8 @@ class ReactionRole(commands.Cog):
                     guild_id]:  # If no more messages in guild, delete guild entry
                 del self.reaction_roles[guild_id]
             self.save_reaction_roles()
+            self.tracked_messages.discard(int(message_id))
+            self.save_tracked_messages()
             print(f"Deleted reaction role info for message ID: {message_id}")
 
     async def add_buttons_to_message(self, message, role_id, emoji, color,
@@ -103,6 +124,34 @@ class ReactionRole(commands.Cog):
         view.add_item(button)
         await message.edit(view=view)
 
+    async def periodic_check(self):
+        """Periodically checks if the tracked messages still exist"""
+        while not self.bot.is_closed():
+            to_delete = []
+            for message_id in list(self.tracked_messages):
+                message_exists = False
+                for guild_id, messages in self.reaction_roles.items():
+                    if str(message_id) in messages:
+                        channel = self.bot.get_channel(
+                            int(messages[str(message_id)]['channel_id']))
+                        if channel:
+                            try:
+                                # Check if the message still exists
+                                await channel.fetch_message(int(message_id))
+                                message_exists = True
+                                break
+                            except discord.NotFound:
+                                pass
+                if not message_exists:
+                    to_delete.append(message_id)
+
+            # Remove the messages that no longer exist
+            for message_id in to_delete:
+                for guild_id, messages in self.reaction_roles.items():
+                    if str(message_id) in messages:
+                        self.delete_reaction_role(guild_id, str(message_id))
+            await asyncio.sleep(300)  # Wait 5 minutes before next check
+
     @commands.Cog.listener()
     async def on_message_delete(self, message):
         """Listener that runs when a message is deleted"""
@@ -115,6 +164,7 @@ class ReactionRole(commands.Cog):
             self.delete_reaction_role(guild_id, message_id)
             if message.id in self.tracked_messages:
                 self.tracked_messages.remove(message.id)
+                self.save_tracked_messages()
 
     @app_commands.command(name="reaction-role",
                           description="Add a reaction role to a message")
@@ -178,6 +228,7 @@ class ReactionRole(commands.Cog):
 
         # Track the message for future deletions
         self.tracked_messages.add(message.id)
+        self.save_tracked_messages()
 
         await interaction.followup.send("Reaction role added successfully!",
                                         ephemeral=True)
