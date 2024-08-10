@@ -6,6 +6,7 @@ import os
 import random
 import string
 import asyncio
+import emoji
 
 DATA_PATH = "data/reaction_roles.json"
 TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
@@ -34,6 +35,9 @@ EMOJI_CHOICES = [
     app_commands.Choice(name="Heart", value="❤️"),
 ]
 
+def get_random_emoji():
+    emoji_list = ["😀", "🎉", "🔥", "👍", "❤️"]
+    return random.choice(emoji_list)
 
 class ReactionRole(commands.Cog):
 
@@ -243,9 +247,9 @@ class ReactionRole(commands.Cog):
                                             ephemeral=True)
             return
 
-        # Use a random emoji if none is provided
+        # Use a random emoji from the emoji module if none is provided
         if not emoji:
-            emoji = random.choice(['😀', '🎉', '🔥', '👍', '❤️'])
+            emoji = get_random_emoji()
 
         # Default to blurple if no color is provided
         color = COLOR_MAPPING.get(color.lower(), discord.ButtonStyle.primary)
