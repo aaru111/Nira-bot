@@ -37,7 +37,10 @@ class EmbedCreator(commands.Cog):
     async def embed(self, interaction: discord.Interaction) -> None:
         """Slash command to initiate the embed creation process."""
         self.embed_object = discord.Embed(
-            description=" "
+            description=" ",
+            color=discord.Color.from_rgb(*random.choice(
+                list(custom_colors.values()))
+                                         )  # Apply the randomly selected color
         )  # Initialize an empty embed with a non-empty description
 
         # Define the dropdown options for different parts of the embed
@@ -64,19 +67,32 @@ class EmbedCreator(commands.Cog):
         view.add_item(SelectiveResetButton(self.embed_object))
         view.add_item(HelpButton())  # Add Help button
 
-        # Send the initial message with the view to start the embed configuration
-        await interaction.response.send_message(embed=discord.Embed(
+        # Create the preview embed
+        preview_embed = discord.Embed(
             title="🛠️ Embed Configuration Preview.",
-            description=
+            description="```yaml\n"
             "Please select an option from the dropdown below to begin configuring your embed.\n\n"
-            "**Current Options**:\n"
-            "- **Author**: Set the author of the embed.\n"
-            "- **Body**: Edit the main content of the embed.\n"
-            "- **Images**: Add an image or thumbnail.\n"
-            "- **Footer**: Configure the footer of the embed.\n"
-            "- **Fields**: Add custom fields to the embed.\n\n"
-            "Once you're satisfied, use the buttons below to send or reset the embed."
-        ),
+            "Current Options:\n"
+            "- Author: Set the author of the embed.\n"
+            "- Body: Edit the main content of the embed.\n"
+            "- Images: Add an image or thumbnail.\n"
+            "- Footer: Configure the footer of the embed.\n"
+            "- Fields: Add custom fields to the embed.\n\n"
+            "Once you're satisfied, use the buttons below to send or reset the embed.\n"
+            "```",
+            color=discord.Color.from_rgb(
+                *random.choice(list(custom_colors.values())
+                               )),  # Use the same randomly selected color
+            timestamp=discord.utils.utcnow()  # Add the current timestamp
+        )
+
+        # Add the command user's avatar and name in the footer
+        preview_embed.set_footer(
+            text=f"Command initiated by {interaction.user.name}",
+            icon_url=interaction.user.avatar.url)
+
+        # Send the initial message with the view to start the embed configuration
+        await interaction.response.send_message(embed=preview_embed,
                                                 view=view,
                                                 ephemeral=True)
 
