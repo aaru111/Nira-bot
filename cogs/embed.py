@@ -404,17 +404,17 @@ class FieldsModal(Modal):
         super().__init__(title="Configure Fields")
         self.embed = embed
 
-        # Text inputs for up to 5 fields
+        # Text inputs for up to 5 fields with shortened labels
         self.field_1 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 1 (Name, Value, T/F, Index)", required=False)
         self.field_2 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 2 (Name, Value, T/F, Index)", required=False)
         self.field_3 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 3 (Name, Value, T/F, Index)", required=False)
         self.field_4 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 4 (Name, Value, T/F, Index)", required=False)
         self.field_5 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 5 (Name, Value, T/F, Index)", required=False)
 
         self.add_item(self.field_1)
         self.add_item(self.field_2)
@@ -432,15 +432,19 @@ class FieldsModal(Modal):
             self.field_5.value,
         ]
 
-        # Parse and add each field to the embed
         for field in fields:
             if field:
-                parts = field.split(",", 2)
+                parts = field.split(",", 3)  # Split into up to 4 parts
                 name = parts[0].strip()
                 value = parts[1].strip() if len(parts) > 1 else ""
-                inline = parts[2].strip().lower() == "true" if len(
-                    parts) > 2 else False
-                self.embed.add_field(name=name, value=value, inline=inline)
+                inline = parts[2].strip().lower() != "false" if len(parts) > 2 else True  # Default to True
+                index = int(parts[3].strip()) - 1 if len(parts) > 3 and parts[3].strip().isdigit() else None
+
+                # Add the field at the specified index or append it
+                if index is not None and 0 <= index < 25:
+                    self.embed.insert_field_at(index, name=name, value=value, inline=inline)
+                else:
+                    self.embed.add_field(name=name, value=value, inline=inline)
 
         # Confirm the fields configuration to the user
         await interaction.response.edit_message(
@@ -458,23 +462,55 @@ class AddFieldsModal(Modal):
         super().__init__(title="Add More Fields")
         self.embed = embed
 
-        # Text inputs for up to 5 additional fields
+        # Text inputs for up to 5 additional fields with shortened labels
         self.field_1 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 1 (Name, Value, T/F, Index)", required=False)
         self.field_2 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 2 (Name, Value, T/F, Index)", required=False)
         self.field_3 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 3 (Name, Value, T/F, Index)", required=False)
         self.field_4 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 4 (Name, Value, T/F, Index)", required=False)
         self.field_5 = TextInput(
-            label="<Field Name>, <Field Value>, <true/false>", required=False)
+            label="Field 5 (Name, Value, T/F, Index)", required=False)
 
         self.add_item(self.field_1)
         self.add_item(self.field_2)
         self.add_item(self.field_3)
         self.add_item(self.field_4)
         self.add_item(self.field_5)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Handle the submission of the add more fields modal."""
+        fields = [
+            self.field_1.value,
+            self.field_2.value,
+            self.field_3.value,
+            self.field_4.value,
+            self.field_5.value,
+        ]
+
+        for field in fields:
+            if field:
+                parts = field.split(",", 3)  # Split into up to 4 parts
+                name = parts[0].strip()
+                value = parts[1].strip() if len(parts) > 1 else ""
+                inline = parts[2].strip().lower() != "false" if len(parts) > 2 else True  # Default to True
+                index = int(parts[3].strip()) - 1 if len(parts) > 3 and parts[3].strip().isdigit() else None
+
+                # Add the field at the specified index or append it
+                if index is not None and 0 <= index < 25:
+                    self.embed.insert_field_at(index, name=name, value=value, inline=inline)
+                else:
+                    self.embed.add_field(name=name, value=value, inline=inline)
+
+        # Confirm the additional fields configuration to the user
+        await interaction.response.edit_message(
+            content="✅ Additional fields configured.",
+            embed=self.embed,
+            view=create_embed_view(self.embed, interaction.client),
+        )
+
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle the submission of the add more fields modal."""
