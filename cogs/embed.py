@@ -430,25 +430,54 @@ class AddFieldModal(Modal):
         value = self.field_value.value
         inline = self.inline.value.lower(
         ) == "true" if self.inline.value else False
-        index = int(
-            self.index.value) - 1 if self.index.value.isdigit() else None
 
-        # Check if the specified index is already in use
-        if index is not None and 0 <= index < 25:
-            if len(self.embed.fields) > index:
+        # Validate the index
+        if self.index.value:
+            try:
+                index = int(self.index.value)
+                if index < 1 or index > 25:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description="Index must be between 1 and 25.",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
+                    return
+
+                # Check if the index is already in use
+                if any(i == index - 1 for i in range(len(self.embed.fields))):
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description=
+                            f"Index {index} is already in use by another field.",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
+                    return
+
+                # Adjust index to 0-based for internal use
+                index -= 1
+            except ValueError:
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         title="Error",
                         description=
-                        f"Index {index + 1} is already in use by another field.",
+                        "Invalid index. Please enter a number between 1 and 25.",
                         color=discord.Color.red(),
                     ),
                     ephemeral=True,
                 )
                 return
+        else:
+            # If no index is provided, append to the end
+            index = len(self.embed.fields)
 
-        # Insert the field at the specified index or append it if the index is None or invalid
-        if index is not None and 0 <= index < 25:
+        # Insert the field at the specified index or append it
+        if index < len(self.embed.fields):
             self.embed.insert_field_at(index,
                                        name=name,
                                        value=value,
