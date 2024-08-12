@@ -13,10 +13,12 @@ class BaseView(View):
     """Base view class to be inherited by other views."""
 
     def __init__(self,
+                 bot: commands.Bot,
                  embed: discord.Embed = None,
                  current_page: int = 1,
                  total_pages: int = 10):
         super().__init__(timeout=None)
+        self.bot = bot
         self.embed = embed
         self.current_page = current_page
         self.total_pages = total_pages
@@ -30,13 +32,13 @@ class BaseView(View):
         self.add_item(JumpToPageButton())
 
     def add_embed_buttons(self):
-        """Add buttons for embed configuration."""
         self.add_item(SendButton(self.embed))
         self.add_item(ResetButton(self.embed))
         self.add_item(SelectiveResetButton(self.embed))
         self.add_item(PlusButton(self.embed))
         self.add_item(MinusButton(self.embed))
         self.add_item(HelpButton())
+        self.add_item(EditFieldButton(self.embed))
 
 
 class EmbedCreator(commands.Cog):
@@ -119,16 +121,16 @@ class EmbedCreator(commands.Cog):
 
         if value == "author":
             await interaction.response.send_modal(
-                AuthorModal(self.embed_object, self.bot))
+                AuthorModal(self.embed_object, self.bot, is_edit=True))
         elif value == "body":
             await interaction.response.send_modal(
-                BodyModal(self.embed_object, self.bot))
+                BodyModal(self.embed_object, self.bot, is_edit=True))
         elif value == "images":
             await interaction.response.send_modal(
-                ImagesModal(self.embed_object, self.bot))
+                ImagesModal(self.embed_object, self.bot, is_edit=True))
         elif value == "footer":
             await interaction.response.send_modal(
-                FooterModal(self.embed_object, self.bot))
+                FooterModal(self.embed_object, self.bot, is_edit=True))
 
     def is_valid_url(self, url: str) -> bool:
         """Validate if a given string is a properly formatted URL."""
@@ -161,17 +163,27 @@ class EmbedCreator(commands.Cog):
 
 
 class AuthorModal(Modal):
-    """Modal for configuring the author section of an embed."""
 
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the modal with input fields for the author section."""
+    def __init__(self,
+                 embed: discord.Embed,
+                 bot: commands.Bot,
+                 is_edit: bool = False):
         super().__init__(title="Configure Author")
         self.embed = embed
-        # Text inputs for author name, URL, and icon URL
-        self.author = TextInput(label="Author Name")
-        self.author_url = TextInput(label="Author URL", required=False)
-        self.author_icon_url = TextInput(label="Author Icon URL",
-                                         required=False)
+        self.bot = bot  # Pass bot as an argument
+        self.is_edit = is_edit
+        self.author = TextInput(label="Author Name",
+                                default=self.embed.author.name
+                                if is_edit and self.embed.author else None)
+        self.author_url = TextInput(label="Author URL",
+                                    required=False,
+                                    default=self.embed.author.url
+                                    if is_edit and self.embed.author else None)
+        self.author_icon_url = TextInput(
+            label="Author Icon URL",
+            required=False,
+            default=self.embed.author.icon_url
+            if is_edit and self.embed.author else None)
         self.add_item(self.author)
         self.add_item(self.author_url)
         self.add_item(self.author_icon_url)
@@ -179,7 +191,7 @@ class AuthorModal(Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle the submission of the author modal."""
         # Validate URLs if provided
-        if self.author_url.value and not self.embed.bot.get_cog(
+        if self.author_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.author_url.value):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -189,7 +201,7 @@ class AuthorModal(Modal):
             ),
                                                     ephemeral=True)
             return
-        if self.author_icon_url.value and not self.embed.bot.get_cog(
+        if self.author_icon_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.author_icon_url.value):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -216,24 +228,34 @@ class AuthorModal(Modal):
 class BodyModal(Modal):
     """Modal for configuring the body section (title, description, etc.) of an embed."""
 
-    def __init__(self, embed: discord.Embed, bot: commands.Bot) -> None:
-        """Initialize the modal with input fields for the body section."""
+    def __init__(self,
+                 embed: discord.Embed,
+                 bot: commands.Bot,
+                 is_edit: bool = False):
         super().__init__(title="Configure Body")
         self.embed = embed
-        self.bot = bot  # Store the bot instance
-        # Text inputs for title, description, URL, and color
-        self.titl = TextInput(label="Title", max_length=256)
-        self.description = TextInput(label="Description", max_length=4000)
-        self.url = TextInput(label="URL", required=False)
+        self.bot = bot  # Now `bot` is passed as an argument
+        self.is_edit = is_edit
+        self.titl = TextInput(label="Title",
+                              max_length=256,
+                              default=self.embed.title if is_edit else None)
+        self.description = TextInput(
+            label="Description",
+            max_length=4000,
+            default=self.embed.description if is_edit else None)
+        self.url = TextInput(label="URL",
+                             required=False,
+                             default=self.embed.url if is_edit else None)
         self.color = TextInput(label="Color (hex code, name, or 'random')",
-                               required=False)
+                               required=False,
+                               default=self.embed.color.value
+                               if is_edit and self.embed.color else None)
         self.add_item(self.titl)
         self.add_item(self.description)
         self.add_item(self.url)
         self.add_item(self.color)
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the body modal."""
+    async def on_submit(self, interaction: discord.Interaction):
         # Validate the URL if provided
         if self.url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.url.value):
@@ -244,7 +266,6 @@ class BodyModal(Modal):
             ),
                                                     ephemeral=True)
             return
-
         # Process the color input and set the embed color
         if self.color.value:
             if self.color.value.lower() == "random":
@@ -266,12 +287,10 @@ class BodyModal(Modal):
                     ),
                                                             ephemeral=True)
                     return
-
         # Set the title, description, and URL in the embed
         self.embed.title = self.titl.value
         self.embed.description = self.description.value or None
         self.embed.url = self.url.value or None
-
         # Confirm the body configuration to the user
         await interaction.response.edit_message(content="✅ Body configured.",
                                                 embed=self.embed,
@@ -283,20 +302,30 @@ class BodyModal(Modal):
 class ImagesModal(Modal):
     """Modal for configuring the image and thumbnail sections of an embed."""
 
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the modal with input fields for the images section."""
+    def __init__(self,
+                 embed: discord.Embed,
+                 bot: commands.Bot,
+                 is_edit: bool = False):
         super().__init__(title="Configure Images")
         self.embed = embed
-        # Text inputs for image URL and thumbnail URL
-        self.image_url = TextInput(label="Image URL")
-        self.thumbnail_url = TextInput(label="Thumbnail URL")
+        self.bot = bot  # Pass bot as an argument here
+        self.is_edit = is_edit
+
+        self.image_url = TextInput(label="Image URL",
+                                   required=False,
+                                   default=self.embed.image.url
+                                   if is_edit and self.embed.image else None)
+        self.thumbnail_url = TextInput(
+            label="Thumbnail URL",
+            required=False,
+            default=self.embed.thumbnail.url
+            if is_edit and self.embed.thumbnail else None)
         self.add_item(self.image_url)
         self.add_item(self.thumbnail_url)
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the images modal."""
+    async def on_submit(self, interaction: discord.Interaction):
         # Validate the image URL
-        if self.image_url.value and not self.embed.bot.get_cog(
+        if self.image_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.image_url.value):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -306,7 +335,7 @@ class ImagesModal(Modal):
                                                     ephemeral=True)
             return
         # Validate the thumbnail URL
-        if self.thumbnail_url.value and not self.embed.bot.get_cog(
+        if self.thumbnail_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.thumbnail_url.value):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -317,8 +346,8 @@ class ImagesModal(Modal):
                                                     ephemeral=True)
             return
         # Set the image and thumbnail in the embed
-        self.embed.set_image(url=self.image_url.value)
-        self.embed.set_thumbnail(url=self.thumbnail_url.value)
+        self.embed.set_image(url=self.image_url.value or None)
+        self.embed.set_thumbnail(url=self.thumbnail_url.value or None)
         # Confirm the images configuration to the user
         await interaction.response.edit_message(content="✅ Images configured.",
                                                 embed=self.embed,
@@ -328,26 +357,37 @@ class ImagesModal(Modal):
 
 
 class FooterModal(Modal):
-    """Modal for configuring the footer section of an embed."""
 
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the modal with input fields for the footer section."""
+    def __init__(self,
+                 embed: discord.Embed,
+                 bot: commands.Bot,
+                 is_edit: bool = False):
         super().__init__(title="Configure Footer")
         self.embed = embed
-        # Text inputs for footer text, timestamp, and footer icon URL
-        self.footer = TextInput(label="Footer Text", max_length=2048)
+        self.bot = bot
+        self.is_edit = is_edit
+
+        self.footer = TextInput(label="Footer Text",
+                                max_length=2048,
+                                default=self.embed.footer.text
+                                if is_edit and self.embed.footer else None)
         self.timestamp = TextInput(
-            label="Timestamp (YYYY-MM-DD hh:mm or 'auto')", required=False)
-        self.footer_icon_url = TextInput(label="Footer Icon URL",
-                                         required=False)
+            label="Timestamp (YYYY-MM-DD hh:mm or 'auto')",
+            required=False,
+            default=self.embed.timestamp.strftime("%Y-%m-%d %H:%M")
+            if is_edit and self.embed.timestamp else None)
+        self.footer_icon_url = TextInput(
+            label="Footer Icon URL",
+            required=False,
+            default=self.embed.footer.icon_url
+            if is_edit and self.embed.footer else None)
         self.add_item(self.footer)
         self.add_item(self.timestamp)
         self.add_item(self.footer_icon_url)
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the footer modal."""
+    async def on_submit(self, interaction: discord.Interaction):
         # Validate the footer icon URL
-        if self.footer_icon_url.value and not self.embed.bot.get_cog(
+        if self.footer_icon_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.footer_icon_url.value):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -361,11 +401,24 @@ class FooterModal(Modal):
         self.embed.set_footer(text=self.footer.value,
                               icon_url=self.footer_icon_url.value or None)
         # Handle the timestamp
-        if self.timestamp.value.lower() == "auto":
-            self.embed.timestamp = discord.utils.utcnow()
-        elif self.timestamp.value:
-            self.embed.timestamp = discord.utils.parse_time(
-                self.timestamp.value)
+        if self.timestamp.value:
+            if self.timestamp.value.lower() == "auto":
+                self.embed.timestamp = discord.utils.utcnow()
+            else:
+                try:
+                    self.embed.timestamp = discord.utils.parse_time(
+                        self.timestamp.value)
+                except ValueError:
+                    await interaction.response.send_message(embed=discord.Embed(
+                        title="Error",
+                        description=
+                        f"Invalid timestamp format: {self.timestamp.value}",
+                        color=discord.Color.red(),
+                    ),
+                                                            ephemeral=True)
+                    return
+        else:
+            self.embed.timestamp = None
         # Confirm the footer configuration to the user
         await interaction.response.edit_message(content="✅ Footer configured.",
                                                 embed=self.embed,
@@ -387,87 +440,35 @@ class PlusButton(Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to open the add field modal."""
+        if self.embed is None:
+            self.embed = discord.Embed()
+
         await interaction.response.send_modal(AddFieldModal(self.embed))
-        if not self.embed.description:
+        if self.embed.description is None or not self.embed.description.strip(
+        ):
             self.embed.description = "** **"
 
 
 class AddFieldModal(Modal):
-    """Modal for adding a new field to the embed."""
 
     def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the modal with input fields for adding a new field."""
         super().__init__(title="Add Field")
         self.embed = embed
-        # Text inputs for field name, value, inline, and index
         self.field_name = TextInput(label="Field Name")
         self.field_value = TextInput(label="Field Value")
         self.inline = TextInput(label="Inline (True/False)", required=False)
-        self.index = TextInput(label="Index (1-25)", required=False)
         self.add_item(self.field_name)
         self.add_item(self.field_value)
         self.add_item(self.inline)
-        self.add_item(self.index)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the add field modal."""
         name = self.field_name.value
         value = self.field_value.value
-
-        # Convert inline to a boolean, defaulting to False if not specified
         inline = self.inline.value.lower(
         ) == "true" if self.inline.value else False
 
-        # Validate the index
-        if self.index.value:
-            try:
-                index = int(self.index.value)
-                if index < 1 or index > 25:
-                    await interaction.response.send_message(
-                        embed=discord.Embed(
-                            title="Error",
-                            description="Index must be between 1 and 25.",
-                            color=discord.Color.red(),
-                        ),
-                        ephemeral=True)
-                    return
+        self.embed.add_field(name=name, value=value, inline=inline)
 
-                # Check if the index is already in use
-                if any(i == index - 1 for i in range(len(self.embed.fields))):
-                    await interaction.response.send_message(embed=discord.Embed(
-                        title="Error",
-                        description=
-                        f"Index {index} is already in use by another field.",
-                        color=discord.Color.red(),
-                    ),
-                                                            ephemeral=True)
-                    return
-
-                # Adjust index to 0-based for internal use
-                index -= 1
-            except ValueError:
-                await interaction.response.send_message(embed=discord.Embed(
-                    title="Error",
-                    description=
-                    "Invalid index. Please enter a number between 1 and 25.",
-                    color=discord.Color.red(),
-                ),
-                                                        ephemeral=True)
-                return
-        else:
-            # If no index is provided, append to the end
-            index = len(self.embed.fields)
-
-        # Insert the field at the specified index or append it
-        if index < len(self.embed.fields):
-            self.embed.insert_field_at(index,
-                                       name=name,
-                                       value=value,
-                                       inline=inline)
-        else:
-            self.embed.add_field(name=name, value=value, inline=inline)
-
-        # Confirm the addition of the field to the user
         await interaction.response.edit_message(content="✅ Field added.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -961,9 +962,121 @@ class JumpToPageModal(Modal):
                 "Please enter a valid page number (1-10).", ephemeral=True)
 
 
+class EditFieldButton(Button):
+    """Button to open a dropdown for editing configured fields."""
+
+    def __init__(self, embed: discord.Embed):
+        super().__init__(label="",
+                         style=discord.ButtonStyle.grey,
+                         emoji="✏️",
+                         row=2)
+        self.embed = embed
+
+    async def callback(self, interaction: discord.Interaction):
+        if not self.embed.fields and not any([
+                self.embed.author, self.embed.title, self.embed.description,
+                self.embed.thumbnail.url, self.embed.image.url,
+                self.embed.footer
+        ]):
+            await interaction.response.send_message(embed=discord.Embed(
+                title="Error",
+                description="No fields have been configured yet.",
+                color=discord.Color.red()),
+                                                    ephemeral=True)
+            return
+
+        options = []
+        if self.embed.author:
+            options.append(discord.SelectOption(label="Author",
+                                                value="author"))
+        if self.embed.title or self.embed.description:
+            options.append(discord.SelectOption(label="Body", value="body"))
+        if self.embed.thumbnail.url or self.embed.image.url:
+            options.append(discord.SelectOption(label="Images",
+                                                value="images"))
+        if self.embed.footer:
+            options.append(discord.SelectOption(label="Footer",
+                                                value="footer"))
+
+        for i, field in enumerate(self.embed.fields):
+            options.append(
+                discord.SelectOption(
+                    label=f"Field {i+1}: {field.name}",
+                    value=f"field_{i}",
+                    description=field.
+                    value[:100]  # Truncate description if too long
+                ))
+
+        view = discord.ui.View(timeout=None)
+        select = discord.ui.Select(placeholder="Select a field to edit...",
+                                   options=options)
+        select.callback = self.edit_field_callback
+        view.add_item(select)
+        view.add_item(BackButton(self.embed))
+
+        await interaction.response.edit_message(
+            content="Select a field to edit:", embed=self.embed, view=view)
+
+    async def edit_field_callback(self, interaction: discord.Interaction):
+        value = interaction.data["values"][0]
+
+        if value == "author":
+            await interaction.response.send_modal(
+                AuthorModal(self.embed, is_edit=True))
+        elif value == "body":
+            await interaction.response.send_modal(
+                BodyModal(self.embed, is_edit=True))
+        elif value == "images":
+            await interaction.response.send_modal(
+                ImagesModal(self.embed, is_edit=True))
+        elif value == "footer":
+            await interaction.response.send_modal(
+                FooterModal(self.embed, is_edit=True))
+        elif value.startswith("field_"):
+            field_index = int(value.split("_")[1])
+            await interaction.response.send_modal(
+                EditFieldModal(self.embed, field_index))
+
+
+class EditFieldModal(Modal):
+    """Modal for editing an existing field in the embed."""
+
+    def __init__(self, embed: discord.Embed, field_index: int):
+        super().__init__(title=f"Edit Field {field_index + 1}")
+        self.embed = embed
+        self.field_index = field_index
+        field = self.embed.fields[field_index]
+
+        self.field_name = TextInput(label="Field Name", default=field.name)
+        self.field_value = TextInput(label="Field Value", default=field.value)
+        self.inline = TextInput(label="Inline (True/False)",
+                                default=str(field.inline),
+                                required=False)
+
+        self.add_item(self.field_name)
+        self.add_item(self.field_value)
+        self.add_item(self.inline)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = self.field_name.value
+        value = self.field_value.value
+        inline = self.inline.value.lower(
+        ) == "true" if self.inline.value else False
+
+        self.embed.set_field_at(self.field_index,
+                                name=name,
+                                value=value,
+                                inline=inline)
+
+        await interaction.response.edit_message(content="✅ Field updated.",
+                                                embed=self.embed,
+                                                view=create_embed_view(
+                                                    self.embed,
+                                                    interaction.client))
+
+
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
-    """Create the view for the embed configuration interface."""
-    view = BaseView(embed)
+    view = BaseView(bot, embed)
     select_options = [
         discord.SelectOption(label="Author", value="author", emoji="📝"),
         discord.SelectOption(label="Body", value="body", emoji="📄"),
