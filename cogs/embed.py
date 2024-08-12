@@ -392,12 +392,17 @@ class PlusButton(Button):
 
     def __init__(self, embed: discord.Embed) -> None:
         """Initialize the plus button with the configured embed."""
-        super().__init__(label="", style=discord.ButtonStyle.green, emoji="➕")
+        super().__init__(label="",
+                         style=discord.ButtonStyle.green,
+                         emoji="➕",
+                         row=2)
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to open the add field modal."""
         await interaction.response.send_modal(AddFieldModal(self.embed))
+        if not self.embed.description:
+            self.embed.description = "** **"
 
 
 class AddFieldModal(Modal):
@@ -413,6 +418,7 @@ class AddFieldModal(Modal):
         self.field_value = TextInput(label="Field Value")
         self.inline = TextInput(label="Inline (True/False)", required=False)
         self.index = TextInput(label="Index (1-25)", required=False)
+
         self.add_item(self.field_name)
         self.add_item(self.field_value)
         self.add_item(self.inline)
@@ -427,7 +433,21 @@ class AddFieldModal(Modal):
         index = int(
             self.index.value) - 1 if self.index.value.isdigit() else None
 
-        # Add the field at the specified index or append it if index is None
+        # Check if the specified index is already in use
+        if index is not None and 0 <= index < 25:
+            if len(self.embed.fields) > index:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="Error",
+                        description=
+                        f"Index {index + 1} is already in use by another field.",
+                        color=discord.Color.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+        # Insert the field at the specified index or append it if the index is None or invalid
         if index is not None and 0 <= index < 25:
             self.embed.insert_field_at(index,
                                        name=name,
@@ -445,15 +465,15 @@ class AddFieldModal(Modal):
 
 
 class MinusButton(Button):
-    """Button to open a dropdown for removing an existing field from the embed."""
 
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the minus button with the configured embed."""
-        super().__init__(label="", style=discord.ButtonStyle.red, emoji="➖")
+    def __init__(self, embed: discord.Embed):
+        super().__init__(label="",
+                         style=discord.ButtonStyle.red,
+                         emoji="➖",
+                         row=2)
         self.embed = embed
 
-    async def callback(self, interaction: discord.Interaction) -> None:
-        """Handle the button click event to open the remove field dropdown."""
+    async def callback(self, interaction: discord.Interaction):
         if not self.embed.fields:
             await interaction.response.send_message(
                 embed=discord.Embed(
@@ -465,25 +485,22 @@ class MinusButton(Button):
             )
             return
 
-        # Create the dropdown options for each field
         options = [
             discord.SelectOption(
                 label=f"Field {i + 1}: {field.name}",
                 value=str(i),
-                description=field.value,
+                description=field.
+                value[:100],  # Truncate description if too long
             ) for i, field in enumerate(self.embed.fields)
         ]
 
-        # Create the view with the dropdown and back button
-        view = View(timeout=None)
-        select = Select(placeholder="Select a field to remove...",
-                        options=options)
+        view = discord.ui.View(timeout=None)
+        select = discord.ui.Select(placeholder="Select a field to remove...",
+                                   options=options)
         select.callback = self.remove_field_callback
         view.add_item(select)
-        view.add_item(BackButton(
-            self.embed))  # Add Back button to return to embed preview
+        view.add_item(BackButton(self.embed))
 
-        # Send the dropdown menu to select a field for removal
         await interaction.response.edit_message(
             content="Select a field to remove:",
             embed=self.embed,
@@ -492,16 +509,43 @@ class MinusButton(Button):
 
     async def remove_field_callback(self,
                                     interaction: discord.Interaction) -> None:
-        """Callback method for removing the selected field from the embed."""
+        """Handle the removal of a selected field from the embed."""
         index = int(interaction.data["values"][0])
+
+        # Remove the field at the specified index
         self.embed.remove_field(index)
 
-        # Confirm the removal of the field to the user
+        # If there are no fields left, redirect to the embed configuration preview
+        if not self.embed.fields:
+            await interaction.response.edit_message(
+                content=
+                "✅ All fields removed. Returning to embed configuration preview.",
+                embed=self.embed,
+                view=create_embed_view(self.embed, interaction.client))
+            return
+
+        # If there are still fields, recreate the options with updated field indices
+        options = [
+            discord.SelectOption(
+                label=f"Field {i+1}: {field.name}",
+                value=str(i),
+                description=field.
+                value[:100]  # Truncate description if too long
+            ) for i, field in enumerate(self.embed.fields)
+        ]
+
+        view = discord.ui.View(timeout=None)
+        select = discord.ui.Select(placeholder="Select a field to remove...",
+                                   options=options)
+        select.callback = self.remove_field_callback
+        view.add_item(select)
+        view.add_item(BackButton(self.embed))
+
         await interaction.response.edit_message(
-            content="✅ Field removed.",
+            content=
+            "✅ Field removed. Select another field to remove or use the Back button:",
             embed=self.embed,
-            view=create_embed_view(self.embed, interaction.client),
-        )
+            view=view)
 
 
 class BackButton(Button):
@@ -704,7 +748,8 @@ class HelpButton(Button):
         """Initialize the help button."""
         super().__init__(label="Help",
                          style=discord.ButtonStyle.grey,
-                         emoji="🔍")
+                         emoji="🔍",
+                         row=2)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to display help information."""
@@ -955,7 +1000,7 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view.add_item(SelectiveResetButton(embed))
     view.add_item(PlusButton(embed))
     view.add_item(MinusButton(embed))
-    view.add_item(HelpButton())  # Add the Help button here
+    view.add_item(HelpButton())
     return view
 
 
