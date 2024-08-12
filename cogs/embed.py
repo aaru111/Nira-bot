@@ -33,8 +33,10 @@ class BaseView(View):
 
     def add_embed_buttons(self):
         self.add_item(SendButton(self.embed))
+        self.add_item(SendToButton(self.embed))
         self.add_item(ResetButton(self.embed))
         self.add_item(SelectiveResetButton(self.embed))
+        self.add_item(FieldsButton())
         self.add_item(PlusButton(self.embed))
         self.add_item(MinusButton(self.embed))
         self.add_item(HelpButton())
@@ -740,7 +742,8 @@ class HelpButton(Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to display help information."""
         await interaction.response.send_message(embed=get_help_embed(1),
-                                                view=HelpNavigationView(),
+                                                view=HelpNavigationView(
+                                                    interaction.client, 1),
                                                 ephemeral=True)
 
 
@@ -880,8 +883,8 @@ def get_help_embed(page: int) -> discord.Embed:
 class HelpNavigationView(BaseView):
     """View for navigating between help pages."""
 
-    def __init__(self, current_page: int = 1):
-        super().__init__(current_page=current_page, total_pages=10)
+    def __init__(self, bot: commands.Bot, current_page: int = 1):
+        super().__init__(bot=bot, current_page=current_page, total_pages=10)
         self.add_navigation_buttons()
 
 
@@ -899,8 +902,10 @@ class PreviousButton(Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to navigate to the previous page."""
         new_page = max(1, self.current_page - 1)
-        await interaction.response.edit_message(
-            embed=get_help_embed(new_page), view=HelpNavigationView(new_page))
+        await interaction.response.edit_message(embed=get_help_embed(new_page),
+                                                view=HelpNavigationView(
+                                                    interaction.client,
+                                                    new_page))
 
 
 class NextButton(Button):
@@ -917,8 +922,10 @@ class NextButton(Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to navigate to the next page."""
         new_page = min(self.total_pages, self.current_page + 1)
-        await interaction.response.edit_message(
-            embed=get_help_embed(new_page), view=HelpNavigationView(new_page))
+        await interaction.response.edit_message(embed=get_help_embed(new_page),
+                                                view=HelpNavigationView(
+                                                    interaction.client,
+                                                    new_page))
 
 
 class JumpToPageButton(Button):
@@ -953,7 +960,8 @@ class JumpToPageModal(Modal):
             page = int(self.page_number.value)
             if 1 <= page <= 10:
                 await interaction.response.edit_message(
-                    embed=get_help_embed(page), view=HelpNavigationView(page))
+                    embed=get_help_embed(page),
+                    view=HelpNavigationView(interaction.client, page))
             else:
                 await interaction.response.send_message(
                     "Please enter a valid page number (1-10).", ephemeral=True)
@@ -1073,6 +1081,102 @@ class EditFieldModal(Modal):
                                                 view=create_embed_view(
                                                     self.embed,
                                                     interaction.client))
+
+
+class SendToButton(Button):
+    """Button to open a dropdown for selecting a channel to send the embed to."""
+
+    def __init__(self, embed: discord.Embed) -> None:
+        """Initialize the send to button with the configured embed."""
+        super().__init__(label="Send To",
+                         style=discord.ButtonStyle.green,
+                         emoji="📤")
+        self.embed = embed
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle the button click event to open the channel selection dropdown."""
+        # Get all text channels the user has permission to send messages in
+        channels = [
+            channel for channel in interaction.guild.text_channels
+            if channel.permissions_for(interaction.user).send_messages
+        ]
+
+        if not channels:
+            await interaction.response.send_message(
+                "You don't have permission to send messages in any channel.",
+                ephemeral=True)
+            return
+
+        options = [
+            discord.SelectOption(label=channel.name, value=str(channel.id))
+            for channel in channels
+        ]
+
+        view = discord.ui.View(timeout=None)
+        select = discord.ui.Select(
+            placeholder="Select a channel to send the embed to...",
+            options=options)
+        select.callback = self.send_to_channel_callback
+        view.add_item(select)
+        view.add_item(BackButton(self.embed))
+
+        await interaction.response.edit_message(
+            content="Select a channel to send the embed to:",
+            embed=self.embed,
+            view=view)
+
+    async def send_to_channel_callback(
+            self, interaction: discord.Interaction) -> None:
+        """Handle the selection of a channel and send the embed to it."""
+        channel_id = int(interaction.data["values"][0])
+        channel = interaction.guild.get_channel(channel_id)
+
+        if channel is None:
+            await interaction.response.send_message(
+                "The selected channel no longer exists.", ephemeral=True)
+            return
+
+        # Check if the embed is properly configured
+        if not self.is_embed_valid():
+            await interaction.response.send_message(
+                "The embed is not properly configured. Please add some content before sending.",
+                ephemeral=True)
+            return
+
+        try:
+            await channel.send(embed=self.embed)
+            await interaction.response.edit_message(
+                content=f"✅ Embed sent to #{channel.name}!",
+                embed=self.embed,
+                view=create_embed_view(self.embed, interaction.client))
+        except discord.errors.Forbidden:
+            await interaction.response.send_message(
+                f"I don't have permission to send messages in #{channel.name}.",
+                ephemeral=True)
+
+    def is_embed_valid(self) -> bool:
+        """Check if the embed is properly configured and not empty."""
+        if self.embed is None:
+            return False
+        return any([
+            self.embed.title, self.embed.description, self.embed.fields,
+            self.embed.author, self.embed.footer, self.embed.image,
+            self.embed.thumbnail
+        ])
+
+
+class FieldsButton(Button):
+    """Button to display the 'Fields: ' label."""
+
+    def __init__(self):
+        super().__init__(label="Fields: ",
+                         style=discord.ButtonStyle.grey,
+                         disabled=True,
+                         row=2)
+
+    async def callback(self, interaction: discord.Interaction):
+        # This button does nothing, so we don't need to implement any callback logic
+        pass
 
 
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
