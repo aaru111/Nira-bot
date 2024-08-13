@@ -6,3 +6,7 @@ channel = "stable-24_05"
 [[ports]]
 localPort = 8080
 externalPort = 80
+
+[auth]
+pageEnabled = false
+buttonEnabled = false

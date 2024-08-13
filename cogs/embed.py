@@ -8,6 +8,9 @@ import webcolors
 import random
 from utils.custom_colors import custom_colors  # Import custom colors
 from utils.helpembed import get_help_embed
+import asyncio
+import re
+from datetime import datetime, timedelta
 
 
 class BaseView(View):
@@ -98,6 +101,9 @@ class EmbedCreator(commands.Cog):
         elif value == "footer":
             await interaction.response.send_modal(
                 FooterModal(self.embed_object, self.bot, is_edit=True))
+        elif value == "schedule":
+            await interaction.response.send_modal(
+                ScheduleModal(self.embed_object, self.bot))
 
     def is_valid_url(self, url: str) -> bool:
         """Validate if a given string is a properly formatted URL."""
@@ -571,7 +577,9 @@ class ResetButton(Button):
 
     def __init__(self, embed: discord.Embed) -> None:
         """Initialize the reset button with the configured embed."""
-        super().__init__(label="Reset", style=discord.ButtonStyle.red, emoji="🔄")
+        super().__init__(label="Reset",
+                         style=discord.ButtonStyle.red,
+                         emoji="🔄")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -619,7 +627,7 @@ class HelpNavigationView(BaseView):
     def __init__(self,
                  bot: commands.Bot,
                  current_page: int = 1,
-                 total_pages: int = 10):
+                 total_pages: int = 16):  # Updated total_pages
         super().__init__(bot=bot,
                          current_page=current_page,
                          total_pages=total_pages)
@@ -688,7 +696,8 @@ class JumpToPageModal(Modal):
         super().__init__(title="Jump to Page")
         self.page_number = TextInput(
             label="Page Number",
-            placeholder="Enter a page number between 1 and 10",
+            placeholder=
+            "Enter a page number between 1 and 16",  # Updated placeholder
             required=True)
         self.add_item(self.page_number)
 
@@ -696,16 +705,19 @@ class JumpToPageModal(Modal):
         """Handle the submission of the jump to page modal."""
         try:
             page = int(self.page_number.value)
-            if 1 <= page <= 10:
+            if 1 <= page <= 16:  # Updated range
                 await interaction.response.edit_message(
                     embed=get_help_embed(page),
-                    view=HelpNavigationView(interaction.client, page, 10))
+                    view=HelpNavigationView(interaction.client, page,
+                                            16))  # Updated total_pages
             else:
                 await interaction.response.send_message(
-                    "Please enter a valid page number (1-10).", ephemeral=True)
+                    "Please enter a valid page number (1-16).",
+                    ephemeral=True)  # Updated error message
         except ValueError:
             await interaction.response.send_message(
-                "Please enter a valid page number (1-10).", ephemeral=True)
+                "Please enter a valid page number (1-16).",
+                ephemeral=True)  # Updated error message
 
 
 class EditFieldButton(Button):
@@ -915,6 +927,80 @@ class FieldCountButton(Button):
         pass
 
 
+class ScheduleModal(Modal):
+
+    def __init__(self, embed: discord.Embed, bot: commands.Bot):
+        super().__init__(title="Schedule Embed")
+        self.embed = embed
+        self.bot = bot
+
+        self.schedule_time = TextInput(
+            label="Schedule Time",
+            placeholder="e.g., 1m, 1h, 1d, 1w, or YYYY-MM-DD HH:MM",
+            required=True)
+        self.channel = TextInput(
+            label="Channel ID",
+            placeholder="Enter the channel ID to send the embed",
+            required=True)
+        self.add_item(self.schedule_time)
+        self.add_item(self.channel)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        schedule_time = self.schedule_time.value
+        channel_id = self.channel.value
+
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+            if not channel:
+                raise ValueError("Invalid channel ID")
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid channel ID. Please try again.", ephemeral=True)
+            return
+
+        send_time = self.parse_schedule_time(schedule_time)
+        if not send_time:
+            await interaction.response.send_message(
+                "Invalid schedule time format. Please try again.",
+                ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            f"Embed scheduled to be sent in {channel.mention} at {send_time.strftime('%Y-%m-%d %H:%M:%S')}",
+            ephemeral=True)
+
+        # Schedule the embed to be sent
+        await self.schedule_embed(send_time, channel)
+
+    def parse_schedule_time(self, schedule_time: str) -> datetime:
+        now = datetime.utcnow()
+
+        # Check for relative time format (e.g., 1m, 1h, 1d, 1w)
+        match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
+        if match:
+            amount, unit = match.groups()
+            amount = int(amount)
+            if unit == 'm':
+                return now + timedelta(minutes=amount)
+            elif unit == 'h':
+                return now + timedelta(hours=amount)
+            elif unit == 'd':
+                return now + timedelta(days=amount)
+            elif unit == 'w':
+                return now + timedelta(weeks=amount)
+
+        # Check for absolute time format (YYYY-MM-DD HH:MM)
+        try:
+            return datetime.strptime(schedule_time, "%Y-%m-%d %H:%M")
+        except ValueError:
+            return None
+
+    async def schedule_embed(self, send_time: datetime,
+                             channel: discord.TextChannel):
+        await asyncio.sleep((send_time - datetime.utcnow()).total_seconds())
+        await channel.send(embed=self.embed)
+
+
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view = BaseView(bot, embed)
     select_options = [
@@ -922,6 +1008,9 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
         discord.SelectOption(label="Body", value="body", emoji="📄"),
         discord.SelectOption(label="Images", value="images", emoji="🖼️"),
         discord.SelectOption(label="Footer", value="footer", emoji="🔻"),
+        discord.SelectOption(label="Schedule Embed",
+                             value="schedule",
+                             emoji="🕒"),  # Added this line
     ]
     select = Select(placeholder="Choose a part of the embed to configure...",
                     options=select_options)
