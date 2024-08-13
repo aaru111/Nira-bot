@@ -6,8 +6,8 @@ import aiohttp
 from urllib.parse import urlparse
 import webcolors
 import random
-from data.custom_colors import custom_colors  # Import custom colors
-from data.helpembed import get_help_embed
+from utils.custom_colors import custom_colors  # Import custom colors
+from utils.helpembed import get_help_embed
 
 
 class BaseView(View):

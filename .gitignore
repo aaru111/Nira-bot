@@ -143,6 +143,3 @@ cython_debug/
 
 __pycache__/
 *.pyc
-
-# Ignore all files in the /data folder
-/data/*
