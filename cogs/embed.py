@@ -50,7 +50,7 @@ class EmbedCreator(commands.Cog):
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.embed_object = None  # Initialize embed_object as None
-
+    
     @app_commands.command(
         name="embed",
         description="Create a custom embed message interactively.")
@@ -60,7 +60,7 @@ class EmbedCreator(commands.Cog):
             color=discord.Color.from_rgb(
                 *random.choice(list(custom_colors.values()))))
         view = create_embed_view(self.embed_object, self.bot)
-
+    
         preview_embed = discord.Embed(
             title="🛠️ Embed Configuration Preview.",
             description=
@@ -70,7 +70,8 @@ class EmbedCreator(commands.Cog):
              "- Author: Set the author of the embed.\n"
              "- Body: Edit the main content of the embed.\n"
              "- Images: Add an image or thumbnail.\n"
-             "- Footer: Configure the footer of the embed.\n\n"
+             "- Footer: Configure the footer of the embed.\n"
+             "- Schedule Embed: Set a time to automatically send the embed.\n\n"
              "Once you're satisfied, use the buttons below to send or reset the embed.\n"
              "```"),
             color=discord.Color.from_rgb(
@@ -79,10 +80,11 @@ class EmbedCreator(commands.Cog):
         preview_embed.set_footer(
             text=f"Command initiated by {interaction.user.name}",
             icon_url=interaction.user.avatar.url)
-
+    
         await interaction.response.send_message(embed=preview_embed,
                                                 view=view,
                                                 ephemeral=True)
+
 
     async def dropdown_callback(self,
                                 interaction: discord.Interaction) -> None:
