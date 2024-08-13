@@ -460,6 +460,136 @@ class AddFieldModal(BaseModal):
                                                     interaction.client))
 
 
+class JumpToPageModal(Modal):
+    """Modal to input the page number for jumping to a specific help page."""
+
+    def __init__(self) -> None:
+        """Initialize the modal with input for the page number."""
+        super().__init__(title="Jump to Page")
+        self.page_number = TextInput(
+            label="Page Number",
+            placeholder=
+            "Enter a page number between 1 and 16",  # Updated placeholder
+            required=True)
+        self.add_item(self.page_number)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Handle the submission of the jump to page modal."""
+        try:
+            page = int(self.page_number.value)
+            if 1 <= page <= 16:  # Updated range
+                await interaction.response.edit_message(
+                    embed=get_help_embed(page),
+                    view=HelpNavigationView(interaction.client, page,
+                                            16))  # Updated total_pages
+            else:
+                await interaction.response.send_message(
+                    "Please enter a valid page number (1-16).",
+                    ephemeral=True)  # Updated error message
+        except ValueError:
+            await interaction.response.send_message(
+                "Please enter a valid page number (1-16).",
+                ephemeral=True)  # Updated error message
+
+class ScheduleModal(BaseModal):
+
+    def __init__(self, embed: discord.Embed, bot: commands.Bot,
+                 original_channel: discord.TextChannel):
+        super().__init__(title="Schedule Embed")
+        self.embed = embed
+        self.bot = bot
+        self.original_channel = original_channel
+        self.schedule_time = TextInput(label="Schedule Time",
+                                       placeholder="e.g., 1m, 1h, 1d, 1w",
+                                       required=True)
+        self.channel = TextInput(
+            label="Channel ID (optional)",
+            placeholder="Leave blank to use current channel",
+            required=False)
+        self.add_item(self.schedule_time)
+        self.add_item(self.channel)
+
+async def handle_submit(self, interaction: discord.Interaction):
+    if not self.is_embed_configured():
+        await interaction.response.send_message(
+            "Error: The embed has not been configured yet. Please add some content before scheduling.",
+            ephemeral=True)
+        return
+
+    schedule_time = self.schedule_time.value
+    channel_id = self.channel.value
+
+    if channel_id:
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+            if not channel:
+                raise ValueError("Invalid channel ID")
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid channel ID. Using the current channel instead.",
+                ephemeral=True)
+            channel = self.original_channel
+    else:
+        channel = self.original_channel
+
+    delay = self.parse_schedule_time(schedule_time)
+    if delay is None:
+        await interaction.response.send_message(
+            "Invalid schedule time format. Please use formats like '5m', '2h', '1d', or '1w'.",
+            ephemeral=True)
+        return
+
+    human_readable_time = self.format_time_delta(delay)
+
+    await interaction.response.send_message(
+        f"Embed scheduled to be sent in {channel.mention} {human_readable_time}",
+        ephemeral=True)
+
+    # Schedule the embed to be sent
+    await self.schedule_embed(delay, channel, interaction)
+
+def is_embed_configured(self) -> bool:
+    """Check if the embed has been configured with any content."""
+    return any([
+        self.embed.title, self.embed.description, self.embed.fields,
+        self.embed.author, self.embed.footer, self.embed.image,
+        self.embed.thumbnail
+    ])
+
+def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
+    match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
+    if match:
+        amount, unit = match.groups()
+        amount = int(amount)
+        if unit == 'm':
+            return timedelta(minutes=amount)
+        elif unit == 'h':
+            return timedelta(hours=amount)
+        elif unit == 'd':
+            return timedelta(days=amount)
+        elif unit == 'w':
+            return timedelta(weeks=amount)
+    return None
+
+def format_time_delta(self, delta: timedelta) -> str:
+    if delta.days > 0:
+        return f"in {delta.days} day(s)"
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+    if hours > 0:
+        return f"in {hours} hour(s) and {minutes} minute(s)"
+    return f"in {minutes} minute(s)"
+
+async def schedule_embed(self, delay: timedelta,
+                         channel: discord.TextChannel,
+                         interaction: discord.Interaction):
+    await asyncio.sleep(delay.total_seconds())
+    sent_message = await channel.send(embed=self.embed)
+    message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
+    user = interaction.user
+    await user.send(f"Your scheduled embed has been sent! {message_link}")
+
+
 class PlusButton(BaseButton):
 
     def __init__(self, embed):
@@ -468,6 +598,38 @@ class PlusButton(BaseButton):
 
     async def handle_callback(self, interaction: Interaction):
         await interaction.response.send_modal(AddFieldModal(self.embed))
+
+
+class EditFieldModal(BaseModal):
+
+    def __init__(self, embed: discord.Embed, field_index: int):
+        super().__init__(title=f"Edit Field {field_index + 1}")
+        self.embed = embed
+        self.field_index = field_index
+        field = self.embed.fields[field_index]
+        self.field_name = TextInput(label="Field Name", default=field.name)
+        self.field_value = TextInput(label="Field Value", default=field.value)
+        self.inline = TextInput(label="Inline (True/False)",
+                                default=str(field.inline),
+                                required=False)
+        self.add_item(self.field_name)
+        self.add_item(self.field_value)
+        self.add_item(self.inline)
+    
+    async def handle_submit(self, interaction: discord.Interaction):
+        name = self.field_name.value
+        value = self.field_value.value
+        inline = self.inline.value.lower(
+        ) == "true" if self.inline.value else False
+        self.embed.set_field_at(self.field_index,
+                                name=name,
+                                value=value,
+                                inline=inline)
+        await interaction.response.edit_message(content="✅ Field updated.",
+                                                embed=self.embed,
+                                                view=create_embed_view(
+                                                    self.embed,
+                                                    interaction.client))
 
 
 class MinusButton(BaseButton):
@@ -580,16 +742,15 @@ class HelpButton(BaseButton):
                                                 ephemeral=True)
 
 
-class HelpNavigationView(BaseView):
+class JumpToPageButton(BaseButton):
 
-    def __init__(self,
-                 bot: commands.Bot,
-                 current_page: int = 1,
-                 total_pages: int = 16):
-        super().__init__(bot=bot,
-                         current_page=current_page,
-                         total_pages=total_pages)
-        self.add_navigation_buttons()
+    def __init__(self):
+        super().__init__(label="Jump to Page",
+                         style=ButtonStyle.grey,
+                         emoji="🔍")
+
+    async def handle_callback(self, interaction: Interaction):
+        await interaction.response.send_modal(JumpToPageModal())
 
 
 class PreviousButton(BaseButton):
@@ -624,49 +785,6 @@ class NextButton(BaseButton):
             embed=get_help_embed(new_page),
             view=HelpNavigationView(interaction.client, new_page,
                                     self.total_pages))
-
-
-class JumpToPageButton(BaseButton):
-
-    def __init__(self):
-        super().__init__(label="Jump to Page",
-                         style=ButtonStyle.grey,
-                         emoji="🔍")
-
-    async def handle_callback(self, interaction: Interaction):
-        await interaction.response.send_modal(JumpToPageModal())
-
-
-class JumpToPageModal(Modal):
-    """Modal to input the page number for jumping to a specific help page."""
-
-    def __init__(self) -> None:
-        """Initialize the modal with input for the page number."""
-        super().__init__(title="Jump to Page")
-        self.page_number = TextInput(
-            label="Page Number",
-            placeholder=
-            "Enter a page number between 1 and 16",  # Updated placeholder
-            required=True)
-        self.add_item(self.page_number)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the jump to page modal."""
-        try:
-            page = int(self.page_number.value)
-            if 1 <= page <= 16:  # Updated range
-                await interaction.response.edit_message(
-                    embed=get_help_embed(page),
-                    view=HelpNavigationView(interaction.client, page,
-                                            16))  # Updated total_pages
-            else:
-                await interaction.response.send_message(
-                    "Please enter a valid page number (1-16).",
-                    ephemeral=True)  # Updated error message
-        except ValueError:
-            await interaction.response.send_message(
-                "Please enter a valid page number (1-16).",
-                ephemeral=True)  # Updated error message
 
 
 class EditFieldButton(BaseButton):
@@ -711,37 +829,6 @@ class EditFieldButton(BaseButton):
         await interaction.response.send_modal(
             EditFieldModal(self.embed, field_index))
 
-
-class EditFieldModal(BaseModal):
-
-    def __init__(self, embed: discord.Embed, field_index: int):
-        super().__init__(title=f"Edit Field {field_index + 1}")
-        self.embed = embed
-        self.field_index = field_index
-        field = self.embed.fields[field_index]
-        self.field_name = TextInput(label="Field Name", default=field.name)
-        self.field_value = TextInput(label="Field Value", default=field.value)
-        self.inline = TextInput(label="Inline (True/False)",
-                                default=str(field.inline),
-                                required=False)
-        self.add_item(self.field_name)
-        self.add_item(self.field_value)
-        self.add_item(self.inline)
-
-    async def handle_submit(self, interaction: discord.Interaction):
-        name = self.field_name.value
-        value = self.field_value.value
-        inline = self.inline.value.lower(
-        ) == "true" if self.inline.value else False
-        self.embed.set_field_at(self.field_index,
-                                name=name,
-                                value=value,
-                                inline=inline)
-        await interaction.response.edit_message(content="✅ Field updated.",
-                                                embed=self.embed,
-                                                view=create_embed_view(
-                                                    self.embed,
-                                                    interaction.client))
 
 
 class SendToButton(BaseButton):
@@ -856,103 +943,16 @@ class FieldCountButton(BaseButton):
         pass
 
 
-class ScheduleModal(BaseModal):
+class HelpNavigationView(BaseView):
 
-    def __init__(self, embed: discord.Embed, bot: commands.Bot,
-                 original_channel: discord.TextChannel):
-        super().__init__(title="Schedule Embed")
-        self.embed = embed
-        self.bot = bot
-        self.original_channel = original_channel
-        self.schedule_time = TextInput(label="Schedule Time",
-                                       placeholder="e.g., 1m, 1h, 1d, 1w",
-                                       required=True)
-        self.channel = TextInput(
-            label="Channel ID (optional)",
-            placeholder="Leave blank to use current channel",
-            required=False)
-        self.add_item(self.schedule_time)
-        self.add_item(self.channel)
-
-    async def handle_submit(self, interaction: discord.Interaction):
-        if not self.is_embed_configured():
-            await interaction.response.send_message(
-                "Error: The embed has not been configured yet. Please add some content before scheduling.",
-                ephemeral=True)
-            return
-
-        schedule_time = self.schedule_time.value
-        channel_id = self.channel.value
-
-        if channel_id:
-            try:
-                channel = self.bot.get_channel(int(channel_id))
-                if not channel:
-                    raise ValueError("Invalid channel ID")
-            except ValueError:
-                await interaction.response.send_message(
-                    "Invalid channel ID. Using the current channel instead.",
-                    ephemeral=True)
-                channel = self.original_channel
-        else:
-            channel = self.original_channel
-
-        delay = self.parse_schedule_time(schedule_time)
-        if delay is None:
-            await interaction.response.send_message(
-                "Invalid schedule time format. Please use formats like '5m', '2h', '1d', or '1w'.",
-                ephemeral=True)
-            return
-
-        human_readable_time = self.format_time_delta(delay)
-
-        await interaction.response.send_message(
-            f"Embed scheduled to be sent in {channel.mention} {human_readable_time}",
-            ephemeral=True)
-
-        # Schedule the embed to be sent
-        await self.schedule_embed(delay, channel, interaction)
-
-    def is_embed_configured(self) -> bool:
-        """Check if the embed has been configured with any content."""
-        return any([
-            self.embed.title, self.embed.description, self.embed.fields,
-            self.embed.author, self.embed.footer, self.embed.image,
-            self.embed.thumbnail
-        ])
-
-    def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
-        match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
-        if match:
-            amount, unit = match.groups()
-            amount = int(amount)
-            if unit == 'm':
-                return timedelta(minutes=amount)
-            elif unit == 'h':
-                return timedelta(hours=amount)
-            elif unit == 'd':
-                return timedelta(days=amount)
-            elif unit == 'w':
-                return timedelta(weeks=amount)
-        return None
-
-    def format_time_delta(self, delta: timedelta) -> str:
-        if delta.days > 0:
-            return f"in {delta.days} day(s)"
-        hours, remainder = divmod(delta.seconds, 3600)
-        minutes, _ = divmod(remainder, 60)
-        if hours > 0:
-            return f"in {hours} hour(s) and {minutes} minute(s)"
-        return f"in {minutes} minute(s)"
-
-    async def schedule_embed(self, delay: timedelta,
-                             channel: discord.TextChannel,
-                             interaction: discord.Interaction):
-        await asyncio.sleep(delay.total_seconds())
-        sent_message = await channel.send(embed=self.embed)
-        message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
-        user = interaction.user
-        await user.send(f"Your scheduled embed has been sent! {message_link}")
+    def __init__(self,
+                 bot: commands.Bot,
+                 current_page: int = 1,
+                 total_pages: int = 16):
+        super().__init__(bot=bot,
+                         current_page=current_page,
+                         total_pages=total_pages)
+        self.add_navigation_buttons()
 
 
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
