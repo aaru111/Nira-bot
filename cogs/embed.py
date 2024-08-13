@@ -7,10 +7,10 @@ from urllib.parse import urlparse
 import webcolors
 import random
 from data.custom_colors import custom_colors  # Import custom colors
+from data.helpembed import get_help_embed
 
 
 class BaseView(View):
-    """Base view class to be inherited by other views."""
 
     def __init__(self,
                  bot: commands.Bot,
@@ -24,7 +24,6 @@ class BaseView(View):
         self.total_pages = total_pages
 
     def add_navigation_buttons(self):
-        """Add navigation buttons to the view if needed."""
         if self.current_page > 1:
             self.add_item(PreviousButton(self.current_page, self.total_pages))
         if self.current_page < self.total_pages:
@@ -35,61 +34,29 @@ class BaseView(View):
         self.add_item(SendButton(self.embed))
         self.add_item(SendToButton(self.embed))
         self.add_item(ResetButton(self.embed))
-        self.add_item(SelectiveResetButton(self.embed))
         self.add_item(FieldsButton())
         self.add_item(PlusButton(self.embed))
         self.add_item(MinusButton(self.embed))
         self.add_item(HelpButton())
-        self.add_item(EditFieldButton(self.embed))
+        self.add_item(EditFieldButton(self.embed, self.bot))
 
 
 class EmbedCreator(commands.Cog):
-    """A Discord cog for creating and managing custom embeds interactively."""
 
     def __init__(self, bot: commands.Bot) -> None:
-        """Initialize the EmbedCreator cog with the bot and an aiohttp session."""
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-
-    async def close(self) -> None:
-        """Close the aiohttp session when the bot shuts down or disconnects."""
-        await self.session.close()
-
-    @commands.Cog.listener()
-    async def on_shutdown(self) -> None:
-        """Listener to close the aiohttp session during bot shutdown."""
-        await self.close()
-
-    @commands.Cog.listener()
-    async def on_disconnect(self) -> None:
-        """Listener to close the aiohttp session when the bot disconnects."""
-        await self.close()
+        self.embed_object = None  # Initialize embed_object as None
 
     @app_commands.command(
         name="embed",
         description="Create a custom embed message interactively.")
     async def embed(self, interaction: discord.Interaction) -> None:
-        """Slash command to initiate the embed creation process."""
         self.embed_object = discord.Embed(
             description="",
             color=discord.Color.from_rgb(
-                *random.choice(list(custom_colors.values())))
-        )  # Initialize an empty embed with a randomly selected color
-        view = BaseView(self.embed_object)
-
-        select_options = [
-            discord.SelectOption(label="Author", value="author", emoji="📝"),
-            discord.SelectOption(label="Body", value="body", emoji="📄"),
-            discord.SelectOption(label="Images", value="images", emoji="🖼️"),
-            discord.SelectOption(label="Footer", value="footer", emoji="🔻"),
-        ]
-        select = Select(
-            placeholder="Choose a part of the embed to configure...",
-            options=select_options)
-        select.callback = self.dropdown_callback  # Link the callback here
-        view.add_item(select)
-
-        view.add_embed_buttons()
+                *random.choice(list(custom_colors.values()))))
+        view = create_embed_view(self.embed_object, self.bot)
 
         preview_embed = discord.Embed(
             title="🛠️ Embed Configuration Preview.",
@@ -105,8 +72,7 @@ class EmbedCreator(commands.Cog):
              "```"),
             color=discord.Color.from_rgb(
                 *random.choice(list(custom_colors.values()))),
-            timestamp=discord.utils.utcnow()  # Add the current timestamp
-        )
+            timestamp=discord.utils.utcnow())
         preview_embed.set_footer(
             text=f"Command initiated by {interaction.user.name}",
             icon_url=interaction.user.avatar.url)
@@ -117,7 +83,6 @@ class EmbedCreator(commands.Cog):
 
     async def dropdown_callback(self,
                                 interaction: discord.Interaction) -> None:
-        """Callback method for handling dropdown selections."""
         value = interaction.data["values"][0] if isinstance(
             interaction.data, dict) and "values" in interaction.data else None
 
@@ -236,7 +201,7 @@ class BodyModal(Modal):
                  is_edit: bool = False):
         super().__init__(title="Configure Body")
         self.embed = embed
-        self.bot = bot  # Now `bot` is passed as an argument
+        self.bot = bot
         self.is_edit = is_edit
         self.titl = TextInput(label="Title",
                               max_length=256,
@@ -244,6 +209,7 @@ class BodyModal(Modal):
         self.description = TextInput(
             label="Description",
             max_length=4000,
+            style=discord.TextStyle.paragraph,
             default=self.embed.description if is_edit else None)
         self.url = TextInput(label="URL",
                              required=False,
@@ -488,7 +454,7 @@ class MinusButton(Button):
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction):
-        if not self.embed.fields:
+        if self.embed is None or not self.embed.fields:
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
                 description="No fields available to remove.",
@@ -496,6 +462,7 @@ class MinusButton(Button):
             ),
                                                     ephemeral=True)
             return
+
         options = [
             discord.SelectOption(
                 label=f"Field {i+1}: {field.name}",
@@ -515,11 +482,8 @@ class MinusButton(Button):
 
     async def remove_field_callback(self,
                                     interaction: discord.Interaction) -> None:
-        """Handle the removal of a selected field from the embed."""
         index = int(interaction.data["values"][0])
-        # Remove the field at the specified index
         self.embed.remove_field(index)
-        # If there are no fields left, redirect to the embed configuration preview
         if not self.embed.fields:
             await interaction.response.edit_message(
                 content=
@@ -527,14 +491,11 @@ class MinusButton(Button):
                 embed=self.embed,
                 view=create_embed_view(self.embed, interaction.client))
             return
-        # If there are still fields, recreate the options with updated field indices
         options = [
-            discord.SelectOption(
-                label=f"Field {i+1}: {field.name}",
-                value=str(i),
-                description=field.
-                value[:100]  # Truncate description if too long
-            ) for i, field in enumerate(self.embed.fields)
+            discord.SelectOption(label=f"Field {i+1}: {field.name}",
+                                 value=str(i),
+                                 description=field.value[:100])
+            for i, field in enumerate(self.embed.fields)
         ]
         view = discord.ui.View(timeout=None)
         select = discord.ui.Select(placeholder="Select a field to remove...",
@@ -610,7 +571,7 @@ class ResetButton(Button):
 
     def __init__(self, embed: discord.Embed) -> None:
         """Initialize the reset button with the configured embed."""
-        super().__init__(label="", style=discord.ButtonStyle.red, emoji="🔄")
+        super().__init__(label="Reset", style=discord.ButtonStyle.red, emoji="🔄")
         self.embed = embed
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -634,257 +595,34 @@ class ResetButton(Button):
                                                     interaction.client))
 
 
-class SelectiveResetModal(Modal):
-    """Modal to selectively reset parts of the embed configuration."""
-
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the modal with options for selective reset."""
-        super().__init__(title="Selective Reset")
-        self.embed = embed
-        # Text inputs for selective reset options
-        self.author = TextInput(label="Author (y/n)",
-                                placeholder="y,n,n (name, url, icon)",
-                                required=False)
-        self.body = TextInput(
-            label="Body (y/n)",
-            placeholder="y,y,n,n (title, description, url, color)",
-            required=False)
-        self.images = TextInput(label="Images (y/n)",
-                                placeholder="y,y (image, thumbnail)",
-                                required=False)
-        self.footer = TextInput(label="Footer (y/n)",
-                                placeholder="y,y,y (text, timestamp, icon)",
-                                required=False)
-        self.add_item(self.author)
-        self.add_item(self.body)
-        self.add_item(self.images)
-        self.add_item(self.footer)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Handle the submission of the selective reset modal."""
-        # Process and apply selective resets based on user input
-        if self.author.value:
-            values = [
-                val.strip().lower() == "y"
-                for val in self.author.value.split(",")
-            ]
-            if values[0]:
-                self.embed.set_author(name=None)
-            if len(values) > 1 and values[1]:
-                self.embed.set_author(url=None)
-            if len(values) > 2 and values[2]:
-                self.embed.set_author(icon_url=None)
-        if self.body.value:
-            values = [
-                val.strip().lower() == "y"
-                for val in self.body.value.split(",")
-            ]
-            if values[0]:
-                self.embed.title = ""
-            if len(values) > 1 and values[1]:
-                self.embed.description = "** **"
-            if len(values) > 2 and values[2]:
-                self.embed.url = ""
-            if len(values) > 3 and values[3]:
-                self.embed.color = discord.Color.default()
-        if self.images.value:
-            values = [
-                val.strip().lower() == "y"
-                for val in self.images.value.split(",")
-            ]
-            if values[0]:
-                self.embed.set_image(url=None)
-            if len(values) > 1 and values[1]:
-                self.embed.set_thumbnail(url=None)
-        if self.footer.value:
-            values = [
-                val.strip().lower() == "y"
-                for val in self.footer.value.split(",")
-            ]
-            if values[0]:
-                self.embed.set_footer(text=None)
-            if len(values) > 1 and values[1]:
-                self.embed.timestamp = None
-            if len(values) > 2 and values[2]:
-                self.embed.set_footer(icon_url=None)
-        # Confirm the selective reset to the user
-        await interaction.response.edit_message(
-            content="✅ Selected components reset.",
-            embed=self.embed,
-            view=create_embed_view(self.embed, interaction.client))
-
-
-class SelectiveResetButton(Button):
-    """Button to open the selective reset modal."""
-
-    def __init__(self, embed: discord.Embed) -> None:
-        """Initialize the selective reset button with the configured embed."""
-        super().__init__(label="Selective Reset",
-                         style=discord.ButtonStyle.red,
-                         emoji="🔄")
-        self.embed = embed
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        """Handle the button click event to open the selective reset modal."""
-        await interaction.response.send_modal(SelectiveResetModal(self.embed))
-
-
 class HelpButton(Button):
     """Button to display help information about the embed creator wizard."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initialize the help button."""
         super().__init__(label="Help",
                          style=discord.ButtonStyle.grey,
                          emoji="🔍",
-                         row=2)
+                         row=3)
 
-    async def callback(self, interaction: discord.Interaction) -> None:
+    async def callback(self, interaction: discord.Interaction):
         """Handle the button click event to display help information."""
         await interaction.response.send_message(embed=get_help_embed(1),
                                                 view=HelpNavigationView(
-                                                    interaction.client, 1),
+                                                    interaction.client, 1, 10),
                                                 ephemeral=True)
-
-
-def get_help_embed(page: int) -> discord.Embed:
-    """Return the help embed for the specified page."""
-    total_pages = 10  # Updated total pages count
-    help_pages = [
-        {
-            "title":
-            "Embed Creator Wizard Help - Overview",
-            "description": ("```yaml\n"
-                            "Pages:\n"
-                            "1. Overview (this page)\n"
-                            "2. Author\n"
-                            "3. Body\n"
-                            "4. Images\n"
-                            "5. Footer\n"
-                            "6. Send Button\n"
-                            "7. Reset Embed Button\n"
-                            "8. Selective Reset Button\n"
-                            "9. Example Embed\n"
-                            "10. Additional Tips\n"
-                            "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Author",
-            "description":
-            ("```yaml\n"
-             "Author:\n\n"
-             "- Author Name: The name of the author.\n\n"
-             "- Author URL: A URL to link the author's name.\n\n"
-             "- Author Icon URL: A URL to an image to display as the author's icon.\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Body",
-            "description":
-            ("```yaml\n"
-             "Body:\n\n"
-             "- Title: The title of the embed.\n\n"
-             "- Description: The main content of the embed.\n\n"
-             "- URL: A URL to link the title.\n\n"
-             "- Color: The color of the embed (hex code, color name, or 'random').\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Images",
-            "description":
-            ("```yaml\n"
-             "Images:\n\n"
-             "- Image URL: A URL to an image to display in the embed.\n\n"
-             "- Thumbnail URL: A URL to a thumbnail image to display in the embed.\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Footer",
-            "description":
-            ("```yaml\n"
-             "Footer:\n\n"
-             "- Footer Text: The text to display in the footer.\n\n"
-             "- Footer Icon URL: A URL to an image to display as the footer icon.\n\n"
-             "- Timestamp: The timestamp to display in the footer (YYYY-MM-DD hh:mm or 'auto').\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Send Button",
-            "description":
-            ("```yaml\n"
-             "Send Button:\n\n"
-             "- Description: This button allows you to send the configured embed to the current channel. It checks if the embed is properly configured and, if valid, sends it as a message.\n\n"
-             "- Note: Ensure that you have at least one part of the embed configured before attempting to send it.\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Reset Embed Button",
-            "description":
-            ("```yaml\n"
-             "Reset Embed Button:\n\n"
-             "- Description: This button resets the entire embed, clearing all the configurations you've made. It essentially gives you a fresh start to create a new embed.\n\n"
-             "- Note: Be cautious when using this, as all your settings will be lost.\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Selective Reset Button",
-            "description":
-            ("```yaml\n"
-             "Selective Reset Button:\n\n"
-             "- Description: This button allows you to selectively reset parts of the embed (e.g., author, body, images, footer). A modal will appear where you can choose which parts to reset.\n\n"
-             "- Note: This is useful if you want to clear specific sections without losing all your progress.\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Example Embed",
-            "description":
-            ("```yaml\n"
-             "Example Embed:\n\n"
-             "- Title: Example Title\n\n"
-             "- Description: This is an example embed.\n\n"
-             "- URL: https://example.com\n\n"
-             "- Color: #FF5733\n\n"
-             "- Image URL: https://example.com/image.png\n\n"
-             "- Thumbnail URL: https://example.com/thumbnail.png\n\n"
-             "- Footer Text: Example Footer\n\n"
-             "- Footer Icon URL: https://example.com/footer-icon.png\n\n"
-             "- Timestamp: 2024-08-11 12:00\n"
-             "```"),
-        },
-        {
-            "title":
-            "Embed Creator Wizard Help - Additional Tips",
-            "description":
-            ("```yaml\n"
-             "Additional Tips:\n\n"
-             "- Tip 1: Use the preview feature to see how your embed will look before sending it.\n\n"
-             "- Tip 2: Make sure all URLs are valid and accessible.\n\n"
-             "- Tip 3: Use consistent colors and formatting for a professional appearance.\n\n"
-             "- Tip 4: Test the embed with different data to ensure it displays correctly in various scenarios.\n"
-             "```"),
-        },
-    ]
-    embed = discord.Embed(title=help_pages[page - 1]["title"],
-                          description=help_pages[page - 1]["description"],
-                          color=discord.Color.from_rgb(
-                              *random.choice(list(custom_colors.values()))))
-    embed.set_footer(text=f"Page {page}/{total_pages}")
-    return embed
 
 
 class HelpNavigationView(BaseView):
     """View for navigating between help pages."""
 
-    def __init__(self, bot: commands.Bot, current_page: int = 1):
-        super().__init__(bot=bot, current_page=current_page, total_pages=10)
+    def __init__(self,
+                 bot: commands.Bot,
+                 current_page: int = 1,
+                 total_pages: int = 10):
+        super().__init__(bot=bot,
+                         current_page=current_page,
+                         total_pages=total_pages)
         self.add_navigation_buttons()
 
 
@@ -902,10 +640,10 @@ class PreviousButton(Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to navigate to the previous page."""
         new_page = max(1, self.current_page - 1)
-        await interaction.response.edit_message(embed=get_help_embed(new_page),
-                                                view=HelpNavigationView(
-                                                    interaction.client,
-                                                    new_page))
+        await interaction.response.edit_message(
+            embed=get_help_embed(new_page),
+            view=HelpNavigationView(interaction.client, new_page,
+                                    self.total_pages))
 
 
 class NextButton(Button):
@@ -922,10 +660,10 @@ class NextButton(Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to navigate to the next page."""
         new_page = min(self.total_pages, self.current_page + 1)
-        await interaction.response.edit_message(embed=get_help_embed(new_page),
-                                                view=HelpNavigationView(
-                                                    interaction.client,
-                                                    new_page))
+        await interaction.response.edit_message(
+            embed=get_help_embed(new_page),
+            view=HelpNavigationView(interaction.client, new_page,
+                                    self.total_pages))
 
 
 class JumpToPageButton(Button):
@@ -961,7 +699,7 @@ class JumpToPageModal(Modal):
             if 1 <= page <= 10:
                 await interaction.response.edit_message(
                     embed=get_help_embed(page),
-                    view=HelpNavigationView(interaction.client, page))
+                    view=HelpNavigationView(interaction.client, page, 10))
             else:
                 await interaction.response.send_message(
                     "Please enter a valid page number (1-10).", ephemeral=True)
@@ -971,41 +709,26 @@ class JumpToPageModal(Modal):
 
 
 class EditFieldButton(Button):
-    """Button to open a dropdown for editing configured fields."""
+    """Button to open a dropdown for editing fields of the embed."""
 
-    def __init__(self, embed: discord.Embed):
-        super().__init__(label="",
+    def __init__(self, embed: discord.Embed, bot: commands.Bot):
+        super().__init__(label="Edit Fields",
                          style=discord.ButtonStyle.grey,
-                         emoji="✏️",
+                         emoji="📝",
                          row=2)
         self.embed = embed
+        self.bot = bot
 
     async def callback(self, interaction: discord.Interaction):
-        if not self.embed.fields and not any([
-                self.embed.author, self.embed.title, self.embed.description,
-                self.embed.thumbnail.url, self.embed.image.url,
-                self.embed.footer
-        ]):
+        if not self.embed.fields:
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
-                description="No fields have been configured yet.",
+                description="No fields have been added to the embed yet.",
                 color=discord.Color.red()),
                                                     ephemeral=True)
             return
 
         options = []
-        if self.embed.author:
-            options.append(discord.SelectOption(label="Author",
-                                                value="author"))
-        if self.embed.title or self.embed.description:
-            options.append(discord.SelectOption(label="Body", value="body"))
-        if self.embed.thumbnail.url or self.embed.image.url:
-            options.append(discord.SelectOption(label="Images",
-                                                value="images"))
-        if self.embed.footer:
-            options.append(discord.SelectOption(label="Footer",
-                                                value="footer"))
-
         for i, field in enumerate(self.embed.fields):
             options.append(
                 discord.SelectOption(
@@ -1027,23 +750,9 @@ class EditFieldButton(Button):
 
     async def edit_field_callback(self, interaction: discord.Interaction):
         value = interaction.data["values"][0]
-
-        if value == "author":
-            await interaction.response.send_modal(
-                AuthorModal(self.embed, is_edit=True))
-        elif value == "body":
-            await interaction.response.send_modal(
-                BodyModal(self.embed, is_edit=True))
-        elif value == "images":
-            await interaction.response.send_modal(
-                ImagesModal(self.embed, is_edit=True))
-        elif value == "footer":
-            await interaction.response.send_modal(
-                FooterModal(self.embed, is_edit=True))
-        elif value.startswith("field_"):
-            field_index = int(value.split("_")[1])
-            await interaction.response.send_modal(
-                EditFieldModal(self.embed, field_index))
+        field_index = int(value.split("_")[1])
+        await interaction.response.send_modal(
+            EditFieldModal(self.embed, field_index))
 
 
 class EditFieldModal(Modal):
@@ -1095,6 +804,16 @@ class SendToButton(Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle the button click event to open the channel selection dropdown."""
+        # Check if the embed is properly configured
+        if not self.is_embed_valid():
+            await interaction.response.send_message(embed=discord.Embed(
+                title="Embed Not Configured",
+                description=
+                "Please configure the embed with some content before attempting to send it.",
+                color=discord.Color.red()),
+                                                    ephemeral=True)
+            return
+
         # Get all text channels the user has permission to send messages in
         channels = [
             channel for channel in interaction.guild.text_channels
@@ -1125,6 +844,16 @@ class SendToButton(Button):
             embed=self.embed,
             view=view)
 
+    def is_embed_valid(self) -> bool:
+        """Check if the embed is properly configured and not empty."""
+        if self.embed is None:
+            return False
+        return any([
+            self.embed.title, self.embed.description, self.embed.fields,
+            self.embed.author, self.embed.footer, self.embed.image,
+            self.embed.thumbnail
+        ])
+
     async def send_to_channel_callback(
             self, interaction: discord.Interaction) -> None:
         """Handle the selection of a channel and send the embed to it."""
@@ -1154,16 +883,6 @@ class SendToButton(Button):
                 f"I don't have permission to send messages in #{channel.name}.",
                 ephemeral=True)
 
-    def is_embed_valid(self) -> bool:
-        """Check if the embed is properly configured and not empty."""
-        if self.embed is None:
-            return False
-        return any([
-            self.embed.title, self.embed.description, self.embed.fields,
-            self.embed.author, self.embed.footer, self.embed.image,
-            self.embed.thumbnail
-        ])
-
 
 class FieldsButton(Button):
     """Button to display the 'Fields: ' label."""
@@ -1179,6 +898,23 @@ class FieldsButton(Button):
         pass
 
 
+class FieldCountButton(Button):
+    """Button to display the number of configured fields."""
+
+    def __init__(self, embed: discord.Embed):
+        field_count = len(
+            embed.fields) if embed and hasattr(embed, 'fields') else 0
+        super().__init__(label=f"{field_count}/25 fields",
+                         style=discord.ButtonStyle.grey,
+                         disabled=True,
+                         row=3)
+        self.embed = embed
+
+    async def callback(self, interaction: discord.Interaction):
+
+        pass
+
+
 def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view = BaseView(bot, embed)
     select_options = [
@@ -1191,6 +927,7 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
                     options=select_options)
     select.callback = bot.get_cog("EmbedCreator").dropdown_callback
     view.add_item(select)
+    view.add_item(FieldCountButton(embed))
     view.add_embed_buttons()
     return view
 
