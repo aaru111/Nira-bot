@@ -92,48 +92,50 @@ class ReactionRoleManager:
     def __init__(self, cog: commands.Cog):
         self.cog = cog
 
-    async def add_buttons_to_message(self,
-                                     message: discord.Message,
-                                     role_id: str,
-                                     emoji: str,
-                                     color: discord.ButtonStyle,
-                                     custom_id: str,
-                                     link: Optional[str] = None):
+    async def add_buttons_to_message(self, message: discord.Message,
+                                     roles_data: List[Dict[str, Any]]):
         """Add reaction role buttons to a message."""
         guild = message.guild
-        role = guild.get_role(int(role_id))
-
         view = discord.ui.View(timeout=None)
 
-        if link:
-            button = discord.ui.Button(label="Click here",
-                                       url=link,
-                                       emoji=emoji)
-        else:
-            button = discord.ui.Button(style=color,
-                                       emoji=emoji,
-                                       custom_id=custom_id)
+        for role_data in roles_data:
+            role = guild.get_role(int(role_data['role_id']))
+            emoji = role_data['emoji']
+            color = discord.ButtonStyle(int(role_data['color']))
+            custom_id = role_data['custom_id']
+            link = role_data.get('link')
 
-            async def button_callback(interaction: discord.Interaction):
-                """Callback function for button clicks."""
-                if not self.cog.check_rate_limit(interaction.user.id):
-                    await interaction.response.send_message(
-                        "You're doing that too fast. Please wait a moment.",
-                        ephemeral=True)
-                    return
+            if link:
+                button = discord.ui.Button(label="Click here",
+                                           url=link,
+                                           emoji=emoji)
+            else:
+                button = discord.ui.Button(style=color,
+                                           emoji=emoji,
+                                           custom_id=custom_id)
 
-                if role in interaction.user.roles:
-                    await interaction.user.remove_roles(role)
-                    await interaction.response.send_message(
-                        f"Role {role.name} removed!", ephemeral=True)
-                else:
-                    await interaction.user.add_roles(role)
-                    await interaction.response.send_message(
-                        f"Role {role.name} assigned!", ephemeral=True)
+                async def button_callback(interaction: discord.Interaction,
+                                          role=role):
+                    """Callback function for button clicks."""
+                    if not self.cog.check_rate_limit(interaction.user.id):
+                        await interaction.response.send_message(
+                            "You're doing that too fast. Please wait a moment.",
+                            ephemeral=True)
+                        return
 
-            button.callback = button_callback
+                    if role in interaction.user.roles:
+                        await interaction.user.remove_roles(role)
+                        await interaction.response.send_message(
+                            f"Role {role.name} removed!", ephemeral=True)
+                    else:
+                        await interaction.user.add_roles(role)
+                        await interaction.response.send_message(
+                            f"Role {role.name} assigned!", ephemeral=True)
 
-        view.add_item(button)
+                button.callback = button_callback
+
+            view.add_item(button)
+
         await message.edit(view=view)
 
     async def handle_message_deletion(self, message: discord.Message):
@@ -141,7 +143,8 @@ class ReactionRoleManager:
         guild_id = str(message.guild.id)
         message_id = str(message.id)
 
-        if guild_id in self.cog.reaction_roles and message_id in self.cog.reaction_roles[guild_id]:
+        if guild_id in self.cog.reaction_roles and message_id in self.cog.reaction_roles[
+                guild_id]:
             self.cog.delete_reaction_role(guild_id, message_id)
 
 
@@ -157,8 +160,10 @@ class ReactionRole(commands.Cog):
         self.bot = bot
         self.role_manager = ReactionRoleManager(self)
         FileManager.ensure_data_files_exist()
-        self.reaction_roles: Dict[str, Dict[str, Any]] = JsonDataManager.load_data(DATA_PATH)
-        self.tracked_messages: Set[int] = set(JsonDataManager.load_data(TRACKED_MESSAGES_PATH))
+        self.reaction_roles: Dict[str, Dict[str, List[Dict[
+            str, Any]]]] = JsonDataManager.load_data(DATA_PATH)
+        self.tracked_messages: Set[int] = set(
+            JsonDataManager.load_data(TRACKED_MESSAGES_PATH))
         self.bot.loop.create_task(self.setup_reaction_roles())
         self.rate_limit_dict: Dict[int, float] = {}
 
@@ -168,7 +173,8 @@ class ReactionRole(commands.Cog):
 
     def save_tracked_messages(self):
         """Save the current tracked messages to file."""
-        JsonDataManager.save_data(TRACKED_MESSAGES_PATH, list(self.tracked_messages))
+        JsonDataManager.save_data(TRACKED_MESSAGES_PATH,
+                                  list(self.tracked_messages))
 
     async def setup_reaction_roles(self):
         """
@@ -186,15 +192,14 @@ class ReactionRole(commands.Cog):
                 to_delete.append(guild_id)
                 continue
 
-            for message_id, details in messages.items():
-                channel = self.bot.get_channel(int(details['channel_id']))
+            for message_id, roles_data in messages.items():
+                channel = self.bot.get_channel(int(
+                    roles_data[0]['channel_id']))
                 if channel:
                     try:
                         message = await channel.fetch_message(int(message_id))
-                        color = discord.ButtonStyle(int(details['color']))
                         await self.role_manager.add_buttons_to_message(
-                            message, details['role_id'], details['emoji'],
-                            color, details['custom_id'], details.get('link'))
+                            message, roles_data)
                         self.tracked_messages.add(int(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
@@ -216,7 +221,8 @@ class ReactionRole(commands.Cog):
 
     def delete_reaction_role(self, guild_id: str, message_id: str):
         """Delete a reaction role from the saved data."""
-        if guild_id in self.reaction_roles and message_id in self.reaction_roles[guild_id]:
+        if guild_id in self.reaction_roles and message_id in self.reaction_roles[
+                guild_id]:
             del self.reaction_roles[guild_id][message_id]
             if not self.reaction_roles[guild_id]:
                 del self.reaction_roles[guild_id]
@@ -230,8 +236,9 @@ class ReactionRole(commands.Cog):
         while not self.bot.is_closed():
             to_delete = []
             for guild_id, messages in list(self.reaction_roles.items()):
-                for message_id, details in list(messages.items()):
-                    channel = self.bot.get_channel(int(details['channel_id']))
+                for message_id, roles_data in list(messages.items()):
+                    channel = self.bot.get_channel(
+                        int(roles_data[0]['channel_id']))
                     if channel:
                         try:
                             await channel.fetch_message(int(message_id))
@@ -298,13 +305,32 @@ class ReactionRole(commands.Cog):
             if not emoji_obj:
                 raise ValueError("Invalid emoji selected.")
 
-            await self.role_manager.add_buttons_to_message(message, str(role.id),
-                                                           str(emoji_obj), color, custom_id,
-                                                           link)
+            new_role_data = {
+                "role_id": str(role.id),
+                "channel_id": str(channel.id),
+                "emoji": str(emoji_obj),
+                "color": color.value,
+                "custom_id": custom_id,
+                "link": link
+            }
 
-            self.update_reaction_roles(interaction.guild.id,
-                                       message.id, role.id, channel.id,
-                                       str(emoji_obj), color, custom_id, link)
+            guild_id = str(interaction.guild.id)
+            message_id = str(message.id)
+
+            if guild_id not in self.reaction_roles:
+                self.reaction_roles[guild_id] = {}
+
+            if message_id not in self.reaction_roles[guild_id]:
+                self.reaction_roles[guild_id][message_id] = []
+
+            self.reaction_roles[guild_id][message_id].append(new_role_data)
+            self.save_reaction_roles()
+
+            await self.role_manager.add_buttons_to_message(
+                message, self.reaction_roles[guild_id][message_id])
+
+            self.tracked_messages.add(int(message_id))
+            self.save_tracked_messages()
 
             await interaction.followup.send(
                 "Reaction role added successfully!", ephemeral=True)
@@ -330,30 +356,6 @@ class ReactionRole(commands.Cog):
             channel_id = default_channel_id
         return message_id, channel_id
 
-    def update_reaction_roles(self, guild_id: int, message_id: int,
-                              role_id: int, channel_id: int, emoji: str,
-                              color: discord.ButtonStyle, custom_id: str,
-                              link: Optional[str]):
-        """Update the stored reaction role data."""
-        guild_id_str = str(guild_id)
-        message_id_str = str(message_id)
-
-        if guild_id_str not in self.reaction_roles:
-            self.reaction_roles[guild_id_str] = {}
-
-        self.reaction_roles[guild_id_str][message_id_str] = {
-            "role_id": str(role_id),
-            "channel_id": str(channel_id),
-            "emoji": emoji,
-            "color": color.value,
-            "custom_id": custom_id,
-            "link": link
-        }
-        self.save_reaction_roles()
-
-        self.tracked_messages.add(message_id)
-        self.save_tracked_messages()
-
     def check_rate_limit(self, user_id: int) -> bool:
         """Check if a user has exceeded the rate limit for button clicks."""
         current_time = asyncio.get_event_loop().time()
@@ -364,39 +366,45 @@ class ReactionRole(commands.Cog):
         self.rate_limit_dict[user_id] = current_time
         return True
 
-    @app_commands.command(name="reaction-role-summary",
-                          description="Show a summary of all configured reaction roles")
+    @app_commands.command(
+        name="reaction-role-summary",
+        description="Show a summary of all configured reaction roles")
     async def reaction_role_summary(self, interaction: discord.Interaction):
         """Command to show a summary of all configured reaction roles."""
         guild_id = str(interaction.guild.id)
-        if guild_id not in self.reaction_roles or not self.reaction_roles[guild_id]:
-            await interaction.response.send_message("No reaction roles configured in this server.", ephemeral=True)
+        if guild_id not in self.reaction_roles or not self.reaction_roles[
+                guild_id]:
+            await interaction.response.send_message(
+                "No reaction roles configured in this server.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="Reaction Roles Summary",
-                              description="Here are the configured reaction roles:",
-                              color=discord.Color.blurple())
-        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        embed = discord.Embed(
+            title="Reaction Roles Summary",
+            description="Here are the configured reaction roles:",
+            color=discord.Color.blurple())
+        embed.set_thumbnail(
+            url=interaction.guild.icon.url if interaction.guild.icon else None)
 
-        for message_id, details in self.reaction_roles[guild_id].items():
-            channel = interaction.guild.get_channel(int(details['channel_id']))
+        for message_id, roles_data in self.reaction_roles[guild_id].items():
+            channel = interaction.guild.get_channel(
+                int(roles_data[0]['channel_id']))
             if not channel:
                 continue
 
-            message_link = f"https://discord.com/channels/{guild_id}/{details['channel_id']}/{message_id}"
-            role = interaction.guild.get_role(int(details['role_id']))
-            emoji = details['emoji']
+            message_link = f"https://discord.com/channels/{guild_id}/{roles_data[0]['channel_id']}/{message_id}"
 
-            embed.add_field(
-                name=f"Message ID: {message_id}",
-                value=f"**Role:** {role.mention}\n"
-                      f"**Emoji:** {emoji}\n"
-                      f"**Channel:** {channel.mention}\n"
-                      f"[Message Link]({message_link})",
-                inline=False
-            )
+            field_value = f"**Channel:** {channel.mention}\n[Message Link]({message_link})\n\n"
+            for role_data in roles_data:
+                role = interaction.guild.get_role(int(role_data['role_id']))
+                emoji = role_data['emoji']
+                field_value += f"Role: {role.mention} | Emoji: {emoji}\n"
 
-        embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
+            embed.add_field(name=f"Message ID: {message_id}",
+                            value=field_value,
+                            inline=False)
+
+        embed.set_footer(text=f"Requested by {interaction.user}",
+                         icon_url=interaction.user.display_avatar.url)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
