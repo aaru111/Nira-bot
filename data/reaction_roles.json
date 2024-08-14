@@ -1,20 +1,30 @@
 {
     "1251736129049198756": {
-        "1273274027397353494": [
+        "1273280931175600168": [
             {
-                "role_id": "1267130380000170004",
+                "role_id": "1272559290045173832",
                 "channel_id": "1270610415436435500",
                 "emoji": "<:nira_ai:1267875883038019737>",
-                "color": 4,
-                "custom_id": "IWKISJnvB1BBcOG8X402",
+                "color": 1,
+                "custom_id": "MaFcufNbNWsBMgMMqRbr",
                 "link": null
             },
             {
-                "role_id": "1267130380000170004",
+                "role_id": "1272559290045173832",
+                "channel_id": "1270610415436435500",
+                "emoji": "<:Creative_studio1:1268112193338212433>",
+                "color": 1,
+                "custom_id": "NAsxQyfbc4oh6q5wDhSx",
+                "link": null
+            }
+        ],
+        "1273282143644028990": [
+            {
+                "role_id": "1272559290045173832",
                 "channel_id": "1270610415436435500",
                 "emoji": "<:nira_ai2:1267876148201914560>",
                 "color": 1,
-                "custom_id": "9LQV8yiG6qq7O9O7NxEZ",
+                "custom_id": "iQ9yxjnhwcOZI205Mqy5",
                 "link": null
             }
         ]

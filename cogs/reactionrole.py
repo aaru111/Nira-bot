@@ -6,12 +6,109 @@ import os
 import random
 import string
 import asyncio
-from typing import Dict, Any, Set, List, Optional
+from typing import Dict, Any, Set, List
 from abc import ABC, abstractmethod
 
 # File paths for storing data
 DATA_PATH = "data/reaction_roles.json"
 TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
+
+
+class NavigationButton(discord.ui.Button):
+
+    def __init__(self,
+                 style: discord.ButtonStyle,
+                 label: str,
+                 custom_id: str,
+                 row: int = 1):
+        super().__init__(style=style,
+                         label=label,
+                         custom_id=custom_id,
+                         row=row)
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.view.update_embed(interaction, self.custom_id)
+
+
+class NavigationView(discord.ui.View):
+
+    def __init__(self, cog: 'ReactionRole', guild: discord.Guild,
+                 channel: discord.TextChannel):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.guild = guild
+        self.channel = channel
+        self.current_page = 0
+        self.message_ids = self.get_message_ids()
+
+        self.prev_button = NavigationButton(discord.ButtonStyle.primary,
+                                            "Previous", "prev")
+        self.next_button = NavigationButton(discord.ButtonStyle.primary,
+                                            "Next", "next")
+        self.update_button_state()
+
+        self.add_item(self.prev_button)
+        self.add_item(self.next_button)
+
+    def get_message_ids(self) -> List[str]:
+        guild_id = str(self.guild.id)
+        channel_id = str(self.channel.id)
+        return ['overview'] + [
+            message_id
+            for message_id, roles_data in self.cog.reaction_roles[guild_id].
+            items() if roles_data[0]['channel_id'] == channel_id
+        ]
+
+    def update_button_state(self):
+        self.prev_button.disabled = self.current_page == 0
+        self.next_button.disabled = self.current_page == len(
+            self.message_ids) - 1
+
+    async def update_embed(self, interaction: discord.Interaction,
+                           button_id: str):
+        if button_id == "prev" and self.current_page > 0:
+            self.current_page -= 1
+        elif button_id == "next" and self.current_page < len(
+                self.message_ids) - 1:
+            self.current_page += 1
+
+        self.update_button_state()
+
+        if self.current_page == 0:
+            embed = await self.cog.create_channel_reaction_roles_embed(
+                self.guild, self.channel)
+        else:
+            embed = await self.cog.create_message_reaction_roles_embed(
+                self.guild, self.channel, self.message_ids[self.current_page])
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class ChannelSelect(discord.ui.Select):
+
+    def __init__(self, cog: 'ReactionRole',
+                 options: List[discord.SelectOption]):
+        super().__init__(placeholder="Select a channel", options=options)
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        channel_id = int(self.values[0])
+        channel = interaction.guild.get_channel(channel_id)
+
+        view = NavigationView(self.cog, interaction.guild, channel)
+        overview_embed = await self.cog.create_channel_reaction_roles_embed(
+            interaction.guild, channel)
+
+        await interaction.response.edit_message(embed=overview_embed,
+                                                view=view)
+
+
+class ChannelSelectView(discord.ui.View):
+
+    def __init__(self, cog: 'ReactionRole',
+                 options: List[discord.SelectOption]):
+        super().__init__()
+        self.add_item(ChannelSelect(cog, options))    
 
 
 class ColorChoice(app_commands.Choice):
@@ -155,6 +252,70 @@ class ReactionRole(commands.Cog):
     This cog allows users to create reaction roles, where clicking a button
     assigns or removes a specific role from a user.
     """
+
+    async def create_message_reaction_roles_embed(
+            self, guild: discord.Guild, channel: discord.TextChannel,
+            message_id: str) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"🎭 __Reaction Roles in #{channel.name}__",
+            description="```yaml\nConfigured reaction roles for message:```",
+            color=discord.Color.blurple())
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+
+        guild_id = str(guild.id)
+        channel_id = str(channel.id)
+
+        roles_data = self.reaction_roles[guild_id][message_id]
+        message_link = f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+        field_value = f"[🔗 Jump to Message]({message_link})\n\n"
+
+        for role_data in roles_data:
+            role = guild.get_role(int(role_data['role_id']))
+            emoji = role_data['emoji']
+            field_value += f"{emoji} {role.mention}\n"
+
+        embed.add_field(name=f"📝 __Message ID: {message_id}__",
+                        value=field_value,
+                        inline=False)
+
+        embed.set_footer(
+            text=f"Use /reaction-role to add or modify roles • {guild.name}",
+            icon_url=guild.icon.url if guild.icon else None)
+        embed.timestamp = discord.utils.utcnow()
+
+        return embed
+
+    async def create_channel_reaction_roles_embed(
+            self, guild: discord.Guild,
+            channel: discord.TextChannel) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"🎭 __Reaction Roles in #{channel.name}__",
+            description=
+            "```yaml\nOverview of reaction roles in this channel:```",
+            color=discord.Color.blurple())
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+
+        guild_id = str(guild.id)
+        channel_id = str(channel.id)
+
+        message_count = 0
+        role_count = 0
+        for message_id, roles_data in self.reaction_roles[guild_id].items():
+            if roles_data[0]['channel_id'] == channel_id:
+                message_count += 1
+                role_count += len(roles_data)
+
+        embed.add_field(name="📊 __Summary__",
+                        value=f"```css\nTotal Messages: {message_count}\n"
+                        f"Total Roles: {role_count}```",
+                        inline=False)
+
+        embed.set_footer(
+            text=f"Use the navigation buttons to view details • {guild.name}",
+            icon_url=guild.icon.url if guild.icon else None)
+        embed.timestamp = discord.utils.utcnow()
+
+        return embed
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -370,7 +531,6 @@ class ReactionRole(commands.Cog):
         name="reaction-role-summary",
         description="Show a summary of all configured reaction roles")
     async def reaction_role_summary(self, interaction: discord.Interaction):
-        """Command to show a summary of all configured reaction roles."""
         guild_id = str(interaction.guild.id)
         if guild_id not in self.reaction_roles or not self.reaction_roles[
                 guild_id]:
@@ -378,34 +538,56 @@ class ReactionRole(commands.Cog):
                 "No reaction roles configured in this server.", ephemeral=True)
             return
 
+        channel_ids = set()
+        for roles_data in self.reaction_roles[guild_id].values():
+            channel_ids.add(int(roles_data[0]['channel_id']))
+
+        options = []
+        for channel_id in channel_ids:
+            channel = interaction.guild.get_channel(channel_id)
+            if channel:
+                options.append(
+                    discord.SelectOption(label=channel.name,
+                                         value=str(channel_id)))
+
+        if not options:
+            await interaction.response.send_message(
+                "No valid channels with reaction roles found.", ephemeral=True)
+            return
+
+        view = ChannelSelectView(self, options)
         embed = discord.Embed(
-            title="Reaction Roles Summary",
-            description="Here are the configured reaction roles:",
+            title="📊 __**Reaction Roles Summary**__",
+            description=
+            "```yaml\nSelect a channel below to view its configured reaction roles:```",
             color=discord.Color.blurple())
+
+        embed.add_field(
+            name="📌 __Total Channels__",
+            value=f"```css\n{len(options)} channel(s) with reaction roles```",
+            inline=False)
+
+        embed.add_field(
+            name="ℹ️ __How to Use__",
+            value="1️⃣ Choose a channel from the dropdown menu\n"
+            "2️⃣ View the overview and reaction roles for that channel\n"
+            "3️⃣ Use navigation buttons to browse multiple messages\n"
+            "4️⃣ Manage roles using the `/reaction-role` command",
+            inline=False)
+
         embed.set_thumbnail(
             url=interaction.guild.icon.url if interaction.guild.icon else None)
 
-        for message_id, roles_data in self.reaction_roles[guild_id].items():
-            channel = interaction.guild.get_channel(
-                int(roles_data[0]['channel_id']))
-            if not channel:
-                continue
+        embed.set_footer(
+            text=
+            f"Requested by {interaction.user} | Server: {interaction.guild.name}",
+            icon_url=interaction.user.display_avatar.url)
 
-            message_link = f"https://discord.com/channels/{guild_id}/{roles_data[0]['channel_id']}/{message_id}"
+        embed.timestamp = discord.utils.utcnow()
 
-            field_value = f"**Channel:** {channel.mention}\n[Message Link]({message_link})\n\n"
-            for role_data in roles_data:
-                role = interaction.guild.get_role(int(role_data['role_id']))
-                emoji = role_data['emoji']
-                field_value += f"Role: {role.mention} | Emoji: {emoji}\n"
-
-            embed.add_field(name=f"Message ID: {message_id}",
-                            value=field_value,
-                            inline=False)
-
-        embed.set_footer(text=f"Requested by {interaction.user}",
-                         icon_url=interaction.user.display_avatar.url)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed,
+                                                view=view,
+                                                ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
