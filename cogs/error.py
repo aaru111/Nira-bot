@@ -7,6 +7,7 @@ from difflib import get_close_matches
 
 # Define the embed color
 EMBED_COLOR = 0x2f3131
+DELETE_AFTER = 10  # Time in seconds after which the error message will delete itself
 
 
 class Errors(commands.Cog):
@@ -41,7 +42,10 @@ class Errors(commands.Cog):
                               color=EMBED_COLOR)
         view = discord.ui.View()
         view.add_item(HelpButton(ctx, title, description, button_color))
-        await ctx.send(embed=embed, view=view, ephemeral=True)
+        await ctx.send(embed=embed,
+                       view=view,
+                       ephemeral=True,
+                       delete_after=DELETE_AFTER)
 
     async def close(self) -> None:
         """
@@ -57,14 +61,15 @@ class Errors(commands.Cog):
     async def on_disconnect(self):
         await self.close()
 
-    async def handle_error(self, ctx: commands.Context, command_name: str,
-                           description: str, title: str) -> None:
+    async def handle_error(self, ctx: commands.Context,
+                           error: commands.CommandError, description: str,
+                           title: str) -> None:
         """
-        Send an error embed.
+        Handle sending an error embed based on the error type.
 
         Args:
             ctx (commands.Context): The context in which the command was invoked.
-            command_name (str): The name of the command that triggered the error.
+            error (commands.CommandError): The error that was raised.
             description (str): The description of the error.
             title (str): The title of the error.
         """
@@ -121,108 +126,116 @@ class Errors(commands.Cog):
         command_signature = getattr(ctx.command, 'signature',
                                     '') if ctx.command else ""
 
+        title, description = self.get_error_title_and_description(
+            ctx, error, command_name, command_signature)
+        await self.handle_error(ctx, error, description, title)
+
+    def get_error_title_and_description(self, ctx: commands.Context,
+                                        error: commands.CommandError,
+                                        command_name: str,
+                                        command_signature: str) -> (str, str):
+        """
+        Get the title and description for the error embed based on the error type.
+
+        Args:
+            ctx (commands.Context): The context in which the command was invoked.
+            error (commands.CommandError): The error that was raised.
+            command_name (str): The name of the command that triggered the error.
+            command_signature (str): The command signature.
+
+        Returns:
+            tuple: The title and description for the error embed.
+        """
         if isinstance(error, commands.MissingRequiredArgument):
-            description = f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
-            await self.handle_error(ctx, command_name, description,
-                                    "Missing Required Argument")
+            return (
+                "Missing Required Argument",
+                f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
+            )
 
         elif isinstance(error, commands.CommandNotFound):
-            description = "Command not found. Please check your command and try again."
             similar_commands = get_close_matches(
                 error.args[0].split()[0],
                 [cmd.name for cmd in self.bot.commands],
                 n=3,
                 cutoff=0.6)
+            description = "Command not found. Please check your command and try again."
             if similar_commands:
                 description += "\n\nDid you mean?\n" + '\n'.join(
                     similar_commands)
-            await self.handle_error(ctx, command_name, description,
-                                    "Command Not Found")
+            return ("Command Not Found", description)
 
         elif isinstance(error, commands.MissingPermissions):
             perms = ', '.join(error.missing_permissions)
-            description = f"You need the following permissions to execute this command: {perms}"
-            await self.handle_error(ctx, command_name, description,
-                                    "Missing Permissions")
+            return (
+                "Missing Permissions",
+                f"You need the following permissions to execute this command: {perms}"
+            )
 
         elif isinstance(error, commands.BotMissingPermissions):
             perms = ', '.join(error.missing_permissions)
-            description = f"I need the following permissions to execute this command: {perms}"
-            await self.handle_error(ctx, command_name, description,
-                                    "Bot Missing Permissions")
+            return (
+                "Bot Missing Permissions",
+                f"I need the following permissions to execute this command: {perms}"
+            )
 
         elif isinstance(error, commands.CommandOnCooldown):
-            description = f"This command is on cooldown. Try again after {error.retry_after:.2f} seconds."
-            await self.handle_error(ctx, command_name, description,
-                                    "Command on Cooldown")
+            return (
+                "Command on Cooldown",
+                f"This command is on cooldown. Try again after {error.retry_after:.2f} seconds."
+            )
 
         elif isinstance(error, commands.NotOwner):
-            description = "Only the bot owner can use this command."
-            await self.handle_error(ctx, command_name, description,
-                                    "Not Owner")
+            return ("Not Owner", "Only the bot owner can use this command.")
 
         elif isinstance(error, commands.NoPrivateMessage):
-            description = "This command cannot be used in private messages. Please use it in a server channel."
-            await self.handle_error(ctx, command_name, description,
-                                    "No Private Message")
+            return (
+                "No Private Message",
+                "This command cannot be used in private messages. Please use it in a server channel."
+            )
 
         elif isinstance(error, commands.BadArgument):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "Bad Argument")
+            return ("Bad Argument", str(error))
 
         elif isinstance(error, commands.CheckFailure):
-            description = "You do not have permission to execute this command."
-            await self.handle_error(ctx, command_name, description,
-                                    "Check Failure")
+            return ("Check Failure",
+                    "You do not have permission to execute this command.")
 
         elif isinstance(error, commands.DisabledCommand):
-            description = "This command is currently disabled."
-            await self.handle_error(ctx, command_name, description,
-                                    "Disabled Command")
+            return ("Disabled Command", "This command is currently disabled.")
 
         elif isinstance(error, commands.UserInputError):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "User Input Error")
+            return ("User Input Error", str(error))
 
         elif isinstance(error, commands.InvalidEndOfQuotedStringError):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "Invalid End of Quoted String")
+            return ("Invalid End of Quoted String", str(error))
 
         elif isinstance(error, commands.ExpectedClosingQuoteError):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "Expected Closing Quote")
+            return ("Expected Closing Quote", str(error))
 
         elif isinstance(error, commands.MaxConcurrencyReached):
-            description = f"This command can only be used {error.number} times concurrently."
-            await self.handle_error(ctx, command_name, description,
-                                    "Max Concurrency Reached")
+            return (
+                "Max Concurrency Reached",
+                f"This command can only be used {error.number} times concurrently."
+            )
 
         elif isinstance(error, commands.UnexpectedQuoteError):
-            await self.handle_error(ctx, command_name, str(error),
-                                    "Unexpected Quote")
+            return ("Unexpected Quote", str(error))
 
         elif isinstance(error, discord.Forbidden):
-            description = "I do not have permission to do that."
-            await self.handle_error(ctx, command_name, description,
-                                    "Forbidden")
+            return ("Forbidden", "I do not have permission to do that.")
 
         elif isinstance(error, discord.NotFound):
-            description = "The requested resource was not found."
-            await self.handle_error(ctx, command_name, description,
-                                    "Not Found")
+            return ("Not Found", "The requested resource was not found.")
 
         elif isinstance(error, discord.HTTPException):
-            description = "An HTTP exception occurred."
-            await self.handle_error(ctx, command_name, description,
-                                    "HTTP Exception")
+            return ("HTTP Exception", "An HTTP exception occurred.")
 
         else:
             # Log the error with traceback
             traceback_str = ''.join(
                 traceback.format_exception(type(error), error,
                                            error.__traceback__))
-            await self.handle_error(ctx, command_name, traceback_str,
-                                    "Unexpected Error")
+            return ("Unexpected Error", traceback_str)
 
 
 class HelpButton(discord.ui.Button):
