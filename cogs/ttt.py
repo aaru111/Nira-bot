@@ -33,8 +33,7 @@ class TicTacToeButton(Button):
 
         self.emoji = self.game.current_symbol
         self.label = None  # Remove the label when setting an emoji
-        self.style = (discord.ButtonStyle.success if self.game.current_player
-                      == self.game.player1 else discord.ButtonStyle.danger)
+        self.style = discord.ButtonStyle.success if self.game.current_player == self.game.player1 else discord.ButtonStyle.danger
         self.disabled = True
         await interaction.response.edit_message(view=self.game.board_view)
 
@@ -188,32 +187,6 @@ class TicTacToeGame:
             else:
                 self.switch_turn()
 
-    async def hard_bot_move(self, interaction: discord.Interaction):
-        best_score = -float('inf')
-        best_move = None
-
-        for button in self.board_view.children:
-            if button.label == EMPTY:
-                button.label = self.current_symbol
-                score = self.minimax(0, False)
-                button.label = EMPTY
-                if score > best_score:
-                    best_score = score
-                    best_move = button
-
-        if best_move:
-            best_move.label = self.current_symbol
-            best_move.style = discord.ButtonStyle.danger
-            best_move.disabled = True
-            await interaction.edit_original_response(view=self.board_view)
-
-            if self.check_winner():
-                await self.show_winner(interaction)
-            elif self.check_draw():
-                await self.show_draw(interaction)
-            else:
-                self.switch_turn()
-
     def minimax(self, depth: int, is_maximizing: bool) -> int:
         if self.check_winner():
             return 1 if not is_maximizing else -1
@@ -299,6 +272,15 @@ class TicTacToe(commands.Cog):
                           opponent: discord.Member = None,
                           player_x: str = None,
                           player_o: str = None):
+        """
+        Play a game of Tic Tac Toe.
+
+        Parameters:
+        ctx (commands.Context): The context of the command.
+        opponent (discord.Member): The user to play against. If not provided, the bot will be the opponent.
+        player_x (str): The emoji to use for player X. If not provided, the default "❌" will be used.
+        player_o (str): The emoji to use for player O. If not provided, the default "⭕" will be used.
+        """
         # Check if opponent is mentioned
         if opponent is None:
             return
