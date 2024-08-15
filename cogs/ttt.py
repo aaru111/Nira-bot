@@ -21,6 +21,11 @@ class TicTacToeButton(Button):
         self.emoji = None
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.game.current_player and interaction.user != self.game.player1 and interaction.user != self.game.player2:
+            await interaction.response.send_message(
+                "You are not part of this game!", ephemeral=True)
+            return
+
         if interaction.user != self.game.current_player:
             await interaction.response.send_message("It's not your turn!",
                                                     ephemeral=True)
@@ -49,8 +54,7 @@ class TicTacToeButton(Button):
                 await self.game.bot_move(interaction)
             else:
                 await interaction.edit_original_response(
-                    content=
-                    f"It's {self.game.current_player.mention}'s turn ({self.game.current_symbol})",
+                    content=f"It's {self.game.current_player.mention}'s turn",
                     view=self.game.board_view,
                 )
 
@@ -133,7 +137,10 @@ class TicTacToeGame:
         return all(button.emoji is not None
                    for button in self.board_view.children)
 
-    def end_game(self, result: str):
+    def end_game(self,
+                 result: str,
+                 winner: discord.Member = None,
+                 loser: discord.Member = None):
         if self.timeout_task:
             self.timeout_task.cancel()
 
@@ -141,19 +148,25 @@ class TicTacToeGame:
         for button in self.board_view.children:
             self.board_view.remove_item(button)
 
-        # Add a single button showing the game result
-        color, label = ((discord.ButtonStyle.green,
-                         "You won!") if result == "win" else
-                        (discord.ButtonStyle.red,
-                         "You lost!") if result == "loss" else
-                        (discord.ButtonStyle.blurple, "It's a draw!"))
-
-        result_button = Button(style=color, label=label, disabled=True)
-        self.board_view.add_item(result_button)
+        if result == "draw":
+            result_button = Button(style=discord.ButtonStyle.blurple,
+                                   label="It's a draw!",
+                                   disabled=True)
+            self.board_view.add_item(result_button)
+        else:
+            win_button = Button(style=discord.ButtonStyle.green,
+                                label=f"{winner} won!",
+                                disabled=True)
+            lose_button = Button(style=discord.ButtonStyle.red,
+                                 label=f"{loser} lost!",
+                                 disabled=True)
+            self.board_view.add_item(win_button)
+            self.board_view.add_item(lose_button)
 
     async def show_winner(self, interaction: discord.Interaction):
-        result = "win" if interaction.user == self.current_player else "loss"
-        self.end_game(result)
+        winner = self.current_player
+        loser = self.player2 if winner == self.player1 else self.player1
+        self.end_game("win", winner=winner, loser=loser)
         await interaction.edit_original_response(view=self.board_view)
 
     async def show_draw(self, interaction: discord.Interaction):
@@ -239,23 +252,25 @@ class AcceptDeclineButtons(View):
             return
 
         await interaction.message.delete()
-        await interaction.message.edit(
-            content=
+        await interaction.channel.send(
             f"{self.author.mention} vs {self.opponent.mention} - Let's play Tic Tac Toe!",
             view=self.game.board_view,
         )
         self.game.message = interaction.message
         self.stop()
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction,
-                     button: discord.ui.Button):
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
+    async def decline(self, interaction: discord.Interaction,
+                      button: discord.ui.Button):
         if interaction.user != self.opponent:
             await interaction.response.send_message("This isn't for you!",
                                                     ephemeral=True)
             return
 
-        await interaction.message.delete()
+        await interaction.message.edit(
+            content=
+            f"{self.opponent.mention} declined the invitation to play Tic Tac Toe.",
+            view=None)
         self.stop()
 
 
@@ -281,13 +296,11 @@ class TicTacToe(commands.Cog):
         player_x (str): The emoji to use for player X. If not provided, the default "❌" will be used.
         player_o (str): The emoji to use for player O. If not provided, the default "⭕" will be used.
         """
-        # Check if opponent is mentioned
         if opponent is None:
             return
 
         game = TicTacToeGame(ctx.author, opponent, ctx, player_x, player_o)
 
-        # Send the initial message with the game board
         if opponent == ctx.guild.me:
             message = await ctx.send(
                 f"{ctx.author.mention} vs the bot - Let's play Tic Tac Toe!",
@@ -297,10 +310,8 @@ class TicTacToe(commands.Cog):
             return
         else:
             message = await ctx.send(
-                f"{ctx.author.mention} vs {opponent.mention} - Let's play Tic Tac Toe!",
-                view=game.board_view)
-
-        game.message = message
+                f"{ctx.author.mention} has invited {opponent.mention} to play Tic Tac Toe. Would you like to accept?",
+                view=AcceptDeclineButtons(game, ctx.author, opponent))
 
 
 async def setup(bot):
