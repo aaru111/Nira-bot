@@ -13,6 +13,9 @@ from abc import ABC, abstractmethod
 DATA_PATH = "data/reaction_roles.json"
 TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
 
+RATE_LIMIT_INTERVAL = 2
+RATE_LIMIT_CLEANUP_INTERVAL = 60
+
 
 class NavigationButton(discord.ui.Button):
 
@@ -108,7 +111,7 @@ class ChannelSelectView(discord.ui.View):
     def __init__(self, cog: 'ReactionRole',
                  options: List[discord.SelectOption]):
         super().__init__()
-        self.add_item(ChannelSelect(cog, options))    
+        self.add_item(ChannelSelect(cog, options))
 
 
 class ColorChoice(app_commands.Choice):
@@ -151,13 +154,17 @@ class DataManager(ABC):
 
 
 class JsonDataManager(DataManager):
-    """Concrete implementation of DataManager for JSON files."""
 
     @staticmethod
     def load_data(file_path: str) -> Any:
         """Load JSON data from a file."""
-        with open(file_path, "r") as file:
-            return json.load(file)
+        try:
+            with open(file_path, "r") as file:
+                data = json.load(file)
+        except json.JSONDecodeError:
+            # If the file is empty or invalid, return an empty structure
+            return {} if file_path == DATA_PATH else []
+        return data
 
     @staticmethod
     def save_data(file_path: str, data: Any) -> None:
@@ -327,6 +334,28 @@ class ReactionRole(commands.Cog):
             JsonDataManager.load_data(TRACKED_MESSAGES_PATH))
         self.bot.loop.create_task(self.setup_reaction_roles())
         self.rate_limit_dict: Dict[int, float] = {}
+        self.bot.loop.create_task(self.cleanup_rate_limit_dict())
+
+    def check_rate_limit(self, user_id: int) -> bool:
+        """Check if a user has exceeded the rate limit for button clicks."""
+        current_time = asyncio.get_event_loop().time()
+        if user_id in self.rate_limit_dict:
+            last_time = self.rate_limit_dict[user_id]
+            if current_time - last_time < RATE_LIMIT_INTERVAL:
+                return False
+        self.rate_limit_dict[user_id] = current_time
+        return True
+
+    async def cleanup_rate_limit_dict(self):
+        """Periodically clean up the rate limit dictionary to prevent memory leaks."""
+        while not self.bot.is_closed():
+            current_time = asyncio.get_event_loop().time()
+            self.rate_limit_dict = {
+                user_id: last_time
+                for user_id, last_time in self.rate_limit_dict.items()
+                if current_time - last_time < RATE_LIMIT_INTERVAL
+            }
+            await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL)
 
     def save_reaction_roles(self):
         """Save the current reaction roles data to file."""
@@ -395,21 +424,39 @@ class ReactionRole(commands.Cog):
     async def periodic_check(self):
         """Periodically check for deleted messages and clean up data."""
         while not self.bot.is_closed():
+            await asyncio.sleep(3600)
+
             to_delete = []
-            for guild_id, messages in list(self.reaction_roles.items()):
-                for message_id, roles_data in list(messages.items()):
-                    channel = self.bot.get_channel(
+            for guild_id, messages in self.reaction_roles.items():
+                guild = self.bot.get_guild(int(guild_id))
+                if not guild:
+                    to_delete.append(
+                        (guild_id, None))  # Mark entire guild for deletion
+                    continue
+
+                for message_id, roles_data in messages.items():
+                    channel = guild.get_channel(
                         int(roles_data[0]['channel_id']))
-                    if channel:
-                        try:
-                            await channel.fetch_message(int(message_id))
-                        except discord.NotFound:
-                            to_delete.append((guild_id, message_id))
+                    if not channel:
+                        to_delete.append((guild_id, message_id))
+                        continue
+
+                    try:
+                        # Use get_partial_message instead of fetch_message to reduce API calls
+                        message = channel.get_partial_message(int(message_id))
+                        await message.fetch(
+                        )  # This will raise NotFound if the message doesn't exist
+                    except discord.NotFound:
+                        to_delete.append((guild_id, message_id))
 
             for guild_id, message_id in to_delete:
-                self.delete_reaction_role(guild_id, str(message_id))
+                if message_id is None:
+                    del self.reaction_roles[guild_id]
+                else:
+                    self.delete_reaction_role(guild_id, str(message_id))
 
-            await asyncio.sleep(300)  # Check every 5 minutes
+            self.save_reaction_roles()
+            self.save_tracked_messages()
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -516,16 +563,6 @@ class ReactionRole(commands.Cog):
             message_id = int(message_link)
             channel_id = default_channel_id
         return message_id, channel_id
-
-    def check_rate_limit(self, user_id: int) -> bool:
-        """Check if a user has exceeded the rate limit for button clicks."""
-        current_time = asyncio.get_event_loop().time()
-        if user_id in self.rate_limit_dict:
-            last_time = self.rate_limit_dict[user_id]
-            if current_time - last_time < 2:
-                return False
-        self.rate_limit_dict[user_id] = current_time
-        return True
 
     @app_commands.command(
         name="reaction-role-summary",
