@@ -17,6 +17,27 @@ RATE_LIMIT_INTERVAL = 2
 RATE_LIMIT_CLEANUP_INTERVAL = 60
 
 
+class RolesyncCooldown:
+
+    def __init__(self, rate, per):
+        self.rate = rate
+        self.per = per
+        self.last_used = {}
+
+    def __call__(self, ctx):
+        now = ctx.message.created_at.timestamp()
+        bucket = ctx.guild.id if ctx.guild else ctx.author.id
+        if bucket in self.last_used:
+            last = self.last_used[bucket]
+            if now - last < self.per:
+                raise commands.CommandOnCooldown(
+                    cooldown=commands.Cooldown(self.rate, self.per),
+                    retry_after=self.per - (now - last),
+                    type=commands.BucketType.guild)
+        self.last_used[bucket] = now
+        return True
+
+
 class NavigationButton(discord.ui.Button):
 
     def __init__(self,
@@ -406,9 +427,6 @@ class ReactionRole(commands.Cog):
         self.save_reaction_roles()
         self.save_tracked_messages()
 
-        # Start periodic check for deleted messages
-        self.bot.loop.create_task(self.periodic_check())
-
     def delete_reaction_role(self, guild_id: str, message_id: str):
         """Delete a reaction role from the saved data."""
         if guild_id in self.reaction_roles and message_id in self.reaction_roles[
@@ -421,42 +439,18 @@ class ReactionRole(commands.Cog):
             self.save_tracked_messages()
             print(f"Deleted reaction role info for message ID: {message_id}")
 
-    async def periodic_check(self):
-        """Periodically check for deleted messages and clean up data."""
-        while not self.bot.is_closed():
-            await asyncio.sleep(3600)
-
-            to_delete = []
-            for guild_id, messages in self.reaction_roles.items():
-                guild = self.bot.get_guild(int(guild_id))
-                if not guild:
-                    to_delete.append(
-                        (guild_id, None))  # Mark entire guild for deletion
-                    continue
-
-                for message_id, roles_data in messages.items():
-                    channel = guild.get_channel(
-                        int(roles_data[0]['channel_id']))
-                    if not channel:
-                        to_delete.append((guild_id, message_id))
-                        continue
-
-                    try:
-                        # Use get_partial_message instead of fetch_message to reduce API calls
-                        message = channel.get_partial_message(int(message_id))
-                        await message.fetch(
-                        )  # This will raise NotFound if the message doesn't exist
-                    except discord.NotFound:
-                        to_delete.append((guild_id, message_id))
-
-            for guild_id, message_id in to_delete:
-                if message_id is None:
-                    del self.reaction_roles[guild_id]
-                else:
-                    self.delete_reaction_role(guild_id, str(message_id))
-
-            self.save_reaction_roles()
-            self.save_tracked_messages()
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        """Event listener for channel deletions."""
+        guild_id = str(channel.guild.id)
+        if guild_id in self.reaction_roles:
+            messages_to_delete = [
+                message_id for message_id, roles_data in
+                self.reaction_roles[guild_id].items()
+                if roles_data[0]['channel_id'] == str(channel.id)
+            ]
+            for message_id in messages_to_delete:
+                self.delete_reaction_role(guild_id, message_id)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -576,8 +570,12 @@ class ReactionRole(commands.Cog):
             return
 
         channel_ids = set()
+        invalid_entries = 0
         for roles_data in self.reaction_roles[guild_id].values():
-            channel_ids.add(int(roles_data[0]['channel_id']))
+            channel_id = int(roles_data[0]['channel_id'])
+            channel_ids.add(channel_id)
+            if not interaction.guild.get_channel(channel_id):
+                invalid_entries += 1
 
         options = []
         for channel_id in channel_ids:
@@ -612,6 +610,25 @@ class ReactionRole(commands.Cog):
             "4️⃣ Manage roles using the `/reaction-role` command",
             inline=False)
 
+        if invalid_entries > 0:
+            embed.add_field(
+                name="⚠️ __Invalid Entries Detected__",
+                value=
+                f"```diff\n- {invalid_entries} invalid entries found\n+ Use .rolesync to clean up```",
+                inline=False)
+
+        embed.add_field(
+            name="🔄 __Sync Command__",
+            value=
+            "To ensure your reaction roles are up-to-date and to remove any invalid entries, use the `.rolesync` command. "
+            "This command will:\n"
+            "• Check all reaction role messages\n"
+            "• Remove entries for deleted messages or channels\n"
+            "• Update the internal database\n\n"
+            "Usage: `.rolesync`\n"
+            "Note: This command has a 60-second cooldown and requires 'Manage Roles' permission.",
+            inline=False)
+
         embed.set_thumbnail(
             url=interaction.guild.icon.url if interaction.guild.icon else None)
 
@@ -625,6 +642,89 @@ class ReactionRole(commands.Cog):
         await interaction.response.send_message(embed=embed,
                                                 view=view,
                                                 ephemeral=True)
+
+    @commands.command(
+        name="rolesync",
+        help="Sync reaction roles data with current server state")
+    @commands.check(RolesyncCooldown(1, 60))  # 1 use per 60 seconds
+    @commands.has_permissions(manage_roles=True)
+    async def rolesync(self, ctx):
+        sync_message = await ctx.send(
+            "```yaml\nStarting reaction roles sync. This may take a moment...```"
+        )
+
+        to_delete = []
+        for guild_id, messages in self.reaction_roles.items():
+            guild = self.bot.get_guild(int(guild_id))
+            if guild is None:
+                to_delete.append(guild_id)
+                continue
+
+            for message_id, roles_data in messages.items():
+                channel = self.bot.get_channel(int(
+                    roles_data[0]['channel_id']))
+                if channel:
+                    try:
+                        await channel.fetch_message(int(message_id))
+                    except discord.NotFound:
+                        to_delete.append((guild_id, message_id))
+                else:
+                    to_delete.append((guild_id, message_id))
+
+        # Clean up deleted messages
+        if to_delete:
+            for entry in to_delete:
+                if isinstance(entry, tuple):
+                    guild_id, message_id = entry
+                    self.delete_reaction_role(guild_id, message_id)
+                else:
+                    del self.reaction_roles[entry]
+
+            self.save_reaction_roles()
+            self.save_tracked_messages()
+
+            await sync_message.edit(
+                content=
+                "```css\nReaction roles sync completed. Data has been updated.```"
+            )
+        else:
+            await sync_message.edit(
+                content=
+                "```css\nReaction roles sync completed. No changes were necessary.```"
+            )
+
+        # Provide a summary of the sync operation
+        summary_embed = discord.Embed(title="🔄 Reaction Roles Sync Summary",
+                                      color=discord.Color.blue())
+        summary_embed.add_field(
+            name="📊 Statistics",
+            value=
+            f"```yaml\nMessages checked: {sum(len(messages) for messages in self.reaction_roles.values())}\nInvalid entries removed: {len(to_delete)}```",
+            inline=False)
+        summary_embed.add_field(
+            name="ℹ️ Info",
+            value="To clear invalid entries, run `.rolesync`",
+            inline=False)
+        summary_embed.set_footer(
+            text=f"Requested by {ctx.author}",
+            icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+
+        summary_message = await ctx.send(embed=summary_embed)
+
+        # Delete the sync message and summary message after 5 seconds
+        await asyncio.sleep(5)
+        await sync_message.delete()
+        await summary_message.delete()
+
+    @rolesync.error
+    async def rolesync_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            error_message = await ctx.send(
+                "```diff\n- You don't have the required permissions to use this command.```"
+            )
+            # Delete the error message after 5 seconds
+            await asyncio.sleep(5)
+            await error_message.delete()
 
 
 async def setup(bot: commands.Bot) -> None:
