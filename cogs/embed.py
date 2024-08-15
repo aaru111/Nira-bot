@@ -491,6 +491,7 @@ class JumpToPageModal(Modal):
                 "Please enter a valid page number (1-16).",
                 ephemeral=True)  # Updated error message
 
+
 class ScheduleModal(BaseModal):
 
     def __init__(self, embed: discord.Embed, bot: commands.Bot,
@@ -508,6 +509,7 @@ class ScheduleModal(BaseModal):
             required=False)
         self.add_item(self.schedule_time)
         self.add_item(self.channel)
+
 
 async def handle_submit(self, interaction: discord.Interaction):
     if not self.is_embed_configured():
@@ -548,6 +550,7 @@ async def handle_submit(self, interaction: discord.Interaction):
     # Schedule the embed to be sent
     await self.schedule_embed(delay, channel, interaction)
 
+
 def is_embed_configured(self) -> bool:
     """Check if the embed has been configured with any content."""
     return any([
@@ -555,6 +558,7 @@ def is_embed_configured(self) -> bool:
         self.embed.author, self.embed.footer, self.embed.image,
         self.embed.thumbnail
     ])
+
 
 def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
     match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
@@ -571,6 +575,7 @@ def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
             return timedelta(weeks=amount)
     return None
 
+
 def format_time_delta(self, delta: timedelta) -> str:
     if delta.days > 0:
         return f"in {delta.days} day(s)"
@@ -580,8 +585,8 @@ def format_time_delta(self, delta: timedelta) -> str:
         return f"in {hours} hour(s) and {minutes} minute(s)"
     return f"in {minutes} minute(s)"
 
-async def schedule_embed(self, delay: timedelta,
-                         channel: discord.TextChannel,
+
+async def schedule_embed(self, delay: timedelta, channel: discord.TextChannel,
                          interaction: discord.Interaction):
     await asyncio.sleep(delay.total_seconds())
     sent_message = await channel.send(embed=self.embed)
@@ -615,7 +620,7 @@ class EditFieldModal(BaseModal):
         self.add_item(self.field_name)
         self.add_item(self.field_value)
         self.add_item(self.inline)
-    
+
     async def handle_submit(self, interaction: discord.Interaction):
         name = self.field_name.value
         value = self.field_value.value
@@ -718,8 +723,13 @@ class ResetButton(BaseButton):
         self.embed = embed
 
     async def handle_callback(self, interaction: Interaction):
-        self.embed.clear()
-        self.embed.description = "** **"
+        # Create a new Embed object instead of trying to clear the existing one
+        new_embed = discord.Embed(description="** **")
+        new_embed.color = self.embed.color  # Preserve the original color if desired
+
+        # Update the reference to the new embed
+        self.embed = new_embed
+
         await interaction.response.edit_message(content="✅ Embed reset.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -828,7 +838,6 @@ class EditFieldButton(BaseButton):
         field_index = int(value.split("_")[1])
         await interaction.response.send_modal(
             EditFieldModal(self.embed, field_index))
-
 
 
 class SendToButton(BaseButton):
