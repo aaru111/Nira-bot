@@ -70,8 +70,8 @@ class Bot(commands.Bot):
 # Main Function and Execution
 # -------------------------
 async def main() -> None:
-    intents = discord.Intents.default()
-    intents.message_content = True  # Enable only if your bot needs this
+    intents = discord.Intents.all()
+    intents.message_content = True
 
     token = os.getenv('DISCORD_BOT_TOKEN')
     if not token:
