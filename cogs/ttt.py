@@ -9,7 +9,7 @@ DEFAULT_PLAYER_O = "⭕"
 EMPTY = "‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎"  # A zero-width space to make buttons appear empty
 
 
-class TicTacToeButton(Button):
+class TicTacToeButton(discord.ui.Button):
 
     def __init__(self, x: int, y: int, game):
         super().__init__(style=discord.ButtonStyle.secondary,
@@ -21,7 +21,7 @@ class TicTacToeButton(Button):
         self.emoji = None
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.user != self.game.current_player and interaction.user != self.game.player1 and interaction.user != self.game.player2:
+        if interaction.user not in [self.game.player1, self.game.player2]:
             await interaction.response.send_message(
                 "You are not part of this game!", ephemeral=True)
             return
@@ -65,7 +65,7 @@ class TicTacToeGame:
                  ctx: commands.Context, player_x: str, player_o: str):
         self.player1 = player1
         self.player2 = player2
-        self.current_player = player1
+        self.current_player = random.choice([player1, player2])
         self.current_symbol = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_x = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_o = self._format_emoji(player_o or DEFAULT_PLAYER_O)
