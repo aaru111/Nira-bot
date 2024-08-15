@@ -42,10 +42,17 @@ class Errors(commands.Cog):
                               color=EMBED_COLOR)
         view = discord.ui.View()
         view.add_item(HelpButton(ctx, title, description, button_color))
-        await ctx.send(embed=embed,
-                       view=view,
-                       ephemeral=True,
-                       delete_after=DELETE_AFTER)
+
+        try:
+            await ctx.send(embed=embed,
+                           view=view,
+                           ephemeral=True,
+                           delete_after=DELETE_AFTER)
+        except discord.errors.NotFound:
+            # The channel was not found, possibly deleted or bot lacks permissions
+            print(
+                f"Failed to send an error embed because the channel was not found or bot lacks permissions."
+            )
 
     async def close(self) -> None:
         """
@@ -122,6 +129,12 @@ class Errors(commands.Cog):
             ctx (commands.Context): The context in which the command was invoked.
             error (commands.CommandError): The error that was raised.
         """
+        if isinstance(error,
+                      discord.errors.HTTPException) and error.status == 429:
+            # Log the rate limit issue
+            print("Hit rate limit. Retrying after delay.")
+            return  # You can also add a retry mechanism here if necessary
+
         command_name = ctx.command.qualified_name if ctx.command else "Unknown Command"
         command_signature = getattr(ctx.command, 'signature',
                                     '') if ctx.command else ""

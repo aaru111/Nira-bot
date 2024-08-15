@@ -1,231 +1,374 @@
 import discord
 from discord.ext import commands
-from typing import Optional
-from discord.ui import Button, View
+from typing import Optional, List
 import aiohttp
+import asyncio
 import time
-import random  # Import random module
+from functools import wraps
 
 
-class AvatarView(View):
+def ensure_permissions(permission: str):
+    """Decorator to check user permissions."""
+
+    def decorator(func):
+
+        @wraps(func)
+        async def wrapper(self, ctx: commands.Context, *args, **kwargs):
+            if not getattr(ctx.author.guild_permissions, permission):
+                await ctx.send(
+                    f"You don't have the {permission} permission to use this command.",
+                    ephemeral=True)
+                return
+            return await func(self, ctx, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+class CustomButton(discord.ui.Button):
+    """Custom button for Discord UI."""
+
+    def __init__(self, label: str, emoji: str, url: str):
+        super().__init__(label=label,
+                         emoji=emoji,
+                         style=discord.ButtonStyle.link,
+                         url=url)
+
+
+class AvatarView(discord.ui.View):
+    """View containing a button to download a user's avatar."""
 
     def __init__(self, user_avatar_url: str):
         super().__init__()
+        self.add_item(CustomButton("Download", "⬇️", user_avatar_url))
 
-        # List of Button styles to choose from
-        button_styles = [
-            discord.ButtonStyle.primary, discord.ButtonStyle.secondary,
-            discord.ButtonStyle.success, discord.ButtonStyle.danger
-        ]
 
-        # Randomly select a button style
-        random_style = random.choice(button_styles)
+class ConfirmationView(discord.ui.View):
+    """View for confirmation with Yes/No buttons."""
 
-        download_button = Button(
-            label="Download",
-            emoji="⬇️",
-            style=random_style,  # Set the random style
-            url=user_avatar_url)
-        self.add_item(download_button)
+    def __init__(self, ctx: commands.Context, channel: discord.TextChannel):
+        super().__init__(timeout=30)  # 30 seconds to respond
+        self.ctx = ctx
+        self.channel = channel
+        self.value = None
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        """Ensure only the command invoker can interact."""
+        if interaction.user != self.ctx.author:
+            await interaction.response.send_message(
+                "Only the user who initiated the command can interact.",
+                ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Yes",
+                       style=discord.ButtonStyle.danger,
+                       emoji="✅")
+    async def confirm(self, interaction: discord.Interaction,
+                      button: discord.ui.Button):
+        """Handle the confirmation."""
+        await interaction.response.defer()
+        self.value = True
+        self.stop()
+
+    @discord.ui.button(label="No",
+                       style=discord.ButtonStyle.secondary,
+                       emoji="❌")
+    async def cancel(self, interaction: discord.Interaction,
+                     button: discord.ui.Button):
+        """Handle the cancellation."""
+        await interaction.response.defer()
+        self.value = False
+        self.stop()
 
 
 class Moderation(commands.Cog):
+    """Cog for moderation commands."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.session = aiohttp.ClientSession()
+        self.nuke_cooldowns = commands.CooldownMapping.from_cooldown(
+            1, 300, commands.BucketType.member)
 
-    async def close(self):
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
         await self.session.close()
 
-    @commands.Cog.listener()
-    async def on_shutdown(self):
-        await self.close()
-
-    @commands.Cog.listener()
-    async def on_disconnect(self):
-        await self.close()
-
-    @commands.command(aliases=['av', 'pfp'])
-    async def avatar(self, ctx, user: Optional[discord.User] = None):
+    @commands.hybrid_command()
+    async def avatar(self,
+                     ctx: commands.Context,
+                     user: Optional[discord.User] = None):
+        """Show a user's avatar."""
         user = user or ctx.author
-        embed = discord.Embed(title=f"{user}'s Profile Picture:",
+        embed = discord.Embed(title=f"{user}'s Profile Picture",
                               color=discord.Color.random())
         embed.set_image(url=user.display_avatar.url)
-        embed.set_footer(text=f"Requested by -> {ctx.author.name}",
+        embed.set_footer(text=f"Requested by {ctx.author.name}",
                          icon_url=ctx.author.avatar.url)
+        await ctx.send(embed=embed, view=AvatarView(user.display_avatar.url))
 
-        view = AvatarView(user.display_avatar.url)
-        await ctx.send(embed=embed, view=view)
-
-    @commands.command()
-    @commands.has_permissions(kick_members=True)
+    @commands.hybrid_command()
+    @ensure_permissions("kick_members")
     async def kick(self,
                    ctx: commands.Context,
                    member: discord.Member,
                    *,
-                   Reason: Optional[str] = None):
-        reason_text = Reason if Reason else "No reason provided"
-        await member.kick(reason=reason_text)
+                   reason: Optional[str] = None):
+        """Kick a member."""
+        reason = reason or "No reason provided"
+        await member.kick(reason=reason)
         await ctx.send(
-            f"{member.mention}, you have been kicked by **{ctx.author}**.\nReason: {reason_text}"
-        )
+            f"{member.mention} has been kicked by **{ctx.author}**.\nReason: {reason}",
+            ephemeral=True)
 
-    @commands.command()
-    @commands.has_permissions(ban_members=True)
+    @commands.hybrid_command()
+    @ensure_permissions("ban_members")
     async def ban(self,
                   ctx: commands.Context,
                   member: discord.Member,
                   *,
-                  Reason: str = "No reason provided"):
-        await member.ban(reason=Reason)
-        await ctx.send(
-            f"<@{member.id}> **Has Been** *Successfully* **Banned From The Guild**",
-            delete_after=4)
+                  reason: Optional[str] = None):
+        """Ban a member."""
+        reason = reason or "No reason provided"
+        await member.ban(reason=reason)
+        await ctx.send(f"{member.mention} has been banned from the guild.",
+                       ephemeral=True)
 
-    @commands.command()
-    @commands.has_permissions(kick_members=True)
+    @commands.hybrid_command()
+    @ensure_permissions("kick_members")
     async def warn(self,
                    ctx: commands.Context,
                    member: discord.Member,
                    *,
-                   Reason: Optional[str] = None):
-        reason_text = Reason if Reason else "No reason provided"
+                   reason: Optional[str] = None):
+        """Warn a member."""
+        reason = reason or "No reason provided"
         await ctx.send(
-            f"{member.mention}, you have been warned by **{ctx.author}**.\nReason: {reason_text}"
+            f"{member.mention}, you have been warned by **{ctx.author}**.\nReason: {reason}"
         )
 
-    @commands.command(aliases=['clear', 'clr'])
-    @commands.has_permissions(manage_messages=True)
+    @commands.hybrid_command(name="purge")
+    @ensure_permissions("manage_messages")
     async def purge(self, ctx: commands.Context, amount: int = 2):
-        if isinstance(ctx.channel, discord.TextChannel):
-            await ctx.channel.purge(limit=amount)
-            embed = discord.Embed(
-                title="**Messages Has Been Deleted** *Successfully*!!",
-                description=f"```py\nAmount Deleted: {amount}```")
-            embed.set_footer(
-                text=
-                f"This Message Will Be Deleted Shortly After 4 Seconds..  •  Moderator: {ctx.author.name}"
-            )
-            await ctx.send(embed=embed, delete_after=4)
+        """Delete messages."""
+        if not isinstance(ctx.channel, discord.TextChannel):
+            await ctx.send("This command can only be used in a text channel.",
+                           ephemeral=True)
+            return
 
-    @commands.command()
-    @commands.has_guild_permissions(ban_members=True)
-    async def unban(self, ctx, user: int):
-        guild = ctx.guild
-        user_obj = discord.Object(user)
+        deleted = await ctx.channel.purge(limit=amount)
+        await ctx.send(f"Deleted {len(deleted)} messages.",
+                       ephemeral=True,
+                       delete_after=5)
+
+    @commands.hybrid_command()
+    @ensure_permissions("ban_members")
+    async def unban(self, ctx: commands.Context, user_id: str):
+        """Unban a user."""
         try:
-            await guild.unban(user_obj)
-            await ctx.channel.send(
-                f"<@{user}> **Has Been** *Successfully* **UnBanned!**",
-                delete_after=4)
-        except discord.NotFound:
-            await ctx.send("This user is not banned", delete_after=4)
+            user = await self.bot.fetch_user(int(user_id))
+            await ctx.guild.unban(user)
+            await ctx.send(f"{user.mention} has been unbanned.",
+                           ephemeral=True)
+        except (ValueError, discord.NotFound):
+            await ctx.send("User not found or not banned.", ephemeral=True)
 
-    @commands.command(pass_context=True, aliases=['ch_id', 'channelid'])
-    async def channel_id(self, ctx, channel_name: str):
+    @commands.hybrid_command()
+    async def channel_id(self, ctx: commands.Context, channel_name: str):
+        """Get a channel's ID by name."""
         channel = discord.utils.get(ctx.guild.channels, name=channel_name)
         if channel:
-            await ctx.channel.send(
-                f"The Channel <#{channel.id}>'s **ID** Is: ```py\n{channel.id}```"
-            )
+            await ctx.send(
+                f"The Channel {channel.mention}'s ID is: `{channel.id}`")
         else:
-            await ctx.channel.send("Channel Not Found")
+            await ctx.send("Channel not found.", ephemeral=True)
 
-    @commands.command()
-    async def slowmode(self, ctx, channel: discord.TextChannel, delay: int):
+    @commands.hybrid_command()
+    @ensure_permissions("manage_channels")
+    async def slowmode(self, ctx: commands.Context,
+                       channel: discord.TextChannel, delay: int):
+        """Set a channel's slowmode delay."""
         if delay < 0:
             await ctx.send(
-                "The slowmode delay must be greater than or equal to 0 seconds."
-            )
+                "The slowmode delay must be greater than or equal to 0 seconds.",
+                ephemeral=True)
             return
         await channel.edit(slowmode_delay=delay)
         await ctx.send(
-            f"Slowmode for {channel.name} has been changed to {delay} seconds."
+            f"Slowmode for {channel.mention} has been changed to {delay} seconds."
         )
 
-    @commands.command()
-    @commands.has_permissions(manage_channels=True)
-    async def nuke(self, ctx, channel: Optional[discord.TextChannel] = None):
-        channel = channel or ctx.channel  # Use the current channel if none is provided
-
-        if not isinstance(channel, discord.TextChannel):
-            await ctx.send("This command can only be used in a text channel.")
+    @commands.hybrid_command()
+    @ensure_permissions("manage_channels")
+    async def nuke(self,
+                   ctx: commands.Context,
+                   channel: Optional[discord.TextChannel] = None):
+        """Delete and recreate a channel, with confirmation."""
+        if not await self._check_nuke_cooldown(ctx):
+            await ctx.send(
+                "You need to wait before using the nuke command again.",
+                ephemeral=True)
             return
 
-        name = channel.name
-        category = channel.category
-        position = channel.position
-        overwrites = {
-            target: overwrite
-            for target, overwrite in channel.overwrites.items()
-            if isinstance(target, (discord.Role, discord.Member))
-        }
-        topic = channel.topic or ""
-        nsfw = channel.is_nsfw()
-        slowmode_delay = channel.slowmode_delay
-        reason = f"Channel nuked by {ctx.author}"
-        permissions_synced = channel.permissions_synced
-        announcement_channel = channel.is_news()
-        guild = channel.guild
+        channel = channel or ctx.channel
+        if not isinstance(channel, discord.TextChannel):
+            await ctx.send("This command can only be used in a text channel.",
+                           ephemeral=True)
+            return
 
+        # Send the confirmation view with Yes/No buttons
+        confirmation_view = ConfirmationView(ctx, channel)
+        confirmation_message = await ctx.send(
+            f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
+            view=confirmation_view)
+
+        timeout = await confirmation_view.wait()
+
+        # Disable buttons after interaction or timeout
+        for child in confirmation_view.children:
+            child.disabled = True
+        await confirmation_message.edit(view=confirmation_view)
+
+        if confirmation_view.value is None:
+            await ctx.send("Nuke command timed out. No action was taken.",
+                           ephemeral=True)
+            return
+        elif confirmation_view.value is False:
+            await ctx.send("Nuke command cancelled.", ephemeral=True)
+            return
+
+        # Defer the response to give the bot time to process
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=True)
+        else:
+            await ctx.typing(
+            )  # Use ctx.typing() instead of ctx.trigger_typing()
+
+        properties = await self._get_channel_properties(channel)
+        webhooks, invites, pinned_messages = await self._fetch_channel_data(
+            channel)
+
+        await channel.delete(reason=f"Channel nuked by {ctx.author}")
+
+        # Create the new channel
+        new_channel = await self._create_new_channel(ctx.guild, properties)
+        await self._recreate_channel_data(new_channel, webhooks, invites,
+                                          pinned_messages)
+
+        # Compose the message content
+        message_content = (
+            f"Channel has been nuked by {ctx.author.mention}\n"
+            f"Channel {new_channel.mention} has been nuked and recreated.")
+
+        # Send the message in the new channel
+        await new_channel.send(message_content)
+
+        # Notify the user in their original context
+        if ctx.interaction:
+            await ctx.send(f"Nuked and recreated {new_channel.mention}.",
+                           ephemeral=True)
+        else:
+            await ctx.send(f"Nuked and recreated {new_channel.mention}.")
+
+    async def _check_nuke_cooldown(self, ctx: commands.Context) -> bool:
+        """Check nuke command cooldown."""
+        bucket = self.nuke_cooldowns.get_bucket(ctx.message)
+        retry_after = bucket.update_rate_limit()
+        if retry_after:
+            return False
+        return True
+
+    async def _get_channel_properties(self,
+                                      channel: discord.TextChannel) -> dict:
+        """Get channel properties."""
+        return {
+            'name': channel.name,
+            'category': channel.category,
+            'position': channel.position,
+            'overwrites': channel.overwrites,
+            'topic': channel.topic or "",
+            'nsfw': channel.is_nsfw(),
+            'slowmode_delay': channel.slowmode_delay,
+            'permissions_synced': channel.permissions_synced,
+            'is_news': channel.is_news()
+        }
+
+    async def _fetch_channel_data(self, channel: discord.TextChannel) -> tuple:
+        """Fetch channel data (webhooks, invites, pinned messages)."""
         webhooks = await channel.webhooks()
         invites = await channel.invites()
         pinned_messages = await channel.pins()
+        pinned_messages.sort(key=lambda m: m.created_at)
+        return webhooks, invites, pinned_messages
 
-        await channel.delete()
-
-        if category:
-            new_channel = await category.create_text_channel(
-                name, overwrites=overwrites, reason=reason)
-        else:
-            new_channel = await guild.create_text_channel(
-                name, overwrites=overwrites, reason=reason)
-
-        await new_channel.edit(position=position,
-                               topic=topic,
-                               nsfw=nsfw,
-                               slowmode_delay=slowmode_delay,
-                               sync_permissions=permissions_synced)
-        if announcement_channel:
+    async def _create_new_channel(self, guild: discord.Guild,
+                                  properties: dict) -> discord.TextChannel:
+        """Create a new channel."""
+        new_channel = await guild.create_text_channel(
+            name=properties['name'],
+            category=properties['category'],
+            overwrites=properties['overwrites'],
+            position=properties['position'],
+            topic=properties['topic'],
+            nsfw=properties['nsfw'],
+            slowmode_delay=properties['slowmode_delay'])
+        if properties['is_news']:
             await new_channel.edit(type=discord.ChannelType.news)
+        return new_channel
 
+    async def _recreate_channel_data(self, new_channel: discord.TextChannel,
+                                     webhooks: List[discord.Webhook],
+                                     invites: List[discord.Invite],
+                                     pinned_messages: List[discord.Message]):
+        """Recreate data in the new channel."""
         for webhook in webhooks:
-            name = webhook.name or "Default Webhook Name"
-            await new_channel.create_webhook(
-                name=name,
-                avatar=await webhook.avatar.read() if webhook.avatar else None,
-                reason=reason)
+            avatar = None
+            if webhook.avatar:
+                avatar = await webhook.avatar.read()
+            await new_channel.create_webhook(name=webhook.name, avatar=avatar)
 
         for invite in invites:
-            await new_channel.create_invite(max_age=invite.max_age or 0,
-                                            max_uses=invite.max_uses or 0,
-                                            temporary=invite.temporary
-                                            or False,
-                                            unique=getattr(
-                                                invite, 'unique', False),
-                                            reason=reason)
+            await new_channel.create_invite(
+                max_age=invite.max_age if invite.max_age != 0 else None,
+                max_uses=invite.max_uses if invite.max_uses != 0 else None,
+                temporary=invite.temporary,
+                unique=invite.unique)
 
         for message in pinned_messages:
-            new_msg = await new_channel.send(message.content)
-            await new_msg.pin()
+            content = message.content
+            embeds = message.embeds
+            files = []
+            for attachment in message.attachments:
+                fp = await attachment.read()
+                file = discord.File(fp=fp, filename=attachment.filename)
+                files.append(file)
 
-        await new_channel.send(
-            f"Channel has been nuked by {ctx.author.mention}")
+            new_message = await new_channel.send(content=content,
+                                                 embeds=embeds,
+                                                 files=files)
+            await new_message.pin()
+            await asyncio.sleep(1)  # 1-second delay between pins
 
-    @commands.command(name='ping')
-    async def ping(self, ctx):
+    @commands.hybrid_command()
+    async def ping(self, ctx: commands.Context):
+        """Check bot latency."""
         websocket_latency = round(self.bot.latency * 1000, 2)
         start_time = time.time()
         message = await ctx.send("Pinging...")
         response_time = round((time.time() - start_time) * 1000, 2)
+
         embed = discord.Embed(title="🏓 Pong!", color=0x2f3131)
         embed.add_field(name="WebSocket Latency",
                         value=f"`{websocket_latency} ms`")
         embed.add_field(name="Response Time", value=f"`{response_time} ms`")
         embed.set_footer(text="Bot Latency Information")
+
         await message.edit(content=None, embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Set up the Moderation cog."""
     await bot.add_cog(Moderation(bot))
