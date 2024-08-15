@@ -51,7 +51,7 @@ class Errors(commands.Cog):
         except discord.errors.NotFound:
             # The channel was not found, possibly deleted or bot lacks permissions
             print(
-                f"Failed to send an error embed because the channel was not found or bot lacks permissions."
+                "Failed to send an error embed because the channel was not found or bot lacks permissions."
             )
 
     async def close(self) -> None:

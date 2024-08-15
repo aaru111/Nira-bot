@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 # File paths for storing data
 DATA_PATH = "data/reaction_roles.json"
 TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
-
 RATE_LIMIT_INTERVAL = 2
 RATE_LIMIT_CLEANUP_INTERVAL = 60
 
@@ -38,22 +37,6 @@ class RolesyncCooldown:
         return True
 
 
-class NavigationButton(discord.ui.Button):
-
-    def __init__(self,
-                 style: discord.ButtonStyle,
-                 label: str,
-                 custom_id: str,
-                 row: int = 1):
-        super().__init__(style=style,
-                         label=label,
-                         custom_id=custom_id,
-                         row=row)
-
-    async def callback(self, interaction: discord.Interaction):
-        await self.view.update_embed(interaction, self.custom_id)
-
-
 class NavigationView(discord.ui.View):
 
     def __init__(self, cog: 'ReactionRole', guild: discord.Guild,
@@ -65,22 +48,11 @@ class NavigationView(discord.ui.View):
         self.current_page = 0
         self.message_ids = self.get_message_ids()
 
-        self.prev_button = NavigationButton(discord.ButtonStyle.primary,
-                                            "Previous", "prev")
-        self.next_button = NavigationButton(discord.ButtonStyle.primary,
-                                            "Next", "next")
-        self.update_button_state()
-
-        self.add_item(self.prev_button)
-        self.add_item(self.next_button)
-
     def get_message_ids(self) -> List[str]:
-        guild_id = str(self.guild.id)
-        channel_id = str(self.channel.id)
         return ['overview'] + [
-            message_id
-            for message_id, roles_data in self.cog.reaction_roles[guild_id].
-            items() if roles_data[0]['channel_id'] == channel_id
+            message_id for message_id, roles_data in self.cog.reaction_roles[
+                str(self.guild.id)].items()
+            if roles_data[0]['channel_id'] == str(self.channel.id)
         ]
 
     def update_button_state(self):
@@ -88,22 +60,32 @@ class NavigationView(discord.ui.View):
         self.next_button.disabled = self.current_page == len(
             self.message_ids) - 1
 
-    async def update_embed(self, interaction: discord.Interaction,
-                           button_id: str):
-        if button_id == "prev" and self.current_page > 0:
+    @discord.ui.button(label="Previous",
+                       style=discord.ButtonStyle.primary,
+                       row=1)
+    async def prev_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
+        if self.current_page > 0:
             self.current_page -= 1
-        elif button_id == "next" and self.current_page < len(
-                self.message_ids) - 1:
-            self.current_page += 1
-
         self.update_button_state()
+        await self.update_embed(interaction)
 
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=1)
+    async def next_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
+        if self.current_page < len(self.message_ids) - 1:
+            self.current_page += 1
+        self.update_button_state()
+        await self.update_embed(interaction)
+
+    async def update_embed(self, interaction: discord.Interaction):
         if self.current_page == 0:
             embed = await self.cog.create_channel_reaction_roles_embed(
                 self.guild, self.channel)
         else:
+            message_id = self.message_ids[self.current_page]
             embed = await self.cog.create_message_reaction_roles_embed(
-                self.guild, self.channel, self.message_ids[self.current_page])
+                self.guild, self.channel, message_id)
 
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -118,13 +100,12 @@ class ChannelSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         channel_id = int(self.values[0])
         channel = interaction.guild.get_channel(channel_id)
-
-        view = NavigationView(self.cog, interaction.guild, channel)
-        overview_embed = await self.cog.create_channel_reaction_roles_embed(
-            interaction.guild, channel)
-
-        await interaction.response.edit_message(embed=overview_embed,
-                                                view=view)
+        if channel:
+            view = NavigationView(self.cog, interaction.guild, channel)
+            overview_embed = await self.cog.create_channel_reaction_roles_embed(
+                interaction.guild, channel)
+            await interaction.response.edit_message(embed=overview_embed,
+                                                    view=view)
 
 
 class ChannelSelectView(discord.ui.View):
@@ -181,11 +162,9 @@ class JsonDataManager(DataManager):
         """Load JSON data from a file."""
         try:
             with open(file_path, "r") as file:
-                data = json.load(file)
-        except json.JSONDecodeError:
-            # If the file is empty or invalid, return an empty structure
+                return json.load(file)
+        except (json.JSONDecodeError, FileNotFoundError):
             return {} if file_path == DATA_PATH else []
-        return data
 
     @staticmethod
     def save_data(file_path: str, data: Any) -> None:
@@ -202,7 +181,6 @@ class FileManager:
         """Create necessary directories and files if they don't exist."""
         os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
         os.makedirs(os.path.dirname(TRACKED_MESSAGES_PATH), exist_ok=True)
-
         for file_path in [DATA_PATH, TRACKED_MESSAGES_PATH]:
             if not os.path.exists(file_path):
                 JsonDataManager.save_data(file_path,
@@ -210,9 +188,7 @@ class FileManager:
 
 
 class ReactionRoleManager:
-    """
-    Manages reaction role operations, reducing code duplication.
-    """
+    """Manages reaction role operations, reducing code duplication."""
 
     def __init__(self, cog: commands.Cog):
         self.cog = cog
@@ -239,111 +215,42 @@ class ReactionRoleManager:
                                            emoji=emoji,
                                            custom_id=custom_id)
 
-                async def button_callback(interaction: discord.Interaction,
-                                          role=role):
-                    """Callback function for button clicks."""
-                    if not self.cog.check_rate_limit(interaction.user.id):
-                        await interaction.response.send_message(
-                            "You're doing that too fast. Please wait a moment.",
-                            ephemeral=True)
-                        return
-
-                    if role in interaction.user.roles:
-                        await interaction.user.remove_roles(role)
-                        await interaction.response.send_message(
-                            f"Role {role.name} removed!", ephemeral=True)
-                    else:
-                        await interaction.user.add_roles(role)
-                        await interaction.response.send_message(
-                            f"Role {role.name} assigned!", ephemeral=True)
-
-                button.callback = button_callback
-
+            button.callback = self.create_button_callback(role)
             view.add_item(button)
 
         await message.edit(view=view)
+
+    def create_button_callback(self, role: discord.Role):
+
+        async def button_callback(interaction: discord.Interaction):
+            if not self.cog.check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "You're doing that too fast. Please wait a moment.",
+                    ephemeral=True)
+                return
+
+            if role in interaction.user.roles:
+                await interaction.user.remove_roles(role)
+                await interaction.response.send_message(
+                    f"Role {role.name} removed!", ephemeral=True)
+            else:
+                await interaction.user.add_roles(role)
+                await interaction.response.send_message(
+                    f"Role {role.name} assigned!", ephemeral=True)
+
+        return button_callback
 
     async def handle_message_deletion(self, message: discord.Message):
         """Handle message deletion events."""
         guild_id = str(message.guild.id)
         message_id = str(message.id)
-
         if guild_id in self.cog.reaction_roles and message_id in self.cog.reaction_roles[
                 guild_id]:
             self.cog.delete_reaction_role(guild_id, message_id)
 
 
 class ReactionRole(commands.Cog):
-    """
-    A Discord bot cog for managing reaction roles.
-
-    This cog allows users to create reaction roles, where clicking a button
-    assigns or removes a specific role from a user.
-    """
-
-    async def create_message_reaction_roles_embed(
-            self, guild: discord.Guild, channel: discord.TextChannel,
-            message_id: str) -> discord.Embed:
-        embed = discord.Embed(
-            title=f"🎭 __Reaction Roles in #{channel.name}__",
-            description="```yaml\nConfigured reaction roles for message:```",
-            color=discord.Color.blurple())
-        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-
-        guild_id = str(guild.id)
-        channel_id = str(channel.id)
-
-        roles_data = self.reaction_roles[guild_id][message_id]
-        message_link = f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
-        field_value = f"[🔗 Jump to Message]({message_link})\n\n"
-
-        for role_data in roles_data:
-            role = guild.get_role(int(role_data['role_id']))
-            emoji = role_data['emoji']
-            field_value += f"{emoji} {role.mention}\n"
-
-        embed.add_field(name=f"📝 __Message ID: {message_id}__",
-                        value=field_value,
-                        inline=False)
-
-        embed.set_footer(
-            text=f"Use /reaction-role to add or modify roles • {guild.name}",
-            icon_url=guild.icon.url if guild.icon else None)
-        embed.timestamp = discord.utils.utcnow()
-
-        return embed
-
-    async def create_channel_reaction_roles_embed(
-            self, guild: discord.Guild,
-            channel: discord.TextChannel) -> discord.Embed:
-        embed = discord.Embed(
-            title=f"🎭 __Reaction Roles in #{channel.name}__",
-            description=
-            "```yaml\nOverview of reaction roles in this channel:```",
-            color=discord.Color.blurple())
-        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-
-        guild_id = str(guild.id)
-        channel_id = str(channel.id)
-
-        message_count = 0
-        role_count = 0
-        for message_id, roles_data in self.reaction_roles[guild_id].items():
-            if roles_data[0]['channel_id'] == channel_id:
-                message_count += 1
-                role_count += len(roles_data)
-
-        embed.add_field(name="📊 __Summary__",
-                        value=f"```css\nTotal Messages: {message_count}\n"
-                        f"Total Roles: {role_count}```",
-                        inline=False)
-
-        embed.set_footer(
-            text=f"Use the navigation buttons to view details • {guild.name}",
-            icon_url=guild.icon.url if guild.icon else None)
-        embed.timestamp = discord.utils.utcnow()
-
-        return embed
+    """A Discord bot cog for managing reaction roles."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -368,7 +275,7 @@ class ReactionRole(commands.Cog):
         return True
 
     async def cleanup_rate_limit_dict(self):
-        """Periodically clean up the rate limit dictionary to prevent memory leaks."""
+        """Periodically cleanup the rate limit dictionary to prevent memory leaks."""
         while not self.bot.is_closed():
             current_time = asyncio.get_event_loop().time()
             self.rate_limit_dict = {
@@ -388,21 +295,14 @@ class ReactionRole(commands.Cog):
                                   list(self.tracked_messages))
 
     async def setup_reaction_roles(self):
-        """
-        Set up reaction roles when the bot starts.
-
-        This method retrieves all saved reaction roles and adds the corresponding
-        buttons to the messages.
-        """
+        """Setup reaction roles when the bot starts."""
         await self.bot.wait_until_ready()
         to_delete = []
-
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
                 to_delete.append(guild_id)
                 continue
-
             for message_id, roles_data in messages.items():
                 channel = self.bot.get_channel(int(
                     roles_data[0]['channel_id']))
@@ -414,9 +314,8 @@ class ReactionRole(commands.Cog):
                         self.tracked_messages.add(int(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
-                    await asyncio.sleep(0.1)  # Avoid rate limiting
+                await asyncio.sleep(0.1)  # Avoid rate limiting
 
-        # Clean up deleted messages after a delay
         await asyncio.sleep(30)
         for entry in to_delete:
             if isinstance(entry, tuple):
@@ -434,10 +333,9 @@ class ReactionRole(commands.Cog):
             del self.reaction_roles[guild_id][message_id]
             if not self.reaction_roles[guild_id]:
                 del self.reaction_roles[guild_id]
-            self.save_reaction_roles()
-            self.tracked_messages.discard(int(message_id))
-            self.save_tracked_messages()
-            print(f"Deleted reaction role info for message ID: {message_id}")
+        self.save_reaction_roles()
+        self.tracked_messages.discard(int(message_id))
+        self.save_tracked_messages()
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
@@ -464,7 +362,7 @@ class ReactionRole(commands.Cog):
         return [
             app_commands.Choice(name=emoji.name, value=str(emoji.id))
             for emoji in interaction.guild.emojis
-        ][:25]  # Discord limits choices to 25
+        ][:25]
 
     @app_commands.command(name="reaction-role",
                           description="Add a reaction role to a message")
@@ -487,55 +385,59 @@ class ReactionRole(commands.Cog):
                             link: str = None):
         """Command to add a reaction role to a message."""
         await interaction.response.defer(ephemeral=True)
-
         try:
             message_id, channel_id = self.parse_message_link(
                 message_link, interaction.channel.id)
             channel = interaction.guild.get_channel(channel_id)
             if not channel:
                 raise ValueError("Channel not found.")
-
             message = await channel.fetch_message(message_id)
-
             color = ColorMapping.get_style(color if color else "blurple")
-
-            custom_id = ''.join(
-                random.choices(string.ascii_letters + string.digits, k=20))
-
             emoji_obj = discord.utils.get(interaction.guild.emojis,
                                           id=int(emoji))
             if not emoji_obj:
                 raise ValueError("Invalid emoji selected.")
-
-            new_role_data = {
-                "role_id": str(role.id),
-                "channel_id": str(channel.id),
-                "emoji": str(emoji_obj),
-                "color": color.value,
-                "custom_id": custom_id,
-                "link": link
-            }
-
             guild_id = str(interaction.guild.id)
             message_id = str(message.id)
 
             if guild_id not in self.reaction_roles:
                 self.reaction_roles[guild_id] = {}
-
             if message_id not in self.reaction_roles[guild_id]:
                 self.reaction_roles[guild_id][message_id] = []
 
-            self.reaction_roles[guild_id][message_id].append(new_role_data)
-            self.save_reaction_roles()
+            existing_role = next(
+                (role_data
+                 for role_data in self.reaction_roles[guild_id][message_id]
+                 if role_data["role_id"] == str(role.id)), None)
 
+            if existing_role:
+                custom_id = existing_role["custom_id"]
+                existing_role.update({
+                    "channel_id": str(channel.id),
+                    "emoji": str(emoji_obj),
+                    "color": color.value,
+                    "link": link
+                })
+            else:
+                custom_id = ''.join(
+                    random.choices(string.ascii_letters + string.digits, k=20))
+                new_role_data = {
+                    "role_id": str(role.id),
+                    "channel_id": str(channel.id),
+                    "emoji": str(emoji_obj),
+                    "color": color.value,
+                    "custom_id": custom_id,
+                    "link": link
+                }
+                self.reaction_roles[guild_id][message_id].append(new_role_data)
+
+            self.save_reaction_roles()
             await self.role_manager.add_buttons_to_message(
                 message, self.reaction_roles[guild_id][message_id])
-
             self.tracked_messages.add(int(message_id))
             self.save_tracked_messages()
-
             await interaction.followup.send(
-                "Reaction role added successfully!", ephemeral=True)
+                "Reaction role added or updated successfully!", ephemeral=True)
         except (ValueError, discord.NotFound, discord.HTTPException) as e:
             await interaction.followup.send(f"Error: {str(e)}", ephemeral=True)
 
@@ -560,106 +462,96 @@ class ReactionRole(commands.Cog):
 
     @app_commands.command(
         name="reaction-role-summary",
-        description="Show a summary of all configured reaction roles")
+        description=
+        "Show a summary of all configured reaction roles and sync data")
+    @app_commands.checks.cooldown(1,
+                                  10.0,
+                                  key=lambda i: (i.guild_id, i.user.id))
+    @app_commands.checks.has_permissions(manage_roles=True)
     async def reaction_role_summary(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        invalid_entries = await self.sync_reaction_roles()
         guild_id = str(interaction.guild.id)
+
         if guild_id not in self.reaction_roles or not self.reaction_roles[
                 guild_id]:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "No reaction roles configured in this server.", ephemeral=True)
             return
 
-        channel_ids = set()
-        invalid_entries = 0
-        for roles_data in self.reaction_roles[guild_id].values():
-            channel_id = int(roles_data[0]['channel_id'])
-            channel_ids.add(channel_id)
-            if not interaction.guild.get_channel(channel_id):
-                invalid_entries += 1
-
-        options = []
-        for channel_id in channel_ids:
-            channel = interaction.guild.get_channel(channel_id)
-            if channel:
-                options.append(
-                    discord.SelectOption(label=channel.name,
-                                         value=str(channel_id)))
+        channel_ids = {
+            int(roles_data[0]['channel_id'])
+            for roles_data in self.reaction_roles[guild_id].values()
+        }
+        options = [
+            discord.SelectOption(
+                label=interaction.guild.get_channel(channel_id).name,
+                value=str(channel_id)) for channel_id in channel_ids
+            if interaction.guild.get_channel(channel_id)
+        ]
 
         if not options:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "No valid channels with reaction roles found.", ephemeral=True)
             return
 
         view = ChannelSelectView(self, options)
         embed = discord.Embed(
-            title="📊 __**Reaction Roles Summary**__",
+            title="📊__**Reaction Roles Summary**__",
             description=
             "```yaml\nSelect a channel below to view its configured reaction roles:```",
             color=discord.Color.blurple())
-
         embed.add_field(
-            name="📌 __Total Channels__",
+            name="📌__Total Channels__",
             value=f"```css\n{len(options)} channel(s) with reaction roles```",
             inline=False)
-
         embed.add_field(
-            name="ℹ️ __How to Use__",
-            value="1️⃣ Choose a channel from the dropdown menu\n"
-            "2️⃣ View the overview and reaction roles for that channel\n"
-            "3️⃣ Use navigation buttons to browse multiple messages\n"
-            "4️⃣ Manage roles using the `/reaction-role` command",
+            name="ℹ️__How to Use__",
+            value=(
+                "1️⃣ Choose a channel from the dropdown menu\n"
+                "2️⃣ View the overview and reaction roles for that channel\n"
+                "3️⃣ Use navigation buttons to browse multiple messages\n"
+                "4️⃣ Manage roles using the `/reaction-role` command"),
             inline=False)
-
-        if invalid_entries > 0:
-            embed.add_field(
-                name="⚠️ __Invalid Entries Detected__",
-                value=
-                f"```diff\n- {invalid_entries} invalid entries found\n+ Use .rolesync to clean up```",
-                inline=False)
-
         embed.add_field(
-            name="🔄 __Sync Command__",
+            name="🔄__Sync Results__",
             value=
-            "To ensure your reaction roles are up-to-date and to remove any invalid entries, use the `.rolesync` command. "
-            "This command will:\n"
-            "• Check all reaction role messages\n"
-            "• Remove entries for deleted messages or channels\n"
-            "• Update the internal database\n\n"
-            "Usage: `.rolesync`\n"
-            "Note: This command has a 60-second cooldown and requires 'Manage Roles' permission.",
+            f"```diff\n{'+' if invalid_entries > 0 else '-'}{invalid_entries} invalid entries removed```",
             inline=False)
-
         embed.set_thumbnail(
             url=interaction.guild.icon.url if interaction.guild.icon else None)
-
         embed.set_footer(
             text=
             f"Requested by {interaction.user} | Server: {interaction.guild.name}",
             icon_url=interaction.user.display_avatar.url)
-
         embed.timestamp = discord.utils.utcnow()
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-        await interaction.response.send_message(embed=embed,
-                                                view=view,
-                                                ephemeral=True)
+    @reaction_role_summary.error
+    async def reaction_role_summary_error(self,
+                                          interaction: discord.Interaction,
+                                          error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"This command is on cooldown. Try again in {error.retry_after:.2f} seconds.",
+                ephemeral=True)
+        elif isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message(
+                "You don't have the required permissions to use this command.",
+                ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                "An error occurred while executing this command.",
+                ephemeral=True)
 
-    @commands.command(
-        name="rolesync",
-        help="Sync reaction roles data with current server state")
-    @commands.check(RolesyncCooldown(1, 60))  # 1 use per 60 seconds
-    @commands.has_permissions(manage_roles=True)
-    async def rolesync(self, ctx):
-        sync_message = await ctx.send(
-            "```yaml\nStarting reaction roles sync. This may take a moment...```"
-        )
-
+    async def sync_reaction_roles(self) -> int:
+        """Sync reaction roles data with current server state."""
         to_delete = []
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
                 to_delete.append(guild_id)
                 continue
-
             for message_id, roles_data in messages.items():
                 channel = self.bot.get_channel(int(
                     roles_data[0]['channel_id']))
@@ -668,65 +560,89 @@ class ReactionRole(commands.Cog):
                         await channel.fetch_message(int(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
+                        self.tracked_messages.discard(int(message_id))
                 else:
                     to_delete.append((guild_id, message_id))
+                    self.tracked_messages.discard(int(message_id))
 
-        # Clean up deleted messages
-        if to_delete:
-            for entry in to_delete:
-                if isinstance(entry, tuple):
-                    guild_id, message_id = entry
-                    self.delete_reaction_role(guild_id, message_id)
-                else:
-                    del self.reaction_roles[entry]
+        for entry in to_delete:
+            if isinstance(entry, tuple):
+                guild_id, message_id = entry
+                self.delete_reaction_role(guild_id, message_id)
+            else:
+                del self.reaction_roles[entry]
 
-            self.save_reaction_roles()
-            self.save_tracked_messages()
+        self.save_reaction_roles()
+        self.save_tracked_messages()
+        return len(to_delete)
 
-            await sync_message.edit(
-                content=
-                "```css\nReaction roles sync completed. Data has been updated.```"
-            )
-        else:
-            await sync_message.edit(
-                content=
-                "```css\nReaction roles sync completed. No changes were necessary.```"
-            )
+    async def create_message_reaction_roles_embed(
+            self, guild: discord.Guild, channel: discord.TextChannel,
+            message_id: str) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"🎭__Reaction Roles in #{channel.name}__",
+            description="```yaml\nConfigured reaction roles for message:```",
+            color=discord.Color.blurple())
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        guild_id = str(guild.id)
 
-        # Provide a summary of the sync operation
-        summary_embed = discord.Embed(title="🔄 Reaction Roles Sync Summary",
-                                      color=discord.Color.blue())
-        summary_embed.add_field(
-            name="📊 Statistics",
+        if guild_id not in self.reaction_roles or message_id not in self.reaction_roles[
+                guild_id]:
+            embed.add_field(name="Error",
+                            value="No reaction roles found for this message.",
+                            inline=False)
+            return embed
+
+        roles_data = self.reaction_roles[guild_id][message_id]
+        message_link = f"https://discord.com/channels/{guild_id}/{channel.id}/{message_id}"
+        field_value = f"[🔗 Jump to Message]({message_link})\n\n"
+
+        for role_data in roles_data:
+            role = guild.get_role(int(role_data['role_id']))
+            emoji = role_data['emoji']
+            field_value += f"{emoji} {role.mention if role else 'Unknown Role'}\n"
+
+        embed.add_field(name=f"📝__Message ID: {message_id}__",
+                        value=field_value,
+                        inline=False)
+        embed.set_footer(
+            text=f"Use /reaction-role to add or modify roles • {guild.name}",
+            icon_url=guild.icon.url if guild.icon else None)
+        embed.timestamp = discord.utils.utcnow()
+        return embed
+
+    async def create_channel_reaction_roles_embed(
+            self, guild: discord.Guild,
+            channel: discord.TextChannel) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"🎭__Reaction Roles in #{channel.name}__",
+            description=
+            "```yaml\nOverview of reaction roles in this channel:```",
+            color=discord.Color.blurple())
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        guild_id = str(guild.id)
+        channel_id = str(channel.id)
+
+        message_count = sum(
+            1 for roles_data in self.reaction_roles.get(guild_id, {}).values()
+            if roles_data[0]['channel_id'] == channel_id)
+        role_count = sum(
+            len(roles_data)
+            for roles_data in self.reaction_roles.get(guild_id, {}).values()
+            if roles_data[0]['channel_id'] == channel_id)
+
+        embed.add_field(
+            name="📊__Summary__",
             value=
-            f"```yaml\nMessages checked: {sum(len(messages) for messages in self.reaction_roles.values())}\nInvalid entries removed: {len(to_delete)}```",
+            f"```css\nTotal Messages: {message_count}\nTotal Roles: {role_count}```",
             inline=False)
-        summary_embed.add_field(
-            name="ℹ️ Info",
-            value="To clear invalid entries, run `.rolesync`",
-            inline=False)
-        summary_embed.set_footer(
-            text=f"Requested by {ctx.author}",
-            icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-
-        summary_message = await ctx.send(embed=summary_embed)
-
-        # Delete the sync message and summary message after 5 seconds
-        await asyncio.sleep(5)
-        await sync_message.delete()
-        await summary_message.delete()
-
-    @rolesync.error
-    async def rolesync_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            error_message = await ctx.send(
-                "```diff\n- You don't have the required permissions to use this command.```"
-            )
-            # Delete the error message after 5 seconds
-            await asyncio.sleep(5)
-            await error_message.delete()
+        embed.set_footer(
+            text=f"Use the navigation buttons to view details • {guild.name}",
+            icon_url=guild.icon.url if guild.icon else None)
+        embed.timestamp = discord.utils.utcnow()
+        return embed
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Set up the ReactionRole cog."""
+    """Setup the ReactionRole cog."""
     await bot.add_cog(ReactionRole(bot))

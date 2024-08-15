@@ -244,8 +244,7 @@ class Moderation(commands.Cog):
         if ctx.interaction:
             await ctx.interaction.response.defer(ephemeral=True)
         else:
-            await ctx.typing(
-            )  # Use ctx.typing() instead of ctx.trigger_typing()
+            await ctx.typing()
 
         properties = await self._get_channel_properties(channel)
         webhooks, invites, pinned_messages = await self._fetch_channel_data(
@@ -263,15 +262,30 @@ class Moderation(commands.Cog):
             f"Channel has been nuked by {ctx.author.mention}\n"
             f"Channel {new_channel.mention} has been nuked and recreated.")
 
-        # Send the message in the new channel
-        await new_channel.send(message_content)
+        # Try sending the message in the new channel
+        try:
+            await new_channel.send(message_content)
+        except discord.Forbidden:
+            await ctx.author.send(
+                f"Nuke operation completed, but the bot couldn't send a message to {new_channel.mention} due to missing permissions."
+            )
 
         # Notify the user in their original context
         if ctx.interaction:
-            await ctx.send(f"Nuked and recreated {new_channel.mention}.",
-                           ephemeral=True)
+            try:
+                await ctx.send(f"Nuked and recreated {new_channel.mention}.",
+                               ephemeral=True)
+            except discord.HTTPException:
+                await ctx.author.send(
+                    "Nuke operation completed, but the bot couldn't send a message in the original context."
+                )
         else:
-            await ctx.send(f"Nuked and recreated {new_channel.mention}.")
+            try:
+                await ctx.send(f"Nuked and recreated {new_channel.mention}.")
+            except discord.HTTPException:
+                await ctx.author.send(
+                    "Nuke operation completed, but the bot couldn't send a message in the original context."
+                )
 
     async def _check_nuke_cooldown(self, ctx: commands.Context) -> bool:
         """Check nuke command cooldown."""
