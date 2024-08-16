@@ -37,7 +37,7 @@ class TicTacToeButton(discord.ui.Button):
             return
 
         self.emoji = self.game.current_symbol
-        self.label = None  # Remove the label when setting an emoji
+        self.label = None
         self.style = discord.ButtonStyle.success if self.game.current_player == self.game.player1 else discord.ButtonStyle.danger
         self.disabled = True
         await interaction.response.edit_message(view=self.game.board_view)
@@ -54,7 +54,8 @@ class TicTacToeButton(discord.ui.Button):
                 await self.game.bot_move(interaction)
             else:
                 await interaction.edit_original_response(
-                    content=f"It's {self.game.current_player.mention}'s turn",
+                    content=f"It's {self.game.current_player.mention}'s turn"
+                    if not self.game.vs_bot else None,
                     view=self.game.board_view,
                 )
 
@@ -65,7 +66,9 @@ class TicTacToeGame:
                  ctx: commands.Context, player_x: str, player_o: str):
         self.player1 = player1
         self.player2 = player2
-        self.current_player = random.choice([player1, player2])
+        self.vs_bot = player2.bot
+        self.current_player = player1 if self.vs_bot else random.choice(
+            [player1, player2])
         self.current_symbol = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_x = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_o = self._format_emoji(player_o or DEFAULT_PLAYER_O)
@@ -76,14 +79,11 @@ class TicTacToeGame:
         self.reset_timeout_task()
 
     def _format_emoji(self, emoji: str) -> discord.PartialEmoji:
-        """Converts emoji string to discord.PartialEmoji object."""
         if emoji.startswith("<") and emoji.endswith(">"):
-            # It's a custom emoji
             emoji_id = int(emoji.split(":")[-1][:-1])
             emoji_name = emoji.split(":")[1]
             return discord.PartialEmoji(name=emoji_name, id=emoji_id)
         else:
-            # It's a Unicode emoji or default
             return discord.PartialEmoji(name=emoji)
 
     def reset_timeout_task(self):
@@ -92,9 +92,9 @@ class TicTacToeGame:
         self.timeout_task = asyncio.create_task(self.handle_timeout())
 
     async def handle_timeout(self):
-        await asyncio.sleep(60)
+        await asyncio.sleep(20)
         if self.message:
-            await self.clear_board("Game timed out due to inactivity.")
+            await self.clear_board("Game ended due to inactivity.")
 
     def create_board_view(self) -> View:
         view = View(timeout=None)
@@ -112,18 +112,14 @@ class TicTacToeGame:
                  for y in range(3)]
 
         for i in range(3):
-            if board[i][0] == board[i][1] == board[i][
-                    2] is not None:  # Check rows
+            if board[i][0] == board[i][1] == board[i][2] is not None:
                 return True
-            if board[0][i] == board[1][i] == board[2][
-                    i] is not None:  # Check columns
+            if board[0][i] == board[1][i] == board[2][i] is not None:
                 return True
 
-        if board[0][0] == board[1][1] == board[2][
-                2] is not None:  # Check main diagonal
+        if board[0][0] == board[1][1] == board[2][2] is not None:
             return True
-        if board[0][2] == board[1][1] == board[2][
-                0] is not None:  # Check anti-diagonal
+        if board[0][2] == board[1][1] == board[2][0] is not None:
             return True
 
         return False
@@ -144,7 +140,6 @@ class TicTacToeGame:
         if self.timeout_task:
             self.timeout_task.cancel()
 
-        # Clear the board
         for button in self.board_view.children:
             self.board_view.remove_item(button)
 
@@ -167,11 +162,13 @@ class TicTacToeGame:
         winner = self.current_player
         loser = self.player2 if winner == self.player1 else self.player1
         self.end_game("win", winner=winner, loser=loser)
-        await interaction.edit_original_response(view=self.board_view)
+        await interaction.edit_original_response(content="",
+                                                 view=self.board_view)
 
     async def show_draw(self, interaction: discord.Interaction):
         self.end_game("draw")
-        await interaction.edit_original_response(view=self.board_view)
+        await interaction.edit_original_response(content="",
+                                                 view=self.board_view)
 
     async def bot_move(self, interaction: discord.Interaction):
         best_score = -float('inf')
@@ -188,7 +185,7 @@ class TicTacToeGame:
 
         if best_move:
             best_move.emoji = self.current_symbol
-            best_move.label = None  # Remove the label when setting an emoji
+            best_move.label = None
             best_move.style = discord.ButtonStyle.danger
             best_move.disabled = True
             await interaction.edit_original_response(view=self.board_view)
@@ -226,11 +223,9 @@ class TicTacToeGame:
             return best_score
 
     async def clear_board(self, content: str):
-        # Clear the board
         for button in self.board_view.children:
             self.board_view.remove_item(button)
 
-        # Edit the original message
         if self.message:
             await self.message.edit(content=content, view=self.board_view)
 
@@ -252,11 +247,10 @@ class AcceptDeclineButtons(View):
             return
 
         await interaction.message.delete()
-        await interaction.channel.send(
-            f"{self.author.mention} vs {self.opponent.mention} - Let's play Tic Tac Toe!",
-            view=self.game.board_view,
-        )
-        self.game.message = interaction.message
+        initial_message = f"It's {self.game.current_player.mention}'s turn"
+        message = await interaction.channel.send(initial_message,
+                                                 view=self.game.board_view)
+        self.game.message = message
         self.stop()
 
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
@@ -297,19 +291,20 @@ class TicTacToe(commands.Cog):
         player_o (str): The emoji to use for player O. If not provided, the default "⭕" will be used.
         """
         if opponent is None:
-            return
+            opponent = ctx.guild.me
 
         game = TicTacToeGame(ctx.author, opponent, ctx, player_x, player_o)
 
         if opponent == ctx.guild.me:
             message = await ctx.send(
-                f"{ctx.author.mention} vs the bot - Let's play Tic Tac Toe!",
+                f"**{ctx.author.mention}** vs {opponent.mention} - Let's play Tic Tac Toe!",
                 view=game.board_view)
+            game.message = message
         elif opponent == ctx.author:
             await ctx.send("You cannot play against yourself!")
             return
         else:
-            message = await ctx.send(
+            await ctx.send(
                 f"{ctx.author.mention} has invited {opponent.mention} to play Tic Tac Toe. Would you like to accept?",
                 view=AcceptDeclineButtons(game, ctx.author, opponent))
 
