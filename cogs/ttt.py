@@ -65,8 +65,7 @@ class TicTacToeButton(discord.ui.Button):
 class TicTacToeGame:
 
     def __init__(self, player1: discord.Member, player2: discord.Member,
-                 ctx: discord.Interaction, player_x: str, player_o: str,
-                 board_size: int):
+                 ctx: discord.Interaction, player_x: str, player_o: str):
         self.player1 = player1
         self.player2 = player2
         self.vs_bot = player2.bot
@@ -75,7 +74,6 @@ class TicTacToeGame:
         self.current_symbol = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_x = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_o = self._format_emoji(player_o or DEFAULT_PLAYER_O)
-        self.board_size = board_size
         self.board_view = self.create_board_view()
         self.ctx = ctx
         self.timeout_task = None
@@ -101,8 +99,8 @@ class TicTacToeGame:
 
     def create_board_view(self) -> View:
         view = View(timeout=None)
-        for y in range(self.board_size):
-            for x in range(self.board_size):
+        for y in range(3):  # Fixed 3x3 board
+            for x in range(3):
                 view.add_item(TicTacToeButton(x, y, self))
         return view
 
@@ -111,25 +109,21 @@ class TicTacToeGame:
         self.current_symbol = self.player_o if self.current_symbol == self.player_x else self.player_x
 
     def check_winner(self) -> bool:
-        board = [[self.get_button(x, y).emoji for x in range(self.board_size)]
-                 for y in range(self.board_size)]
+        board = [[self.get_button(x, y).emoji for x in range(3)]
+                 for y in range(3)]
 
         # Check rows and columns
-        for i in range(self.board_size):
-            if all(board[i][j] == board[i][0] is not None
-                   for j in range(self.board_size)):
+        for i in range(3):
+            if all(board[i][j] == board[i][0] is not None for j in range(3)):
                 return True
-            if all(board[j][i] == board[0][i] is not None
-                   for j in range(self.board_size)):
+            if all(board[j][i] == board[0][i] is not None for j in range(3)):
                 return True
 
         # Check diagonals
-        if all(board[i][i] == board[0][0] is not None
-               for i in range(self.board_size)):
+        if all(board[i][i] == board[0][0] is not None for i in range(3)):
             return True
-        if all(board[i][self.board_size - 1 - i] == board[0][self.board_size -
-                                                             1] is not None
-               for i in range(self.board_size)):
+        if all(board[i][3 - 1 - i] == board[0][3 - 1] is not None
+               for i in range(3)):
             return True
 
         return False
@@ -143,10 +137,22 @@ class TicTacToeGame:
         return all(button.emoji is not None
                    for button in self.board_view.children)
 
-    def end_game(self,
-                 result: str,
-                 winner: discord.Member = None,
-                 loser: discord.Member = None):
+    async def show_winner(self, interaction: discord.Interaction):
+        winner = self.current_player
+        loser = self.player2 if winner == self.player1 else self.player1
+        await self.end_game("win", winner=winner, loser=loser)
+        await interaction.edit_original_response(content="",
+                                                 view=self.board_view)
+
+    async def show_draw(self, interaction: discord.Interaction):
+        await self.end_game("draw")
+        await interaction.edit_original_response(content="",
+                                                 view=self.board_view)
+
+    async def end_game(self,
+                       result: str,
+                       winner: discord.Member = None,
+                       loser: discord.Member = None):
         if self.timeout_task:
             self.timeout_task.cancel()
 
@@ -167,18 +173,6 @@ class TicTacToeGame:
                                  disabled=True)
             self.board_view.add_item(win_button)
             self.board_view.add_item(lose_button)
-
-    async def show_winner(self, interaction: discord.Interaction):
-        winner = self.current_player
-        loser = self.player2 if winner == self.player1 else self.player1
-        self.end_game("win", winner=winner, loser=loser)
-        await interaction.edit_original_response(content="",
-                                                 view=self.board_view)
-
-    async def show_draw(self, interaction: discord.Interaction):
-        self.end_game("draw")
-        await interaction.edit_original_response(content="",
-                                                 view=self.board_view)
 
     async def bot_move(self, interaction: discord.Interaction):
         best_score = -float('inf')
@@ -242,7 +236,10 @@ class TicTacToeGame:
             self.board_view.remove_item(button)
 
         if self.message:
-            await self.message.edit(content=content, view=self.board_view)
+            try:
+                await self.message.edit(content=content, view=self.board_view)
+            except discord.errors.NotFound:
+                print("Failed to clear the board: Message not found.")
 
 
 class AcceptDeclineButtons(View):
@@ -261,6 +258,8 @@ class AcceptDeclineButtons(View):
                                                     ephemeral=True)
             return
 
+        self.stop(
+        )  # Stop the view when the game starts to prevent timeout handling
         await interaction.message.delete()
         initial_message = f"It's {self.game.current_player.mention}'s turn"
         message = await interaction.channel.send(initial_message,
@@ -268,7 +267,6 @@ class AcceptDeclineButtons(View):
         self.game.message = message
         self.game.reset_timeout_task(
         )  # Start the timeout task when the game starts
-        self.stop()
 
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction,
@@ -278,11 +276,11 @@ class AcceptDeclineButtons(View):
                                                     ephemeral=True)
             return
 
+        self.stop()  # Stop the view after a decision has been made
         await interaction.message.edit(
             content=
             f"{self.opponent.mention} declined the invitation to play Tic Tac Toe.",
             view=None)
-        self.stop()
 
     async def on_timeout(self):
         # Handle the scenario where the opponent doesn't respond in time
@@ -304,14 +302,12 @@ class TicTacToe(commands.Cog):
         opponent=
         "The user you want to play against (leave empty to play against the bot)",
         player_x="Custom emoji for player X (optional)",
-        player_o="Custom emoji for player O (optional)",
-        board_size="Size of the board (3-5, default is 3)")
+        player_o="Custom emoji for player O (optional)")
     async def tic_tac_toe(self,
                           interaction: discord.Interaction,
                           opponent: discord.Member = None,
                           player_x: str = None,
-                          player_o: str = None,
-                          board_size: int = 3):
+                          player_o: str = None):
         if opponent is None:
             opponent = interaction.guild.me
 
@@ -328,21 +324,12 @@ class TicTacToe(commands.Cog):
                 ephemeral=True)
             return
 
-        # Check board size
-        if opponent == interaction.guild.me:
-            board_size = 3  # Force 3x3 board for games against the bot
-        elif board_size < 3 or board_size > 5:
-            await interaction.response.send_message(
-                "Board size must be between 3 and 5 for player vs player games.",
-                ephemeral=True)
-            return
-
         game = TicTacToeGame(interaction.user, opponent, interaction, player_x,
-                             player_o, board_size)
+                             player_o)
 
         if opponent == interaction.guild.me:
             await interaction.response.send_message(
-                f"**{interaction.user.mention}** vs {opponent.mention} - Let's play Tic Tac Toe! (3x3 board)",
+                f"**{interaction.user.mention}** vs {opponent.mention} - Let's play Tic Tac Toe!",
                 view=game.board_view)
             game.message = await interaction.original_response()
             game.reset_timeout_task(
@@ -353,7 +340,7 @@ class TicTacToe(commands.Cog):
             return
         else:
             await interaction.response.send_message(
-                f"{interaction.user.mention} has invited {opponent.mention} to play Tic Tac Toe on a {board_size}x{board_size} board. Would you like to accept?",
+                f"{interaction.user.mention} has invited {opponent.mention} to play Tic Tac Toe. Would you like to accept?",
                 view=AcceptDeclineButtons(game, interaction.user, opponent))
 
     def is_valid_emoji(self, emoji: str) -> bool:
