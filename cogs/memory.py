@@ -2,7 +2,7 @@ import discord
 import random
 from discord.ext import commands
 from discord.ui import View, Button
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 class MemoryGameButton(Button):
@@ -38,10 +38,18 @@ class MemoryGameCog(commands.Cog):
         self.board = None
         self.selected_buttons = []
         self.message = None
+        self.start_time = None
+        self.moves = 0
+        self.pairs_found = 0
 
     @commands.command(name="memorygame")
     async def memorygame(self, ctx: commands.Context):
         """Starts a 5x5 memory game with custom server emojis."""
+        # Reset game statistics
+        self.start_time = datetime.now()
+        self.moves = 0
+        self.pairs_found = 0
+
         # Gather custom emojis from the server
         guild_emojis = ctx.guild.emojis
         if len(guild_emojis) < 12:
@@ -109,6 +117,7 @@ class MemoryGameCog(commands.Cog):
     async def process_revealed_button(self, button: MemoryGameButton,
                                       interaction: discord.Interaction):
         self.selected_buttons.append(button)
+        self.moves += 1
 
         if len(self.selected_buttons) == 2:
             btn1, btn2 = self.selected_buttons
@@ -117,6 +126,11 @@ class MemoryGameCog(commands.Cog):
                 # If the two buttons match, disable them
                 btn1.disabled = True
                 btn2.disabled = True
+                self.pairs_found += 1
+
+                if self.pairs_found == 12:  # All pairs found
+                    await self.end_game(interaction)
+                    return
             else:
                 # If they don't match, turn them red and then hide again after a short delay
                 btn1.style = discord.ButtonStyle.danger  # Red background
@@ -143,13 +157,24 @@ class MemoryGameCog(commands.Cog):
         self.view.timeout = 20
         self.view.last_interaction = discord.utils.utcnow()
 
+    async def end_game(self, interaction: discord.Interaction):
+        end_time = datetime.now()
+        time_taken = end_time - self.start_time
+        minutes, seconds = divmod(time_taken.seconds, 60)
+
+        end_message = f"Congratulations! You've completed the Memory Game!\n"
+        end_message += f"Time taken: {minutes} minutes and {seconds} seconds\n"
+        end_message += f"Total moves: {self.moves}"
+
+        await interaction.message.edit(content=end_message, view=None)
+
     @commands.Cog.listener()
     async def on_timeout(self):
         """Disable all buttons if the game times out due to inactivity."""
         for button in self.view.children:
             button.disabled = True
         await self.message.edit(content="Game ended due to inactivity.",
-                                view=self.view)
+                                view=None)
 
 
 async def setup(bot):
