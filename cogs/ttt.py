@@ -63,7 +63,8 @@ class TicTacToeButton(discord.ui.Button):
 class TicTacToeGame:
 
     def __init__(self, player1: discord.Member, player2: discord.Member,
-                 ctx: commands.Context, player_x: str, player_o: str):
+                 ctx: commands.Context, player_x: str, player_o: str,
+                 board_size: int):
         self.player1 = player1
         self.player2 = player2
         self.vs_bot = player2.bot
@@ -72,6 +73,7 @@ class TicTacToeGame:
         self.current_symbol = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_x = self._format_emoji(player_x or DEFAULT_PLAYER_X)
         self.player_o = self._format_emoji(player_o or DEFAULT_PLAYER_O)
+        self.board_size = board_size
         self.board_view = self.create_board_view()
         self.ctx = ctx
         self.timeout_task = None
@@ -98,8 +100,8 @@ class TicTacToeGame:
 
     def create_board_view(self) -> View:
         view = View(timeout=None)
-        for y in range(3):
-            for x in range(3):
+        for y in range(self.board_size):
+            for x in range(self.board_size):
                 view.add_item(TicTacToeButton(x, y, self))
         return view
 
@@ -108,18 +110,25 @@ class TicTacToeGame:
         self.current_symbol = self.player_o if self.current_symbol == self.player_x else self.player_x
 
     def check_winner(self) -> bool:
-        board = [[self.get_button(x, y).emoji for x in range(3)]
-                 for y in range(3)]
+        board = [[self.get_button(x, y).emoji for x in range(self.board_size)]
+                 for y in range(self.board_size)]
 
-        for i in range(3):
-            if board[i][0] == board[i][1] == board[i][2] is not None:
+        # Check rows and columns
+        for i in range(self.board_size):
+            if all(board[i][j] == board[i][0] is not None
+                   for j in range(self.board_size)):
                 return True
-            if board[0][i] == board[1][i] == board[2][i] is not None:
+            if all(board[j][i] == board[0][i] is not None
+                   for j in range(self.board_size)):
                 return True
 
-        if board[0][0] == board[1][1] == board[2][2] is not None:
+        # Check diagonals
+        if all(board[i][i] == board[0][0] is not None
+               for i in range(self.board_size)):
             return True
-        if board[0][2] == board[1][1] == board[2][0] is not None:
+        if all(board[i][self.board_size - 1 - i] == board[0][self.board_size -
+                                                             1] is not None
+               for i in range(self.board_size)):
             return True
 
         return False
@@ -188,7 +197,6 @@ class TicTacToeGame:
             best_move.label = None
             best_move.style = discord.ButtonStyle.danger
             best_move.disabled = True
-            await interaction.edit_original_response(view=self.board_view)
 
             if self.check_winner():
                 await self.show_winner(interaction)
@@ -196,6 +204,9 @@ class TicTacToeGame:
                 await self.show_draw(interaction)
             else:
                 self.switch_turn()
+                await interaction.edit_original_response(
+                    content=f"It's {self.current_player.mention}'s turn",
+                    view=self.board_view)
 
     def minimax(self, depth: int, is_maximizing: bool) -> int:
         if self.check_winner():
@@ -280,24 +291,47 @@ class TicTacToe(commands.Cog):
                           ctx: commands.Context,
                           opponent: discord.Member = None,
                           player_x: str = None,
-                          player_o: str = None):
+                          player_o: str = None,
+                          board_size: int = 3):
         """
         Play a game of Tic Tac Toe.
 
         Parameters:
         ctx (commands.Context): The context of the command.
         opponent (discord.Member): The user to play against. If not provided, the bot will be the opponent.
-        player_x (str): The emoji to use for player X. If not provided, the default "❌" will be used.
-        player_o (str): The emoji to use for player O. If not provided, the default "⭕" will be used.
+        player_x (str): The emoji to use for player X. If not provided, the default "X" will be used.
+        player_o (str): The emoji to use for player O. If not provided, the default "O" will be used.
+        board_size (int): The size of the board (e.g., 3 for a 3x3 board). Default is 3. Only works for player vs player games.
         """
         if opponent is None:
             opponent = ctx.guild.me
 
-        game = TicTacToeGame(ctx.author, opponent, ctx, player_x, player_o)
+        # Check for invalid emojis
+        if player_x and not self.is_valid_emoji(player_x):
+            await ctx.send(
+                "Invalid emoji for player X. Please use a valid emoji.")
+            return
+
+        if player_o and not self.is_valid_emoji(player_o):
+            await ctx.send(
+                "Invalid emoji for player O. Please use a valid emoji.")
+            return
+
+        # Check board size
+        if opponent == ctx.guild.me:
+            board_size = 3  # Force 3x3 board for games against the bot
+        elif board_size < 3 or board_size > 5:
+            await ctx.send(
+                "Board size must be between 3 and 5 for player vs player games."
+            )
+            return
+
+        game = TicTacToeGame(ctx.author, opponent, ctx, player_x, player_o,
+                             board_size)
 
         if opponent == ctx.guild.me:
             message = await ctx.send(
-                f"**{ctx.author.mention}** vs {opponent.mention} - Let's play Tic Tac Toe!",
+                f"**{ctx.author.mention}** vs {opponent.mention} - Let's play Tic Tac Toe! (3x3 board)",
                 view=game.board_view)
             game.message = message
         elif opponent == ctx.author:
@@ -305,8 +339,17 @@ class TicTacToe(commands.Cog):
             return
         else:
             await ctx.send(
-                f"{ctx.author.mention} has invited {opponent.mention} to play Tic Tac Toe. Would you like to accept?",
+                f"{ctx.author.mention} has invited {opponent.mention} to play Tic Tac Toe on a {board_size}x{board_size} board. Would you like to accept?",
                 view=AcceptDeclineButtons(game, ctx.author, opponent))
+
+    def is_valid_emoji(self, emoji: str) -> bool:
+        """Check if the provided string is a valid emoji."""
+        try:
+            # Try to create a PartialEmoji object
+            discord.PartialEmoji.from_str(emoji)
+            return True
+        except:
+            return False
 
 
 async def setup(bot):
