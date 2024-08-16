@@ -114,6 +114,12 @@ class MemoryGameCog(commands.Cog):
         self.moves += 1
 
         if len(self.selected_buttons) == 2:
+            # Disable all buttons after both buttons are chosen
+            for item in self.view.children:
+                if isinstance(item, MemoryGameButton):
+                    item.disabled = True
+            await interaction.message.edit(view=self.view)
+
             btn1, btn2 = self.selected_buttons
 
             if btn1.hidden_emoji == btn2.hidden_emoji:
@@ -139,6 +145,12 @@ class MemoryGameCog(commands.Cog):
                 btn2.revealed = False
 
             self.selected_buttons.clear()
+
+            # Re-enable all buttons that are not revealed or matched
+            for item in self.view.children:
+                if isinstance(item, MemoryGameButton) and not item.revealed:
+                    item.disabled = False
+
             await interaction.message.edit(view=self.view)
 
         self.view.timeout = 20
@@ -157,7 +169,6 @@ class MemoryGameCog(commands.Cog):
         embed.add_field(name="🔢 Total Moves",
                         value=str(self.moves),
                         inline=False)
-        embed.add_field(name="🧠 Board Size", value="5x5", inline=False)
         embed.set_footer(text="Thanks for playing!")
 
         await interaction.message.edit(content=None, embed=embed, view=None)
@@ -171,3 +182,4 @@ class MemoryGameCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(MemoryGameCog(bot))
+    
