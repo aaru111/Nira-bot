@@ -36,23 +36,16 @@ class MemoryGameCog(commands.Cog):
         self.start_time = None
         self.moves = 0
         self.pairs_found = 0
-        self.board_size = 0
 
     @commands.command(name="memorygame")
-    async def memorygame(self, ctx: commands.Context, size: int = 5):
-        """Starts a memory game with custom server emojis. Usage: .memorygame [size]"""
-        if size not in [3, 4, 5]:
-            await ctx.send("Invalid board size. Please choose 3, 4, or 5.")
-            return
-
-        self.board_size = size
+    async def memorygame(self, ctx: commands.Context):
+        """Starts a 5x5 memory game with custom server emojis."""
         self.start_time = datetime.now()
         self.moves = 0
         self.pairs_found = 0
 
         guild_emojis = ctx.guild.emojis
-        pairs_needed = (size * size -
-                        1) // 2  # Subtract 1 to account for the middle button
+        pairs_needed = 12  # (5 * 5 - 1) // 2
         if len(guild_emojis) < pairs_needed:
             await ctx.send(
                 f"Not enough custom emojis in the server! You need at least {pairs_needed}."
@@ -63,13 +56,12 @@ class MemoryGameCog(commands.Cog):
         random.shuffle(self.emojis)
 
         self.view = View(timeout=20)
-        self.board = [[None for _ in range(size)] for _ in range(size)]
+        self.board = [[None for _ in range(5)] for _ in range(5)]
 
-        middle = size // 2
-        for y in range(size):
-            for x in range(size):
+        middle = 2
+        for y in range(5):
+            for x in range(5):
                 if x == middle and y == middle:
-                    # Add disabled button in the middle
                     button = Button(style=discord.ButtonStyle.secondary,
                                     emoji="🔒",
                                     disabled=True)
@@ -81,16 +73,23 @@ class MemoryGameCog(commands.Cog):
                     self.board[y][x] = button
                     self.view.add_item(button)
 
+        for item in self.view.children:
+            item.disabled = True
+
         self.message = await ctx.send(
-            f"Memory Game ({size}x{size}): Match the pairs! (Showing the emojis for 7 seconds...)",
+            "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
             view=self.view)
         await self.reveal_all_emojis()
         await discord.utils.sleep_until(discord.utils.utcnow() +
                                         timedelta(seconds=7))
         await self.hide_all_emojis()
-        await self.message.edit(
-            content=f"Memory Game ({size}x{size}): Match the pairs!",
-            view=self.view)
+
+        for item in self.view.children:
+            if isinstance(item, MemoryGameButton):
+                item.disabled = False
+
+        await self.message.edit(content="Memory Game (5x5): Match the pairs!",
+                                view=self.view)
 
     async def reveal_all_emojis(self):
         for row in self.board:
@@ -122,8 +121,7 @@ class MemoryGameCog(commands.Cog):
                 btn2.disabled = True
                 self.pairs_found += 1
 
-                if self.pairs_found == (self.board_size * self.board_size -
-                                        1) // 2:
+                if self.pairs_found == 12:
                     await self.end_game(interaction)
                     return
             else:
@@ -159,19 +157,16 @@ class MemoryGameCog(commands.Cog):
         embed.add_field(name="🔢 Total Moves",
                         value=str(self.moves),
                         inline=False)
-        embed.add_field(name="🧠 Board Size",
-                        value=f"{self.board_size}x{self.board_size}",
-                        inline=False)
+        embed.add_field(name="🧠 Board Size", value="5x5", inline=False)
         embed.set_footer(text="Thanks for playing!")
 
         await interaction.message.edit(content=None, embed=embed, view=None)
 
     @commands.Cog.listener()
     async def on_timeout(self):
-        for button in self.view.children:
-            button.disabled = True
-        await self.message.edit(content="Game ended due to inactivity.",
-                                view=None)
+        if self.message:
+            await self.message.edit(content="Game ended due to inactivity.",
+                                    view=None)
 
 
 async def setup(bot):
