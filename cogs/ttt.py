@@ -43,7 +43,8 @@ class TicTacToeButton(discord.ui.Button):
         self.disabled = True
         await interaction.response.edit_message(view=self.game.board_view)
 
-        self.game.reset_timeout_task()
+        self.game.reset_timeout_task(
+        )  # Reset the inactivity timer after every move
 
         if self.game.check_winner():
             await self.game.show_winner(interaction)
@@ -79,7 +80,6 @@ class TicTacToeGame:
         self.ctx = ctx
         self.timeout_task = None
         self.message = None
-        self.reset_timeout_task()
 
     def _format_emoji(self, emoji: str) -> discord.PartialEmoji:
         if emoji.startswith("<") and emoji.endswith(">"):
@@ -199,6 +199,9 @@ class TicTacToeGame:
             best_move.style = discord.ButtonStyle.danger
             best_move.disabled = True
 
+            self.reset_timeout_task(
+            )  # Reset the inactivity timer after bot's move
+
             if self.check_winner():
                 await self.show_winner(interaction)
             elif self.check_draw():
@@ -245,7 +248,7 @@ class TicTacToeGame:
 class AcceptDeclineButtons(View):
 
     def __init__(self, game, author, opponent):
-        super().__init__(timeout=None)
+        super().__init__(timeout=15)  # Set the timeout to 15 seconds
         self.game = game
         self.author = author
         self.opponent = opponent
@@ -263,6 +266,8 @@ class AcceptDeclineButtons(View):
         message = await interaction.channel.send(initial_message,
                                                  view=self.game.board_view)
         self.game.message = message
+        self.game.reset_timeout_task(
+        )  # Start the timeout task when the game starts
         self.stop()
 
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
@@ -276,6 +281,14 @@ class AcceptDeclineButtons(View):
         await interaction.message.edit(
             content=
             f"{self.opponent.mention} declined the invitation to play Tic Tac Toe.",
+            view=None)
+        self.stop()
+
+    async def on_timeout(self):
+        # Handle the scenario where the opponent doesn't respond in time
+        await self.game.ctx.edit_original_response(
+            content=
+            f"{self.opponent.mention} did not respond to the game invitation in time.",
             view=None)
         self.stop()
 
@@ -332,6 +345,8 @@ class TicTacToe(commands.Cog):
                 f"**{interaction.user.mention}** vs {opponent.mention} - Let's play Tic Tac Toe! (3x3 board)",
                 view=game.board_view)
             game.message = await interaction.original_response()
+            game.reset_timeout_task(
+            )  # Start the timeout task when the game starts
         elif opponent == interaction.user:
             await interaction.response.send_message(
                 "You cannot play against yourself!", ephemeral=True)
