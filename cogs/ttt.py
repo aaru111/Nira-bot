@@ -1,6 +1,7 @@
 import discord
-from discord.ext import commands
+from discord import app_commands
 from discord.ui import View, Button
+from discord.ext import commands
 import asyncio
 import random
 
@@ -63,7 +64,7 @@ class TicTacToeButton(discord.ui.Button):
 class TicTacToeGame:
 
     def __init__(self, player1: discord.Member, player2: discord.Member,
-                 ctx: commands.Context, player_x: str, player_o: str,
+                 ctx: discord.Interaction, player_x: str, player_o: str,
                  board_size: int):
         self.player1 = player1
         self.player2 = player2
@@ -281,66 +282,64 @@ class AcceptDeclineButtons(View):
 
 class TicTacToe(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.hybrid_command(
-        name="ttt",
-        description="Play Tic Tac Toe against another user or the bot itself.")
+    @app_commands.command(name="ttt",
+                          description="Start a new Tic Tac Toe game")
+    @app_commands.describe(
+        opponent=
+        "The user you want to play against (leave empty to play against the bot)",
+        player_x="Custom emoji for player X (optional)",
+        player_o="Custom emoji for player O (optional)",
+        board_size="Size of the board (3-5, default is 3)")
     async def tic_tac_toe(self,
-                          ctx: commands.Context,
+                          interaction: discord.Interaction,
                           opponent: discord.Member = None,
                           player_x: str = None,
                           player_o: str = None,
                           board_size: int = 3):
-        """
-        Play a game of Tic Tac Toe.
-
-        Parameters:
-        ctx (commands.Context): The context of the command.
-        opponent (discord.Member): The user to play against. If not provided, the bot will be the opponent.
-        player_x (str): The emoji to use for player X. If not provided, the default "X" will be used.
-        player_o (str): The emoji to use for player O. If not provided, the default "O" will be used.
-        board_size (int): The size of the board (e.g., 3 for a 3x3 board). Default is 3. Only works for player vs player games.
-        """
         if opponent is None:
-            opponent = ctx.guild.me
+            opponent = interaction.guild.me
 
         # Check for invalid emojis
         if player_x and not self.is_valid_emoji(player_x):
-            await ctx.send(
-                "Invalid emoji for player X. Please use a valid emoji.")
+            await interaction.response.send_message(
+                "Invalid emoji for player X. Please use a valid emoji.",
+                ephemeral=True)
             return
 
         if player_o and not self.is_valid_emoji(player_o):
-            await ctx.send(
-                "Invalid emoji for player O. Please use a valid emoji.")
+            await interaction.response.send_message(
+                "Invalid emoji for player O. Please use a valid emoji.",
+                ephemeral=True)
             return
 
         # Check board size
-        if opponent == ctx.guild.me:
+        if opponent == interaction.guild.me:
             board_size = 3  # Force 3x3 board for games against the bot
         elif board_size < 3 or board_size > 5:
-            await ctx.send(
-                "Board size must be between 3 and 5 for player vs player games."
-            )
+            await interaction.response.send_message(
+                "Board size must be between 3 and 5 for player vs player games.",
+                ephemeral=True)
             return
 
-        game = TicTacToeGame(ctx.author, opponent, ctx, player_x, player_o,
-                             board_size)
+        game = TicTacToeGame(interaction.user, opponent, interaction, player_x,
+                             player_o, board_size)
 
-        if opponent == ctx.guild.me:
-            message = await ctx.send(
-                f"**{ctx.author.mention}** vs {opponent.mention} - Let's play Tic Tac Toe! (3x3 board)",
+        if opponent == interaction.guild.me:
+            await interaction.response.send_message(
+                f"**{interaction.user.mention}** vs {opponent.mention} - Let's play Tic Tac Toe! (3x3 board)",
                 view=game.board_view)
-            game.message = message
-        elif opponent == ctx.author:
-            await ctx.send("You cannot play against yourself!")
+            game.message = await interaction.original_response()
+        elif opponent == interaction.user:
+            await interaction.response.send_message(
+                "You cannot play against yourself!", ephemeral=True)
             return
         else:
-            await ctx.send(
-                f"{ctx.author.mention} has invited {opponent.mention} to play Tic Tac Toe on a {board_size}x{board_size} board. Would you like to accept?",
-                view=AcceptDeclineButtons(game, ctx.author, opponent))
+            await interaction.response.send_message(
+                f"{interaction.user.mention} has invited {opponent.mention} to play Tic Tac Toe on a {board_size}x{board_size} board. Would you like to accept?",
+                view=AcceptDeclineButtons(game, interaction.user, opponent))
 
     def is_valid_emoji(self, emoji: str) -> bool:
         """Check if the provided string is a valid emoji."""
@@ -352,5 +351,5 @@ class TicTacToe(commands.Cog):
             return False
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(TicTacToe(bot))
