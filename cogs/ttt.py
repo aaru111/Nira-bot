@@ -62,6 +62,34 @@ class TicTacToeButton(discord.ui.Button):
                 )
 
 
+class RematchButton(discord.ui.Button):
+
+    def __init__(self, game):
+        super().__init__(style=discord.ButtonStyle.primary,
+                         label="Rematch",
+                         row=3)
+        self.game = game
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user not in [self.game.player1, self.game.player2]:
+            await interaction.response.send_message(
+                "You are not part of this game!", ephemeral=True)
+            return
+
+        # Create a new game with the same players
+        new_game = TicTacToeGame(self.game.player1, self.game.player2,
+                                 self.game.ctx, self.game.player_x.name,
+                                 self.game.player_o.name)
+        new_game.message = self.game.message
+
+        # Update the message with the new game board
+        await interaction.response.edit_message(
+            content=f"It's {new_game.current_player.mention}'s turn"
+            if not new_game.vs_bot else None,
+            view=new_game.board_view)
+        new_game.reset_timeout_task()
+
+
 class TicTacToeGame:
 
     def __init__(self, player1: discord.Member, player2: discord.Member,
@@ -122,20 +150,21 @@ class TicTacToeGame:
         # Check diagonals
         if all(board[i][i] == board[0][0] is not None for i in range(3)):
             return True
-        if all(board[i][3 - 1 - i] == board[0][3 - 1] is not None
-               for i in range(3)):
+        if all(board[i][2 - i] == board[0][2] is not None for i in range(3)):
             return True
 
         return False
 
     def get_button(self, x: int, y: int) -> TicTacToeButton:
         for button in self.board_view.children:
-            if button.x == x and button.y == y:
+            if isinstance(button,
+                          TicTacToeButton) and button.x == x and button.y == y:
                 return button
 
     def check_draw(self) -> bool:
         return all(button.emoji is not None
-                   for button in self.board_view.children)
+                   for button in self.board_view.children
+                   if isinstance(button, TicTacToeButton))
 
     async def show_winner(self, interaction: discord.Interaction):
         winner = self.current_player
@@ -156,30 +185,45 @@ class TicTacToeGame:
         if self.timeout_task:
             self.timeout_task.cancel()
 
+        # Make all TicTacToeButtons grey and disabled
         for button in self.board_view.children:
-            self.board_view.remove_item(button)
+            if isinstance(button, TicTacToeButton):
+                button.style = discord.ButtonStyle.secondary
+                button.disabled = True
+
+        # Remove any existing result buttons
+        self.board_view.remove_item(self.board_view.children[-1] if len(
+            self.board_view.children) > 9 else None)
+        self.board_view.remove_item(self.board_view.children[-1] if len(
+            self.board_view.children) > 9 else None)
 
         if result == "draw":
             result_button = Button(style=discord.ButtonStyle.blurple,
                                    label="It's a draw!",
-                                   disabled=True)
+                                   disabled=True,
+                                   row=3)
             self.board_view.add_item(result_button)
         else:
             win_button = Button(style=discord.ButtonStyle.green,
-                                label=f"{winner} won!",
-                                disabled=True)
+                                label=f"{winner.name} won!",
+                                disabled=True,
+                                row=3)
             lose_button = Button(style=discord.ButtonStyle.red,
-                                 label=f"{loser} lost!",
-                                 disabled=True)
+                                 label=f"{loser.name} lost!",
+                                 disabled=True,
+                                 row=3)
             self.board_view.add_item(win_button)
             self.board_view.add_item(lose_button)
+
+        # Add the rematch button
+        self.board_view.add_item(RematchButton(self))
 
     async def bot_move(self, interaction: discord.Interaction):
         best_score = -float('inf')
         best_move = None
 
         for button in self.board_view.children:
-            if button.emoji is None:
+            if isinstance(button, TicTacToeButton) and button.emoji is None:
                 button.emoji = self.current_symbol
                 score = self.minimax(0, False)
                 button.emoji = None
@@ -215,7 +259,8 @@ class TicTacToeGame:
         if is_maximizing:
             best_score = -float('inf')
             for button in self.board_view.children:
-                if button.emoji is None:
+                if isinstance(button,
+                              TicTacToeButton) and button.emoji is None:
                     button.emoji = self.current_symbol
                     score = self.minimax(depth + 1, False)
                     button.emoji = None
@@ -224,7 +269,8 @@ class TicTacToeGame:
         else:
             best_score = float('inf')
             for button in self.board_view.children:
-                if button.emoji is None:
+                if isinstance(button,
+                              TicTacToeButton) and button.emoji is None:
                     button.emoji = self.player_x if self.current_symbol == self.player_o else self.player_o
                     score = self.minimax(depth + 1, True)
                     button.emoji = None
@@ -233,7 +279,8 @@ class TicTacToeGame:
 
     async def clear_board(self, content: str):
         for button in self.board_view.children:
-            self.board_view.remove_item(button)
+            if isinstance(button, TicTacToeButton):
+                self.board_view.remove_item(button)
 
         if self.message:
             try:
