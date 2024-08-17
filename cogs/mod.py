@@ -5,6 +5,7 @@ import aiohttp
 import asyncio
 import time
 from functools import wraps
+import io
 
 
 def ensure_permissions(permission: str):
@@ -45,7 +46,6 @@ class AvatarView(discord.ui.View):
 
 
 class ConfirmationView(discord.ui.View):
-    """View for confirmation with Yes/No buttons."""
 
     def __init__(self, ctx: commands.Context, channel: discord.TextChannel):
         super().__init__(timeout=30)  # 30 seconds to respond
@@ -55,7 +55,6 @@ class ConfirmationView(discord.ui.View):
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
-        """Ensure only the command invoker can interact."""
         if interaction.user != self.ctx.author:
             await interaction.response.send_message(
                 "Only the user who initiated the command can interact.",
@@ -68,7 +67,6 @@ class ConfirmationView(discord.ui.View):
                        emoji="✅")
     async def confirm(self, interaction: discord.Interaction,
                       button: discord.ui.Button):
-        """Handle the confirmation."""
         await interaction.response.defer()
         self.value = True
         self.stop()
@@ -78,7 +76,6 @@ class ConfirmationView(discord.ui.View):
                        emoji="❌")
     async def cancel(self, interaction: discord.Interaction,
                      button: discord.ui.Button):
-        """Handle the cancellation."""
         await interaction.response.defer()
         self.value = False
         self.stop()
@@ -202,14 +199,16 @@ class Moderation(commands.Cog):
         )
 
     @commands.hybrid_command()
-    @ensure_permissions("manage_channels")
+    @commands.has_permissions(manage_channels=True)
     async def nuke(self,
                    ctx: commands.Context,
                    channel: Optional[discord.TextChannel] = None):
         """Delete and recreate a channel, with confirmation."""
-        if not await self._check_nuke_cooldown(ctx):
+        # Check cooldown
+        retry_after = self.nuke_cooldowns.update_rate_limit(ctx.message)
+        if retry_after:
             await ctx.send(
-                "You need to wait before using the nuke command again.",
+                f"You need to wait {retry_after:.1f} seconds before using the nuke command again.",
                 ephemeral=True)
             return
 
@@ -219,7 +218,6 @@ class Moderation(commands.Cog):
                            ephemeral=True)
             return
 
-        # Send the confirmation view with Yes/No buttons
         confirmation_view = ConfirmationView(ctx, channel)
         confirmation_message = await ctx.send(
             f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
@@ -227,7 +225,6 @@ class Moderation(commands.Cog):
 
         timeout = await confirmation_view.wait()
 
-        # Disable buttons after interaction or timeout
         for child in confirmation_view.children:
             child.disabled = True
         await confirmation_message.edit(view=confirmation_view)
@@ -240,7 +237,6 @@ class Moderation(commands.Cog):
             await ctx.send("Nuke command cancelled.", ephemeral=True)
             return
 
-        # Defer the response to give the bot time to process
         if ctx.interaction:
             await ctx.interaction.response.defer(ephemeral=True)
         else:
@@ -252,17 +248,14 @@ class Moderation(commands.Cog):
 
         await channel.delete(reason=f"Channel nuked by {ctx.author}")
 
-        # Create the new channel
         new_channel = await self._create_new_channel(ctx.guild, properties)
         await self._recreate_channel_data(new_channel, webhooks, invites,
                                           pinned_messages)
 
-        # Compose the message content
         message_content = (
             f"Channel has been nuked by {ctx.author.mention}\n"
             f"Channel {new_channel.mention} has been nuked and recreated.")
 
-        # Try sending the message in the new channel
         try:
             await new_channel.send(message_content)
         except discord.Forbidden:
@@ -270,34 +263,18 @@ class Moderation(commands.Cog):
                 f"Nuke operation completed, but the bot couldn't send a message to {new_channel.mention} due to missing permissions."
             )
 
-        # Notify the user in their original context
-        if ctx.interaction:
-            try:
-                await ctx.send(f"Nuked and recreated {new_channel.mention}.",
-                               ephemeral=True)
-            except discord.HTTPException:
-                await ctx.author.send(
-                    "Nuke operation completed, but the bot couldn't send a message in the original context."
-                )
-        else:
-            try:
+        try:
+            if ctx.interaction:
+                await ctx.interaction.followup.send(
+                    f"Nuked and recreated {new_channel.mention}.",
+                    ephemeral=True)
+            else:
                 await ctx.send(f"Nuked and recreated {new_channel.mention}.")
-            except discord.HTTPException:
-                await ctx.author.send(
-                    "Nuke operation completed, but the bot couldn't send a message in the original context."
-                )
-
-    async def _check_nuke_cooldown(self, ctx: commands.Context) -> bool:
-        """Check nuke command cooldown."""
-        bucket = self.nuke_cooldowns.get_bucket(ctx.message)
-        retry_after = bucket.update_rate_limit()
-        if retry_after:
-            return False
-        return True
+        except discord.HTTPException:
+            pass
 
     async def _get_channel_properties(self,
                                       channel: discord.TextChannel) -> dict:
-        """Get channel properties."""
         return {
             'name': channel.name,
             'category': channel.category,
@@ -311,7 +288,6 @@ class Moderation(commands.Cog):
         }
 
     async def _fetch_channel_data(self, channel: discord.TextChannel) -> tuple:
-        """Fetch channel data (webhooks, invites, pinned messages)."""
         webhooks = await channel.webhooks()
         invites = await channel.invites()
         pinned_messages = await channel.pins()
@@ -320,7 +296,6 @@ class Moderation(commands.Cog):
 
     async def _create_new_channel(self, guild: discord.Guild,
                                   properties: dict) -> discord.TextChannel:
-        """Create a new channel."""
         new_channel = await guild.create_text_channel(
             name=properties['name'],
             category=properties['category'],
@@ -337,7 +312,6 @@ class Moderation(commands.Cog):
                                      webhooks: List[discord.Webhook],
                                      invites: List[discord.Invite],
                                      pinned_messages: List[discord.Message]):
-        """Recreate data in the new channel."""
         for webhook in webhooks:
             avatar = None
             if webhook.avatar:
@@ -351,20 +325,56 @@ class Moderation(commands.Cog):
                 temporary=invite.temporary,
                 unique=invite.unique)
 
+        pinned_messages.sort(key=lambda m: m.created_at)
+
         for message in pinned_messages:
             content = message.content
-            embeds = message.embeds
+            embeds = [
+                embed for embed in message.embeds if embed.type == 'rich'
+            ]
             files = []
-            for attachment in message.attachments:
-                fp = await attachment.read()
-                file = discord.File(fp=fp, filename=attachment.filename)
-                files.append(file)
 
-            new_message = await new_channel.send(content=content,
-                                                 embeds=embeds,
-                                                 files=files)
-            await new_message.pin()
-            await asyncio.sleep(1)  # 1-second delay between pins
+            for attachment in message.attachments:
+                try:
+                    file_data = await attachment.read()
+                    file = discord.File(io.BytesIO(file_data),
+                                        filename=attachment.filename)
+                    files.append(file)
+                except discord.HTTPException:
+                    continue
+
+            try:
+                if content or embeds or files:
+                    new_message = await new_channel.send(content=content
+                                                         or None,
+                                                         embeds=embeds,
+                                                         files=files)
+                    await new_message.pin()
+
+                    await asyncio.sleep(0.5)
+                    if files:
+                        await asyncio.sleep(1)
+                else:
+                    print("Skipping empty message")
+            except discord.HTTPException as e:
+                if e.code == 429:  # Rate limit error
+                    retry_after = e.retry_after
+                    await asyncio.sleep(retry_after)
+                    try:
+                        if content or embeds or files:
+                            new_message = await new_channel.send(
+                                content=content or None,
+                                embeds=embeds,
+                                files=files)
+                            await new_message.pin()
+                    except discord.HTTPException as e2:
+                        print(f"Failed to send message after rate limit: {e2}")
+                else:
+                    print(f"Error recreating message: {e}")
+
+            for file in files:
+                file.close()
+            files.clear()
 
     @commands.hybrid_command()
     async def ping(self, ctx: commands.Context):
