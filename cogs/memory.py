@@ -35,6 +35,7 @@ class MemoryGameView(discord.ui.View):
         self.inactivity_task = None
         self.time_limit = time_limit * 60  # Convert minutes to seconds
         self.timer_task = None
+        self.game_started = False
 
     def setup_board(self):
         guild_emojis = self.ctx.guild.emojis
@@ -61,8 +62,6 @@ class MemoryGameView(discord.ui.View):
                     self.board.append(button)
 
     async def start_game(self, existing_message=None):
-        self.start_time = datetime.now()
-        self.last_interaction_time = self.start_time
         for child in self.children:
             child.disabled = True
 
@@ -79,6 +78,12 @@ class MemoryGameView(discord.ui.View):
         await discord.utils.sleep_until(discord.utils.utcnow() +
                                         timedelta(seconds=7))
         await self.hide_all_emojis()
+
+        # Start the timer and set game_started to True after the 7-second showcase
+        self.start_time = datetime.now()
+        self.last_interaction_time = self.start_time
+        self.game_started = True
+
         for child in self.children:
             if isinstance(child, MemoryGameButton):
                 child.disabled = False
@@ -88,6 +93,9 @@ class MemoryGameView(discord.ui.View):
         self.timer_task = asyncio.create_task(self.update_timer())
 
     def get_game_status(self):
+        if not self.game_started:
+            return f"Memory Game (5x5): Match the pairs!\nTime limit: {self.time_limit // 60} minutes"
+
         remaining_time = self.time_limit - (datetime.now() -
                                             self.start_time).total_seconds()
         minutes, seconds = divmod(int(remaining_time), 60)
@@ -169,11 +177,13 @@ class MemoryGameView(discord.ui.View):
     async def update_timer(self):
         while True:
             await asyncio.sleep(1)
-            elapsed_time = (datetime.now() - self.start_time).total_seconds()
-            if elapsed_time >= self.time_limit:
-                await self.end_game_timeout()
-                break
-            await self.message.edit(content=self.get_game_status())
+            if self.game_started:
+                elapsed_time = (datetime.now() -
+                                self.start_time).total_seconds()
+                if elapsed_time >= self.time_limit:
+                    await self.end_game_timeout()
+                    break
+                await self.message.edit(content=self.get_game_status())
 
     async def end_game_inactivity(self):
         if self.timer_task:
