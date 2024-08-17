@@ -21,9 +21,10 @@ class MemoryGameButton(discord.ui.Button):
 
 class MemoryGameView(discord.ui.View):
 
-    def __init__(self, ctx: commands.Context, time_limit: int):
+    def __init__(self, ctx: commands.Context, time_limit: int, cog):
         super().__init__(timeout=None)
         self.ctx = ctx
+        self.cog = cog
         self.board = []
         self.selected_buttons = []
         self.moves = 0
@@ -192,6 +193,8 @@ class MemoryGameView(discord.ui.View):
             child.disabled = True
         await self.message.edit(content="Game ended due to inactivity.",
                                 view=None)
+        self.game_started = False
+        self.cog.end_game(self.ctx.author.id)
 
     async def end_game_timeout(self):
         if self.inactivity_task:
@@ -199,6 +202,8 @@ class MemoryGameView(discord.ui.View):
         for child in self.children:
             child.disabled = True
         await self.message.edit(content="Time's up! Game over.", view=None)
+        self.game_started = False
+        self.cog.end_game(self.ctx.author.id)
 
     async def end_game(self, interaction: discord.Interaction):
         if self.inactivity_task:
@@ -219,26 +224,30 @@ class MemoryGameView(discord.ui.View):
                         inline=False)
         embed.set_footer(text="Thanks for playing!")
 
-        rematch_view = RematchView(self.ctx, self.message)
+        rematch_view = RematchView(self.ctx, self.message, self.cog)
         await interaction.message.edit(content=None,
                                        embed=embed,
                                        view=rematch_view)
+        self.game_started = False
+        self.cog.end_game(self.ctx.author.id)
 
 
 class RematchView(discord.ui.View):
 
-    def __init__(self, ctx: commands.Context, message: discord.Message):
+    def __init__(self, ctx: commands.Context, message: discord.Message, cog):
         super().__init__(timeout=15.0)
         self.ctx = ctx
         self.message = message
+        self.cog = cog
 
     @discord.ui.button(label="Rematch", style=discord.ButtonStyle.primary)
     async def rematch(self, interaction: discord.Interaction,
                       button: ui.Button):
         if interaction.user == self.ctx.author:
             await interaction.response.defer()
-            new_game = MemoryGameView(self.ctx,
-                                      5)  # Default to 5 minutes for rematch
+            new_game = MemoryGameView(
+                self.ctx, 5, self.cog)  # Default to 5 minutes for rematch
+            self.cog.start_game(self.ctx.author.id, new_game)
             await new_game.start_game(self.message)
         else:
             await interaction.response.send_message(
@@ -255,15 +264,30 @@ class MemoryGameCog(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.ongoing_games = {}
+
+    def start_game(self, user_id: int, game: MemoryGameView):
+        self.ongoing_games[user_id] = game
+
+    def end_game(self, user_id: int):
+        if user_id in self.ongoing_games:
+            del self.ongoing_games[user_id]
 
     @commands.command(name="memorygame")
     async def memorygame(self, ctx: commands.Context, time_limit: int = 5):
         """Starts a 5x5 memory game with custom server emojis. Optionally set a time limit (1-6 minutes)."""
+        if ctx.author.id in self.ongoing_games:
+            await ctx.send(
+                "You already have an ongoing game. Please finish it before starting a new one."
+            )
+            return
+
         if time_limit < 1 or time_limit > 6:
             await ctx.send("Time limit must be between 1 and 6 minutes.")
             return
         try:
-            game = MemoryGameView(ctx, time_limit)
+            game = MemoryGameView(ctx, time_limit, self)
+            self.start_game(ctx.author.id, game)
             await game.start_game()
         except ValueError as e:
             await ctx.send(str(e))
