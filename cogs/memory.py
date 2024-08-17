@@ -65,7 +65,8 @@ class MemoryGameView(discord.ui.View):
             await self.message.edit(
                 content=
                 "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
-                view=self)
+                view=self,
+                embed=None)
         else:
             self.message = await self.ctx.send(
                 "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
