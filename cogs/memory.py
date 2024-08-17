@@ -1,160 +1,135 @@
 import discord
-import random
 from discord.ext import commands
-from discord.ui import View, Button
+from discord import ui
+import random
 from datetime import timedelta, datetime
 
 
-class MemoryGameButton(Button):
+class MemoryGameButton(discord.ui.Button):
 
-    def __init__(self, x, y, emoji, cog):
+    def __init__(self, x: int, y: int, emoji: str):
         super().__init__(style=discord.ButtonStyle.secondary, emoji="❓", row=y)
         self.x = x
         self.y = y
         self.hidden_emoji = emoji
-        self.cog = cog
         self.revealed = False
 
     async def callback(self, interaction: discord.Interaction):
-        if not self.revealed:
-            self.revealed = True
-            self.style = discord.ButtonStyle.success
-            self.emoji = self.hidden_emoji
-            await interaction.response.edit_message(view=self.cog.view)
-            await self.cog.process_revealed_button(self, interaction)
+        await self.view.process_button(self, interaction)
 
 
-class MemoryGameCog(commands.Cog):
+class MemoryGameView(discord.ui.View):
 
-    def __init__(self, bot):
-        self.bot = bot
-        self.view = None
-        self.emojis = None
-        self.board = None
+    def __init__(self, ctx: commands.Context):
+        super().__init__(timeout=20)
+        self.ctx = ctx
+        self.board = []
         self.selected_buttons = []
-        self.message = None
+        self.moves = 0
+        self.pairs_found = 0
         self.start_time = None
-        self.moves = 0
-        self.pairs_found = 0
+        self.message = None
+        self.setup_board()
 
-    @commands.command(name="memorygame")
-    async def memorygame(self, ctx: commands.Context):
-        """Starts a 5x5 memory game with custom server emojis."""
-        self.start_time = datetime.now()
-        self.moves = 0
-        self.pairs_found = 0
-
-        guild_emojis = ctx.guild.emojis
-        pairs_needed = 12  # (5 * 5 - 1) // 2
+    def setup_board(self):
+        guild_emojis = self.ctx.guild.emojis
+        pairs_needed = 12
         if len(guild_emojis) < pairs_needed:
-            await ctx.send(
+            raise ValueError(
                 f"Not enough custom emojis in the server! You need at least {pairs_needed}."
             )
-            return
 
-        self.emojis = random.sample(guild_emojis, pairs_needed) * 2
-        random.shuffle(self.emojis)
+        emojis = random.sample(guild_emojis, pairs_needed) * 2
+        random.shuffle(emojis)
 
-        self.view = View(timeout=20)
-        self.board = [[None for _ in range(5)] for _ in range(5)]
-
-        middle = 2
         for y in range(5):
             for x in range(5):
-                if x == middle and y == middle:
-                    button = Button(style=discord.ButtonStyle.secondary,
-                                    emoji="🔒",
-                                    disabled=True)
-                    self.board[y][x] = button
-                    self.view.add_item(button)
-                elif self.emojis:
-                    emoji = self.emojis.pop()
-                    button = MemoryGameButton(x, y, emoji, self)
-                    self.board[y][x] = button
-                    self.view.add_item(button)
+                if x == 2 and y == 2:
+                    self.add_item(
+                        ui.Button(style=discord.ButtonStyle.secondary,
+                                  emoji="🔒",
+                                  disabled=True,
+                                  row=y))
+                else:
+                    button = MemoryGameButton(x, y, emojis.pop())
+                    self.add_item(button)
+                    self.board.append(button)
 
-        for item in self.view.children:
-            item.disabled = True
-
-        self.message = await ctx.send(
+    async def start_game(self):
+        self.start_time = datetime.now()
+        for child in self.children:
+            child.disabled = True
+        self.message = await self.ctx.send(
             "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
-            view=self.view)
+            view=self)
         await self.reveal_all_emojis()
         await discord.utils.sleep_until(discord.utils.utcnow() +
                                         timedelta(seconds=7))
         await self.hide_all_emojis()
-
-        for item in self.view.children:
-            if isinstance(item, MemoryGameButton):
-                item.disabled = False
-
+        for child in self.children:
+            if isinstance(child, MemoryGameButton):
+                child.disabled = False
         await self.message.edit(content="Memory Game (5x5): Match the pairs!",
-                                view=self.view)
+                                view=self)
 
     async def reveal_all_emojis(self):
-        for row in self.board:
-            for button in row:
-                if isinstance(button, MemoryGameButton):
-                    button.emoji = button.hidden_emoji
-                    button.style = discord.ButtonStyle.secondary
-        await self.message.edit(view=self.view)
+        for button in self.board:
+            button.emoji = button.hidden_emoji
+            button.style = discord.ButtonStyle.secondary
+        await self.message.edit(view=self)
 
     async def hide_all_emojis(self):
-        for row in self.board:
-            for button in row:
-                if isinstance(button, MemoryGameButton):
-                    button.emoji = "❓"
-                    button.style = discord.ButtonStyle.secondary
-                    button.revealed = False
-        await self.message.edit(view=self.view)
+        for button in self.board:
+            button.emoji = "❓"
+            button.style = discord.ButtonStyle.secondary
+            button.revealed = False
+        await self.message.edit(view=self)
 
-    async def process_revealed_button(self, button: MemoryGameButton,
-                                      interaction: discord.Interaction):
-        self.selected_buttons.append(button)
-        self.moves += 1
+    async def process_button(self, button: MemoryGameButton,
+                             interaction: discord.Interaction):
+        if not button.revealed:
+            button.revealed = True
+            button.style = discord.ButtonStyle.success
+            button.emoji = button.hidden_emoji
+            self.selected_buttons.append(button)
+            self.moves += 1
 
-        if len(self.selected_buttons) == 2:
-            # Disable all buttons after both buttons are chosen
-            for item in self.view.children:
-                if isinstance(item, MemoryGameButton):
-                    item.disabled = True
-            await interaction.message.edit(view=self.view)
+            if len(self.selected_buttons) == 2:
+                for child in self.children:
+                    if isinstance(child, MemoryGameButton):
+                        child.disabled = True
+                await interaction.response.edit_message(view=self)
 
-            btn1, btn2 = self.selected_buttons
+                btn1, btn2 = self.selected_buttons
+                if btn1.hidden_emoji == btn2.hidden_emoji:
+                    btn1.disabled = True
+                    btn2.disabled = True
+                    self.pairs_found += 1
 
-            if btn1.hidden_emoji == btn2.hidden_emoji:
-                btn1.disabled = True
-                btn2.disabled = True
-                self.pairs_found += 1
+                    if self.pairs_found == 12:
+                        await self.end_game(interaction)
+                        return
+                else:
+                    btn1.style = btn2.style = discord.ButtonStyle.danger
+                    await interaction.message.edit(view=self)
+                    await discord.utils.sleep_until(discord.utils.utcnow() +
+                                                    timedelta(seconds=1))
+                    btn1.emoji = btn2.emoji = "❓"
+                    btn1.style = btn2.style = discord.ButtonStyle.secondary
+                    btn1.revealed = btn2.revealed = False
 
-                if self.pairs_found == 12:
-                    await self.end_game(interaction)
-                    return
+                self.selected_buttons.clear()
+
+                for child in self.children:
+                    if isinstance(child,
+                                  MemoryGameButton) and not child.revealed:
+                        child.disabled = False
+
+                await interaction.message.edit(view=self)
             else:
-                btn1.style = discord.ButtonStyle.danger
-                btn2.style = discord.ButtonStyle.danger
-                await interaction.message.edit(view=self.view)
+                await interaction.response.edit_message(view=self)
 
-                await discord.utils.sleep_until(discord.utils.utcnow() +
-                                                timedelta(seconds=1))
-                btn1.emoji = "❓"
-                btn2.emoji = "❓"
-                btn1.style = discord.ButtonStyle.secondary
-                btn2.style = discord.ButtonStyle.secondary
-                btn1.revealed = False
-                btn2.revealed = False
-
-            self.selected_buttons.clear()
-
-            # Re-enable all buttons that are not revealed or matched
-            for item in self.view.children:
-                if isinstance(item, MemoryGameButton) and not item.revealed:
-                    item.disabled = False
-
-            await interaction.message.edit(view=self.view)
-
-        self.view.timeout = 20
-        self.view.last_interaction = discord.utils.utcnow()
+        self.timeout = 20
 
     async def end_game(self, interaction: discord.Interaction):
         end_time = datetime.now()
@@ -171,15 +146,50 @@ class MemoryGameCog(commands.Cog):
                         inline=False)
         embed.set_footer(text="Thanks for playing!")
 
-        await interaction.message.edit(content=None, embed=embed, view=None)
+        rematch_view = RematchView(self.ctx)
+        await interaction.message.edit(content=None,
+                                       embed=embed,
+                                       view=rematch_view)
 
-    @commands.Cog.listener()
     async def on_timeout(self):
         if self.message:
             await self.message.edit(content="Game ended due to inactivity.",
                                     view=None)
 
 
+class RematchView(discord.ui.View):
+
+    def __init__(self, ctx: commands.Context):
+        super().__init__()
+        self.ctx = ctx
+
+    @ui.button(label="Rematch", style=discord.ButtonStyle.primary)
+    async def rematch(self, interaction: discord.Interaction,
+                      button: ui.Button):
+        if interaction.user == self.ctx.author:
+            await interaction.response.defer()
+            new_game = MemoryGameView(self.ctx)
+            await new_game.start_game()
+        else:
+            await interaction.response.send_message(
+                "Only the original player can start a rematch.",
+                ephemeral=True)
+
+
+class MemoryGameCog(commands.Cog):
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="memorygame")
+    async def memorygame(self, ctx: commands.Context):
+        """Starts a 5x5 memory game with custom server emojis."""
+        try:
+            game = MemoryGameView(ctx)
+            await game.start_game()
+        except ValueError as e:
+            await ctx.send(str(e))
+
+
 async def setup(bot):
     await bot.add_cog(MemoryGameCog(bot))
-    
