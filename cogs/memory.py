@@ -55,13 +55,22 @@ class MemoryGameView(discord.ui.View):
                     self.add_item(button)
                     self.board.append(button)
 
-    async def start_game(self):
+    async def start_game(self, existing_message=None):
         self.start_time = datetime.now()
         for child in self.children:
             child.disabled = True
-        self.message = await self.ctx.send(
-            "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
-            view=self)
+
+        if existing_message:
+            self.message = existing_message
+            await self.message.edit(
+                content=
+                "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
+                view=self)
+        else:
+            self.message = await self.ctx.send(
+                "Memory Game (5x5): Match the pairs! (Showing the emojis for 7 seconds...)",
+                view=self)
+
         await self.reveal_all_emojis()
         await discord.utils.sleep_until(discord.utils.utcnow() +
                                         timedelta(seconds=7))
@@ -146,30 +155,26 @@ class MemoryGameView(discord.ui.View):
                         inline=False)
         embed.set_footer(text="Thanks for playing!")
 
-        rematch_view = RematchView(self.ctx)
+        rematch_view = RematchView(self.ctx, self.message)
         await interaction.message.edit(content=None,
                                        embed=embed,
                                        view=rematch_view)
 
-    async def on_timeout(self):
-        if self.message:
-            await self.message.edit(content="Game ended due to inactivity.",
-                                    view=None)
-
 
 class RematchView(discord.ui.View):
 
-    def __init__(self, ctx: commands.Context):
+    def __init__(self, ctx: commands.Context, message: discord.Message):
         super().__init__()
         self.ctx = ctx
+        self.message = message
 
-    @ui.button(label="Rematch", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Rematch", style=discord.ButtonStyle.primary)
     async def rematch(self, interaction: discord.Interaction,
                       button: ui.Button):
         if interaction.user == self.ctx.author:
             await interaction.response.defer()
             new_game = MemoryGameView(self.ctx)
-            await new_game.start_game()
+            await new_game.start_game(self.message)
         else:
             await interaction.response.send_message(
                 "Only the original player can start a rematch.",
