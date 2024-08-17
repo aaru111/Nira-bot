@@ -37,6 +37,8 @@ class MemoryGameView(discord.ui.View):
         self.time_limit = time_limit * 60  # Convert minutes to seconds
         self.timer_task = None
         self.game_started = False
+        self.hints_remaining = 2
+        self.hints_used = 0
 
     def setup_board(self):
         guild_emojis = self.ctx.guild.emojis
@@ -66,7 +68,7 @@ class MemoryGameView(discord.ui.View):
         for child in self.children:
             child.disabled = True
 
-        initial_content = f"Memory Game: Match the pairs! Time limit: {self.time_limit // 60} minutes\n(Showing the emojis for 7 seconds...)"
+        initial_content = f"Memory Game: Match the pairs! Time limit: {self.time_limit // 60} minutes\nHints remaining: {self.hints_remaining}\n(Showing the emojis for 7 seconds...)"
         if existing_message:
             self.message = existing_message
             await self.message.edit(content=initial_content,
@@ -80,7 +82,6 @@ class MemoryGameView(discord.ui.View):
                                         timedelta(seconds=7))
         await self.hide_all_emojis()
 
-        # Start the timer and set game_started to True after the 7-second showcase
         self.start_time = datetime.now()
         self.last_interaction_time = self.start_time
         self.game_started = True
@@ -93,14 +94,16 @@ class MemoryGameView(discord.ui.View):
         self.inactivity_task = asyncio.create_task(self.check_inactivity())
         self.timer_task = asyncio.create_task(self.update_timer())
 
+        await self.message.add_reaction("💡")  # Add hint emoji
+
     def get_game_status(self):
         if not self.game_started:
-            return f"Memory Game (5x5): Match the pairs!\nTime limit: {self.time_limit // 60} minutes"
+            return f"Memory Game (5x5): Match the pairs!\nTime limit: {self.time_limit // 60} minutes\nHints remaining: {self.hints_remaining}"
 
         remaining_time = self.time_limit - (datetime.now() -
                                             self.start_time).total_seconds()
         minutes, seconds = divmod(int(remaining_time), 60)
-        return f"Memory Game (5x5): Match the pairs!\nTime remaining: {minutes:02d}:{seconds:02d}"
+        return f"Memory Game (5x5): Match the pairs!\nTime remaining: {minutes:02d}:{seconds:02d}\nHints remaining: {self.hints_remaining}"
 
     async def reveal_all_emojis(self):
         for button in self.board:
@@ -222,6 +225,9 @@ class MemoryGameView(discord.ui.View):
         embed.add_field(name="🔢 Total Moves",
                         value=str(self.moves),
                         inline=False)
+        embed.add_field(name="💡 Hints Used",
+                        value=f"{self.hints_used}/2",
+                        inline=False)
         embed.set_footer(text="Thanks for playing!")
 
         rematch_view = RematchView(self.ctx, self.message, self.cog)
@@ -230,6 +236,26 @@ class MemoryGameView(discord.ui.View):
                                        view=rematch_view)
         self.game_started = False
         self.cog.end_game(self.ctx.author.id)
+
+    async def show_hint(self):
+        if self.hints_remaining > 0:
+            unrevealed_buttons = [
+                btn for btn in self.board
+                if not btn.revealed and not btn.disabled
+            ]
+            if unrevealed_buttons:
+                hint_button = random.choice(unrevealed_buttons)
+                hint_button.emoji = hint_button.hidden_emoji
+                hint_button.style = discord.ButtonStyle.primary
+                self.hints_remaining -= 1
+                self.hints_used += 1
+                await self.message.edit(content=self.get_game_status(),
+                                        view=self)
+                await asyncio.sleep(2)
+                if not hint_button.revealed:
+                    hint_button.emoji = "❓"
+                    hint_button.style = discord.ButtonStyle.secondary
+                    await self.message.edit(view=self)
 
 
 class RematchView(discord.ui.View):
@@ -285,12 +311,24 @@ class MemoryGameCog(commands.Cog):
         if time_limit < 1 or time_limit > 6:
             await ctx.send("Time limit must be between 1 and 6 minutes.")
             return
+
         try:
             game = MemoryGameView(ctx, time_limit, self)
             self.start_game(ctx.author.id, game)
             await game.start_game()
         except ValueError as e:
             await ctx.send(str(e))
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        if user.bot:
+            return
+
+        if reaction.emoji == "💡":
+            game = self.ongoing_games.get(user.id)
+            if game and game.hints_remaining > 0:
+                await reaction.remove(user)
+                await game.show_hint()
 
 
 async def setup(bot):
