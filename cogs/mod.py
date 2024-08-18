@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from typing import Optional, List
 import aiohttp
 import asyncio
@@ -8,6 +8,7 @@ from functools import wraps
 import io
 
 
+# Utility Functions
 def ensure_permissions(permission: str):
     """Decorator to check user permissions."""
 
@@ -25,6 +26,112 @@ def ensure_permissions(permission: str):
         return wrapper
 
     return decorator
+
+
+async def _get_channel_properties(channel: discord.TextChannel) -> dict:
+    """Retrieve a channel's properties."""
+    return {
+        'name': channel.name,
+        'category': channel.category,
+        'position': channel.position,
+        'overwrites': channel.overwrites,
+        'topic': channel.topic or "",
+        'nsfw': channel.is_nsfw(),
+        'slowmode_delay': channel.slowmode_delay,
+        'permissions_synced': channel.permissions_synced,
+        'is_news': channel.is_news()
+    }
+
+
+async def _fetch_channel_data(channel: discord.TextChannel) -> tuple:
+    """Fetch webhooks, invites, and pinned messages from a channel."""
+    webhooks = await channel.webhooks()
+    invites = await channel.invites()
+    pinned_messages = await channel.pins()
+    pinned_messages.sort(key=lambda m: m.created_at)
+    return webhooks, invites, pinned_messages
+
+
+async def _create_new_channel(guild: discord.Guild,
+                              properties: dict) -> discord.TextChannel:
+    """Create a new channel with the same properties."""
+    new_channel = await guild.create_text_channel(
+        name=properties['name'],
+        category=properties['category'],
+        overwrites=properties['overwrites'],
+        position=properties['position'],
+        topic=properties['topic'],
+        nsfw=properties['nsfw'],
+        slowmode_delay=properties['slowmode_delay'])
+    if properties['is_news']:
+        await new_channel.edit(type=discord.ChannelType.news)
+    return new_channel
+
+
+async def _recreate_channel_data(new_channel: discord.TextChannel,
+                                 webhooks: List[discord.Webhook],
+                                 invites: List[discord.Invite],
+                                 pinned_messages: List[discord.Message]):
+    """Recreate webhooks, invites, and pinned messages in the new channel."""
+    for webhook in webhooks:
+        avatar = None
+        if webhook.avatar:
+            avatar = await webhook.avatar.read()
+        await new_channel.create_webhook(name=webhook.name, avatar=avatar)
+
+    for invite in invites:
+        await new_channel.create_invite(
+            max_age=invite.max_age if invite.max_age != 0 else None,
+            max_uses=invite.max_uses if invite.max_uses != 0 else None,
+            temporary=invite.temporary,
+            unique=invite.unique)
+
+    pinned_messages.sort(key=lambda m: m.created_at)
+
+    for message in pinned_messages:
+        content = message.content
+        embeds = [embed for embed in message.embeds if embed.type == 'rich']
+        files = []
+
+        for attachment in message.attachments:
+            try:
+                file_data = await attachment.read()
+                file = discord.File(io.BytesIO(file_data),
+                                    filename=attachment.filename)
+                files.append(file)
+            except discord.HTTPException:
+                continue
+
+        try:
+            if content or embeds or files:
+                new_message = await new_channel.send(content=content or None,
+                                                     embeds=embeds,
+                                                     files=files)
+                await new_message.pin()
+                await asyncio.sleep(0.5)
+                if files:
+                    await asyncio.sleep(1)
+            else:
+                print("Skipping empty message")
+        except discord.HTTPException as e:
+            if e.code == 429:  # Rate limit error
+                retry_after = e.retry_after
+                await asyncio.sleep(retry_after)
+                try:
+                    if content or embeds or files:
+                        new_message = await new_channel.send(content=content
+                                                             or None,
+                                                             embeds=embeds,
+                                                             files=files)
+                        await new_message.pin()
+                except discord.HTTPException as e2:
+                    print(f"Failed to send message after rate limit: {e2}")
+            else:
+                print(f"Error recreating message: {e}")
+
+        for file in files:
+            file.close()
+        files.clear()
 
 
 class CustomButton(discord.ui.Button):
@@ -46,6 +153,7 @@ class AvatarView(discord.ui.View):
 
 
 class ConfirmationView(discord.ui.View):
+    """View for confirmation prompts."""
 
     def __init__(self, ctx: commands.Context, channel: discord.TextChannel):
         super().__init__(timeout=30)  # 30 seconds to respond
@@ -242,15 +350,14 @@ class Moderation(commands.Cog):
         else:
             await ctx.typing()
 
-        properties = await self._get_channel_properties(channel)
-        webhooks, invites, pinned_messages = await self._fetch_channel_data(
-            channel)
+        properties = await _get_channel_properties(channel)
+        webhooks, invites, pinned_messages = await _fetch_channel_data(channel)
 
         await channel.delete(reason=f"Channel nuked by {ctx.author}")
 
-        new_channel = await self._create_new_channel(ctx.guild, properties)
-        await self._recreate_channel_data(new_channel, webhooks, invites,
-                                          pinned_messages)
+        new_channel = await _create_new_channel(ctx.guild, properties)
+        await _recreate_channel_data(new_channel, webhooks, invites,
+                                     pinned_messages)
 
         message_content = (
             f"Channel has been nuked by {ctx.author.mention}\n"
@@ -273,109 +380,6 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             pass
 
-    async def _get_channel_properties(self,
-                                      channel: discord.TextChannel) -> dict:
-        return {
-            'name': channel.name,
-            'category': channel.category,
-            'position': channel.position,
-            'overwrites': channel.overwrites,
-            'topic': channel.topic or "",
-            'nsfw': channel.is_nsfw(),
-            'slowmode_delay': channel.slowmode_delay,
-            'permissions_synced': channel.permissions_synced,
-            'is_news': channel.is_news()
-        }
-
-    async def _fetch_channel_data(self, channel: discord.TextChannel) -> tuple:
-        webhooks = await channel.webhooks()
-        invites = await channel.invites()
-        pinned_messages = await channel.pins()
-        pinned_messages.sort(key=lambda m: m.created_at)
-        return webhooks, invites, pinned_messages
-
-    async def _create_new_channel(self, guild: discord.Guild,
-                                  properties: dict) -> discord.TextChannel:
-        new_channel = await guild.create_text_channel(
-            name=properties['name'],
-            category=properties['category'],
-            overwrites=properties['overwrites'],
-            position=properties['position'],
-            topic=properties['topic'],
-            nsfw=properties['nsfw'],
-            slowmode_delay=properties['slowmode_delay'])
-        if properties['is_news']:
-            await new_channel.edit(type=discord.ChannelType.news)
-        return new_channel
-
-    async def _recreate_channel_data(self, new_channel: discord.TextChannel,
-                                     webhooks: List[discord.Webhook],
-                                     invites: List[discord.Invite],
-                                     pinned_messages: List[discord.Message]):
-        for webhook in webhooks:
-            avatar = None
-            if webhook.avatar:
-                avatar = await webhook.avatar.read()
-            await new_channel.create_webhook(name=webhook.name, avatar=avatar)
-
-        for invite in invites:
-            await new_channel.create_invite(
-                max_age=invite.max_age if invite.max_age != 0 else None,
-                max_uses=invite.max_uses if invite.max_uses != 0 else None,
-                temporary=invite.temporary,
-                unique=invite.unique)
-
-        pinned_messages.sort(key=lambda m: m.created_at)
-
-        for message in pinned_messages:
-            content = message.content
-            embeds = [
-                embed for embed in message.embeds if embed.type == 'rich'
-            ]
-            files = []
-
-            for attachment in message.attachments:
-                try:
-                    file_data = await attachment.read()
-                    file = discord.File(io.BytesIO(file_data),
-                                        filename=attachment.filename)
-                    files.append(file)
-                except discord.HTTPException:
-                    continue
-
-            try:
-                if content or embeds or files:
-                    new_message = await new_channel.send(content=content
-                                                         or None,
-                                                         embeds=embeds,
-                                                         files=files)
-                    await new_message.pin()
-
-                    await asyncio.sleep(0.5)
-                    if files:
-                        await asyncio.sleep(1)
-                else:
-                    print("Skipping empty message")
-            except discord.HTTPException as e:
-                if e.code == 429:  # Rate limit error
-                    retry_after = e.retry_after
-                    await asyncio.sleep(retry_after)
-                    try:
-                        if content or embeds or files:
-                            new_message = await new_channel.send(
-                                content=content or None,
-                                embeds=embeds,
-                                files=files)
-                            await new_message.pin()
-                    except discord.HTTPException as e2:
-                        print(f"Failed to send message after rate limit: {e2}")
-                else:
-                    print(f"Error recreating message: {e}")
-
-            for file in files:
-                file.close()
-            files.clear()
-
     @commands.hybrid_command()
     async def ping(self, ctx: commands.Context):
         """Check bot latency."""
@@ -391,6 +395,25 @@ class Moderation(commands.Cog):
         embed.set_footer(text="Bot Latency Information")
 
         await message.edit(content=None, embed=embed)
+
+    @commands.hybrid_command()
+    @ensure_permissions("manage_roles")
+    async def role_add(self,
+                       ctx: commands.Context,
+                       member: discord.Member,
+                       role: discord.Role,
+                       time: Optional[int] = None):
+        """Add a role to a user optionally for a limited duration."""
+        await member.add_roles(role)
+        await ctx.send(f"Added role {role.mention} to {member.mention}.",
+                       ephemeral=True)
+
+        if time:
+            await asyncio.sleep(time)
+            await member.remove_roles(role)
+            await ctx.send(
+                f"Removed role {role.mention} from {member.mention} after {time} seconds.",
+                ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
