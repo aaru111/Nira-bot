@@ -7,6 +7,8 @@ import asyncio
 from discord.app_commands import Choice
 from collections import defaultdict
 import time
+from PIL import Image
+import io
 
 
 class PlantView(discord.ui.View):
@@ -100,8 +102,9 @@ class PlantIdentifier(commands.Cog):
         await interaction.response.defer()
 
         try:
-            plant_data = await self.get_plant_data(
-                image.url if image else image_url, language)
+            jpg_image = await self.convert_to_jpg(
+                image.url if image else image_url)
+            plant_data = await self.get_plant_data(jpg_image, language)
             if plant_data and plant_data.get("results"):
                 pages = self.create_plant_embeds(
                     plant_data["results"][:5],
@@ -124,10 +127,28 @@ class PlantIdentifier(commands.Cog):
                 break
             await asyncio.sleep(1)
 
-    async def get_plant_data(self, image_url: str, language: str) -> dict:
+    async def convert_to_jpg(self, image_url: str) -> io.BytesIO:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                if response.status == 200:
+                    image_data = await response.read()
+                    image = Image.open(io.BytesIO(image_data))
+                    jpg_image = io.BytesIO()
+                    image.convert('RGB').save(jpg_image, format='JPEG')
+                    jpg_image.seek(0)
+                    return jpg_image
+                else:
+                    raise Exception("Failed to fetch the image")
+
+    async def get_plant_data(self, jpg_image: io.BytesIO,
+                             language: str) -> dict:
+        data = aiohttp.FormData()
+        data.add_field('images',
+                       jpg_image,
+                       filename='image.jpg',
+                       content_type='image/jpeg')
         params = {
             "api-key": self.api_key,
-            "images": image_url,
             "include-related-images": "true",
             "no-reject": "false",
             "lang": language,
@@ -135,8 +156,8 @@ class PlantIdentifier(commands.Cog):
         }
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(self.api_url,
-                                       params=params) as response:
+                async with session.post(self.api_url, data=data,
+                                        params=params) as response:
                     if response.status == 200:
                         return await response.json()
                     else:
@@ -172,7 +193,6 @@ class PlantIdentifier(commands.Cog):
                             value=f"{confidence:.2%}",
                             inline=False)
 
-            # Add more plant information
             if "gbif" in species:
                 gbif_data = species["gbif"]
                 habitat = gbif_data.get("habitat", "N/A")
@@ -180,7 +200,6 @@ class PlantIdentifier(commands.Cog):
                 embed.add_field(name="Habitat", value=habitat, inline=False)
                 embed.add_field(name="Uses", value=uses, inline=False)
 
-            # Add Wikipedia link
             wiki_link = f"https://{language}.wikipedia.org/wiki/{scientific_name.replace(' ', '_')}"
             embed.add_field(name="Learn More",
                             value=f"[Wikipedia]({wiki_link})",
