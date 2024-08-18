@@ -248,7 +248,8 @@ class BodyModal(BaseModal):
         self.is_edit = is_edit
         self.titl = TextInput(label="Title",
                               max_length=256,
-                              default=self.embed.title if is_edit else None, required=False)
+                              default=self.embed.title if is_edit else None,
+                              required=False)
         self.description = TextInput(
             label="Description",
             max_length=4000,
@@ -510,89 +511,85 @@ class ScheduleModal(BaseModal):
         self.add_item(self.schedule_time)
         self.add_item(self.channel)
 
-
-async def handle_submit(self, interaction: discord.Interaction):
-    if not self.is_embed_configured():
-        await interaction.response.send_message(
-            "Error: The embed has not been configured yet. Please add some content before scheduling.",
-            ephemeral=True)
-        return
-
-    schedule_time = self.schedule_time.value
-    channel_id = self.channel.value
-
-    if channel_id:
-        try:
-            channel = self.bot.get_channel(int(channel_id))
-            if not channel:
-                raise ValueError("Invalid channel ID")
-        except ValueError:
+    async def handle_submit(self, interaction: discord.Interaction):
+        if not self.is_embed_configured():
             await interaction.response.send_message(
-                "Invalid channel ID. Using the current channel instead.",
+                "Error: The embed has not been configured yet. Please add some content before scheduling.",
                 ephemeral=True)
+            return
+
+        schedule_time = self.schedule_time.value
+        channel_id = self.channel.value
+
+        if channel_id:
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+                if not channel:
+                    raise ValueError("Invalid channel ID")
+            except ValueError:
+                await interaction.response.send_message(
+                    "Invalid channel ID. Using the current channel instead.",
+                    ephemeral=True)
+                channel = self.original_channel
+        else:
             channel = self.original_channel
-    else:
-        channel = self.original_channel
 
-    delay = self.parse_schedule_time(schedule_time)
-    if delay is None:
+        delay = self.parse_schedule_time(schedule_time)
+        if delay is None:
+            await interaction.response.send_message(
+                "Invalid schedule time format. Please use formats like '5m', '2h', '1d', or '1w'.",
+                ephemeral=True)
+            return
+
+        human_readable_time = self.format_time_delta(delay)
+
         await interaction.response.send_message(
-            "Invalid schedule time format. Please use formats like '5m', '2h', '1d', or '1w'.",
+            f"Embed scheduled to be sent in {channel.mention} {human_readable_time}",
             ephemeral=True)
-        return
 
-    human_readable_time = self.format_time_delta(delay)
+        # Schedule the embed to be sent
+        await self.schedule_embed(delay, channel, interaction)
 
-    await interaction.response.send_message(
-        f"Embed scheduled to be sent in {channel.mention} {human_readable_time}",
-        ephemeral=True)
+    def is_embed_configured(self) -> bool:
+        """Check if the embed has been configured with any content."""
+        return any([
+            self.embed.title, self.embed.description, self.embed.fields,
+            self.embed.author, self.embed.footer, self.embed.image,
+            self.embed.thumbnail
+        ])
 
-    # Schedule the embed to be sent
-    await self.schedule_embed(delay, channel, interaction)
+    def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
+        match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
+        if match:
+            amount, unit = match.groups()
+            amount = int(amount)
+            if unit == 'm':
+                return timedelta(minutes=amount)
+            elif unit == 'h':
+                return timedelta(hours=amount)
+            elif unit == 'd':
+                return timedelta(days=amount)
+            elif unit == 'w':
+                return timedelta(weeks=amount)
+        return None
 
+    def format_time_delta(self, delta: timedelta) -> str:
+        if delta.days > 0:
+            return f"in {delta.days} day(s)"
+        hours, remainder = divmod(delta.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if hours > 0:
+            return f"in {hours} hour(s) and {minutes} minute(s)"
+        return f"in {minutes} minute(s)"
 
-def is_embed_configured(self) -> bool:
-    """Check if the embed has been configured with any content."""
-    return any([
-        self.embed.title, self.embed.description, self.embed.fields,
-        self.embed.author, self.embed.footer, self.embed.image,
-        self.embed.thumbnail
-    ])
-
-
-def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
-    match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
-    if match:
-        amount, unit = match.groups()
-        amount = int(amount)
-        if unit == 'm':
-            return timedelta(minutes=amount)
-        elif unit == 'h':
-            return timedelta(hours=amount)
-        elif unit == 'd':
-            return timedelta(days=amount)
-        elif unit == 'w':
-            return timedelta(weeks=amount)
-    return None
-
-
-def format_time_delta(self, delta: timedelta) -> str:
-    if delta.days > 0:
-        return f"in {delta.days} day(s)"
-    hours, remainder = divmod(delta.seconds, 3600)
-    minutes, _ = divmod(remainder, 60)
-    if hours > 0:
-        return f"in {hours} hour(s) and {minutes} minute(s)"
-    return f"in {minutes} minute(s)"
-
-
-async def schedule_embed(self, delay: timedelta, channel: discord.TextChannel,
-                         interaction: discord.Interaction):
-    await asyncio.sleep(delay.total_seconds())
-    sent_message = await channel.send(embed=self.embed)
-    message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
-    user = interaction.user
-    await user.send(f"Your scheduled embed has been sent! {message_link}")
+    async def schedule_embed(self, delay: timedelta,
+                             channel: discord.TextChannel,
+                             interaction: discord.Interaction):
+        await asyncio.sleep(delay.total_seconds())
+        sent_message = await channel.send(embed=self.embed)
+        message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
+        user = interaction.user
+        await user.send(f"Your scheduled embed has been sent! {message_link}")
 
 
 class PlusButton(BaseButton):
