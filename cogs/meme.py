@@ -4,6 +4,7 @@ from discord.ext import commands
 import aiohttp
 import random
 import asyncio
+from discord.errors import HTTPException
 
 
 class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
@@ -104,13 +105,24 @@ class MemeView(discord.ui.View):
                     "Failed to fetch a new meme. Please try again.",
                     ephemeral=True)
 
-        except discord.errors.NotFound:
-            try:
+        except HTTPException as e:
+            if e.status == 429:  # Too Many Requests
+                retry_after = e.retry_after if hasattr(e, 'retry_after') else 5
+                await asyncio.sleep(retry_after)
+                await self.change_meme(interaction, direction)
+            else:
                 await interaction.followup.send(
-                    "This interaction is no longer valid. Please try again.",
+                    "An error occurred. Please try again later.",
                     ephemeral=True)
-            except discord.errors.NotFound:
-                pass
+        except discord.errors.NotFound:
+            await interaction.followup.send(
+                "This interaction is no longer valid. Please try again.",
+                ephemeral=True)
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            await interaction.followup.send(
+                "An unexpected error occurred. Please try again later.",
+                ephemeral=True)
 
     def update_button_states(self):
         self.previous_button.disabled = self.current_index == 0
@@ -119,8 +131,8 @@ class MemeView(discord.ui.View):
     @staticmethod
     def create_meme_embed(meme):
         embed = discord.Embed(
-            title=
-            f"[{meme['title']}]({meme['postLink']}) (r/{meme['subreddit']})",
+            title=meme['title'],
+            description=f"[View on r/{meme['subreddit']}]({meme['postLink']})",
             color=discord.Color.random())
         embed.set_image(url=meme['url'])
         embed.set_footer(
@@ -153,19 +165,32 @@ class MemeCog(commands.Cog):
             "history": ["historymemes", "trippinthroughtime"],
             "nsfw": ["NSFWMemes", "pornmemes", "rule34memes"]
         }
+        self.last_request_time = 0
+        self.request_cooldown = 2  # 2 seconds between requests
 
     async def fetch_single_meme(self, topic):
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self.last_request_time < self.request_cooldown:
+            await asyncio.sleep(self.request_cooldown -
+                                (current_time - self.last_request_time))
+
         subreddit = random.choice(
             self.meme_topics.get(topic, self.meme_topics["general"]))
         url = f'https://meme-api.com/gimme/{subreddit}'
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url) as response:
+                    self.last_request_time = asyncio.get_event_loop().time()
                     if response.status == 200:
                         data = await response.json()
                         if data['url'].endswith(
                             ('.jpg', '.jpeg', '.png', '.gif')):
                             return data
+                    elif response.status == 429:
+                        retry_after = int(
+                            response.headers.get('Retry-After', 5))
+                        await asyncio.sleep(retry_after)
+                        return await self.fetch_single_meme(topic)
                     return None
             except aiohttp.ClientError:
                 return None
