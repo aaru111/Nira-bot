@@ -2,11 +2,8 @@ import discord
 from discord.ext import commands
 import aiohttp
 import os
-import logging
 import asyncio
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 class PlantView(discord.ui.View):
 
@@ -21,7 +18,7 @@ class PlantView(discord.ui.View):
         self.last_interaction = asyncio.get_event_loop().time()
         return True
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.blurple)
     async def previous_button(self, interaction: discord.Interaction,
                               button: discord.ui.Button):
         if self.current_page > 0:
@@ -32,7 +29,7 @@ class PlantView(discord.ui.View):
             await interaction.response.send_message(
                 "You're already on the first page!", ephemeral=True)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.success)
     async def next_button(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
         if self.current_page < len(self.pages) - 1:
@@ -50,6 +47,7 @@ class PlantView(discord.ui.View):
 
 
 class PlantIdentifier(commands.Cog):
+
     def __init__(self, bot):
         self.bot = bot
         self.api_key = os.environ["PLANTNET_API_KEY"]
@@ -61,16 +59,16 @@ class PlantIdentifier(commands.Cog):
             async with ctx.typing():
                 plant_data = await self.get_plant_data(image_url)
                 if plant_data and plant_data.get("results"):
-                    logger.debug(f"Received plant data: {plant_data}")
-                    pages = self.create_plant_embeds(plant_data["results"][:5])  # Limit to top 5 results
+                    pages = self.create_plant_embeds(
+                        plant_data["results"][:5])  # Limit to top 5 results
                     view = PlantView(pages)
                     message = await ctx.send(embed=pages[0], view=view)
                     view.message = message
                     self.bot.loop.create_task(self.check_view_timeout(view))
                 else:
-                    await ctx.send("Sorry, I couldn't identify the plant in the image.")
+                    await ctx.send(
+                        "Sorry, I couldn't identify the plant in the image.")
         except Exception as e:
-            logger.error(f"An error occurred: {str(e)}", exc_info=True)
             await ctx.send(f"An error occurred: {str(e)}")
 
     async def check_view_timeout(self, view):
@@ -84,8 +82,7 @@ class PlantIdentifier(commands.Cog):
         params = {
             "api-key": self.api_key,
             "images": image_url,
-            "include-related-images":
-            "true",  # Changed to true to ensure we get images
+            "include-related-images": "true",
             "no-reject": "false",
             "lang": "en",
             "type": "all"
@@ -95,16 +92,10 @@ class PlantIdentifier(commands.Cog):
                 async with session.get(self.api_url,
                                        params=params) as response:
                     if response.status == 200:
-                        data = await response.json()
-                        logger.debug(f"API Response: {data}")
-                        return data
+                        return await response.json()
                     else:
-                        logger.error(
-                            f"API request failed with status {response.status}"
-                        )
                         return None
-            except aiohttp.ClientError as e:
-                logger.error(f"API request failed: {str(e)}")
+            except aiohttp.ClientError:
                 return None
 
     def create_plant_embeds(self, plant_results: list) -> list:
@@ -135,26 +126,16 @@ class PlantIdentifier(commands.Cog):
                             value=f"{confidence:.2%}",
                             inline=False)
 
-            # Set the thumbnail to the first image of the plant
-            if "images" in plant_data:
-                logger.debug(
-                    f"Images data for plant {index}: {plant_data['images']}")
-                if len(plant_data["images"]) > 0:
-                    image_url = plant_data["images"][0].get("url", {}).get("m")
-                    if image_url:
-                        logger.debug(
-                            f"Setting thumbnail for plant {index} with URL: {image_url}"
-                        )
-                        embed.set_thumbnail(url=image_url)
-                    else:
-                        logger.warning(
-                            f"No medium-sized image URL found for plant {index}"
-                        )
-                else:
-                    logger.warning(f"No images found for plant {index}")
-            else:
-                logger.warning(
-                    f"No 'images' key in plant data for plant {index}")
+            # Add Wikipedia link
+            wiki_link = f"https://en.wikipedia.org/wiki/{scientific_name.replace(' ', '_')}"
+            embed.add_field(name="Learn More",
+                            value=f"[Wikipedia]({wiki_link})",
+                            inline=False)
+
+            if "images" in plant_data and len(plant_data["images"]) > 0:
+                image_url = plant_data["images"][0].get("url", {}).get("m")
+                if image_url:
+                    embed.set_thumbnail(url=image_url)
 
             embed.set_footer(
                 text=
