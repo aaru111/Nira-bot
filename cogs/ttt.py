@@ -4,10 +4,12 @@ from discord.ui import View, Button
 from discord.ext import commands
 import asyncio
 import random
+import time
 
 DEFAULT_PLAYER_X = "❌"
 DEFAULT_PLAYER_O = "⭕"
 EMPTY = "‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎"  # A zero-width space to make buttons appear empty
+COOLDOWN_TIME = 1.0  # Cooldown time in seconds
 
 
 class TicTacToeButton(discord.ui.Button):
@@ -36,6 +38,16 @@ class TicTacToeButton(discord.ui.Button):
             await interaction.response.send_message(
                 "This spot is already taken!", ephemeral=True)
             return
+
+        # Check if the cooldown has passed
+        current_time = time.time()
+        if current_time - self.game.last_move_time < COOLDOWN_TIME:
+            await interaction.response.send_message(
+                f"Please wait {COOLDOWN_TIME} seconds between moves.",
+                ephemeral=True)
+            return
+
+        self.game.last_move_time = current_time
 
         self.emoji = self.game.current_symbol
         self.label = None
@@ -106,6 +118,7 @@ class TicTacToeGame:
         self.ctx = ctx
         self.timeout_task = None
         self.message = None
+        self.last_move_time = 0  # Initialize last move time
 
     def _format_emoji(self, emoji: str) -> discord.PartialEmoji:
         if emoji.startswith("<") and emoji.endswith(">"):
@@ -314,6 +327,7 @@ class AcceptDeclineButtons(View):
         self.game.message = message
         self.game.reset_timeout_task(
         )  # Start the timeout task when the game starts
+        self.game.last_move_time = time.time()  # Set initial move time
 
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction,
@@ -381,6 +395,7 @@ class TicTacToe(commands.Cog):
             game.message = await interaction.original_response()
             game.reset_timeout_task(
             )  # Start the timeout task when the game starts
+            game.last_move_time = time.time()  # Set initial move time
         elif opponent == interaction.user:
             await interaction.response.send_message(
                 "You cannot play against yourself!", ephemeral=True)
