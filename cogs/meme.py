@@ -21,6 +21,11 @@ class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
         self.add_item(self.topic)
 
     async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user != self.view.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
+
         new_topic = self.topic.value.strip().lower()
         if new_topic not in self.meme_cog.meme_topics:
             await interaction.response.send_message(
@@ -51,16 +56,28 @@ class MemeView(discord.ui.View):
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.gray)
     async def previous_button(self, interaction: discord.Interaction,
                               button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
         await self.change_meme(interaction, -1)
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.gray)
     async def next_button(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
         await self.change_meme(interaction, 1)
 
     @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.red)
     async def delete_button(self, interaction: discord.Interaction,
                             button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
         await interaction.response.edit_message(view=None)
         self.stop()
 
@@ -69,11 +86,20 @@ class MemeView(discord.ui.View):
                        row=2)
     async def change_topic_button(self, interaction: discord.Interaction,
                                   button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
         modal = MemeTopicModal(self.meme_cog, self)
         await interaction.response.send_modal(modal)
 
     async def change_meme(self, interaction: discord.Interaction,
                           direction: int):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
+
         if interaction.response.is_done():
             await interaction.followup.send(
                 "This interaction has already been processed.", ephemeral=True)
@@ -154,16 +180,33 @@ class MemeCog(commands.Cog):
         self.meme_topics = {
             "general": [
                 "memes", "dankmemes", "funny", "me_irl", "wholesomememes",
-                "AdviceAnimals"
+                "AdviceAnimals", "MemeEconomy", "ComedyCemetery",
+                "terriblefacebookmemes"
             ],
-            "anime":
-            ["Animemes", "anime_irl", "animenocontext", "wholesomeanimemes"],
-            "gaming": ["gaming", "gamingmemes", "pcmasterrace", "gamephysics"],
-            "programming":
-            ["ProgrammerHumor", "programmerreactions", "softwaregore"],
-            "science": ["sciencememes", "chemistrymemes", "physicsmemes"],
-            "history": ["historymemes", "trippinthroughtime"],
-            "nsfw": ["NSFWMemes", "pornmemes", "rule34memes"]
+            "anime": [
+                "Animemes", "anime_irl", "animenocontext", "wholesomeanimemes",
+                "GoodAnimeMemes", "MemeAnime", "animeshitposting"
+            ],
+            "gaming": [
+                "gaming", "gamingmemes", "pcmasterrace", "gamephysics",
+                "gamememes", "truegaming", "leagueofmemes"
+            ],
+            "programming": [
+                "ProgrammerHumor", "programmerreactions", "softwaregore",
+                "codinghumor", "linuxmemes", "techhumor"
+            ],
+            "science": [
+                "sciencememes", "chemistrymemes", "physicsmemes",
+                "BiologyMemes", "mathmemes", "SpaceMemes"
+            ],
+            "history": [
+                "historymemes", "trippinthroughtime", "HistoryAnimemes",
+                "badlinguistics"
+            ],
+            "nsfw": [
+                "NSFWMemes", "pornmemes", "rule34memes", "SexyMemes",
+                "nsfwfunny", "lewdmemes"
+            ]
         }
         self.last_request_time = 0
         self.request_cooldown = 2  # 2 seconds between requests
