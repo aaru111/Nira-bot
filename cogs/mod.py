@@ -396,7 +396,7 @@ class Moderation(commands.Cog):
 
         await message.edit(content=None, embed=embed)
 
-    @commands.hybrid_command()
+    @commands.hybrid_command(name="role-add")
     @ensure_permissions("manage_roles")
     async def role_add(self,
                        ctx: commands.Context,
