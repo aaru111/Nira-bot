@@ -2,11 +2,12 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import requests
+import os
 
 class ImageRecognition(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
+        self.api_key = os.environ["ITT_KEY"]
     @app_commands.command(name="identify", description="Identify text from an image")
     async def identify(self, interaction: discord.Interaction, image: discord.Attachment):
         await interaction.response.defer()  # Acknowledge the interaction
@@ -15,7 +16,7 @@ class ImageRecognition(commands.Cog):
         image_data = await image.read()
 
         # Prepare the request to OCR.Space
-        api_key = "K84649182488957"
+        api_key = self.api_key
         url = "https://api.ocr.space/parse/image"
         payload = {
             "apikey": api_key,
