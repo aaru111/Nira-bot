@@ -248,7 +248,7 @@ class BodyModal(BaseModal):
         self.is_edit = is_edit
         self.titl = TextInput(label="Title",
                               max_length=256,
-                              default=self.embed.title if is_edit else None)
+                              default=self.embed.title if is_edit else None, required=False)
         self.description = TextInput(
             label="Description",
             max_length=4000,
