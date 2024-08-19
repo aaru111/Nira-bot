@@ -12,9 +12,11 @@ class TriviaView(discord.ui.View):
         super().__init__(timeout=30.0)
         self.correct_answer = correct_answer
         self.cog = cog
-        self.timeout_task = None
         self.user_id = user_id
         self.score = score
+        self.answered = False
+        self.time_left = 30
+        self.timer_message = None
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
@@ -22,19 +24,48 @@ class TriviaView(discord.ui.View):
             await interaction.response.send_message("This isn't your game!",
                                                     ephemeral=True)
             return False
-        if self.timeout_task:
-            self.timeout_task.cancel()
-        self.timeout_task = asyncio.create_task(self.start_timeout())
+        if self.answered:
+            await interaction.response.send_message(
+                "You've already answered this question!", ephemeral=True)
+            return False
         return True
 
-    async def start_timeout(self):
-        await asyncio.sleep(30.0)
-        await self.on_timeout()
-
     async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
-        await self.message.edit(view=self)
+        if not self.answered:
+            for item in self.children:
+                item.disabled = True
+            await self.message.edit(
+                content="Time's up! You didn't answer in time.", view=self)
+            await self.safe_delete_timer()
+            await asyncio.sleep(2)
+            play_again_view = PlayAgainView(self.cog, self.user_id, self.score)
+            await self.message.edit(content=f"Your final score: {self.score}",
+                                    view=play_again_view)
+            play_again_view.message = self.message
+
+    async def start_timer(self, channel):
+        self.timer_message = await channel.send(
+            f"Time left: {self.time_left} seconds")
+        while self.time_left > 0 and not self.answered:
+            await asyncio.sleep(1)
+            self.time_left -= 1
+            if self.timer_message:
+                try:
+                    await self.timer_message.edit(
+                        content=f"Time left: {self.time_left} seconds")
+                except discord.NotFound:
+                    # Message was deleted, stop the timer
+                    break
+        await self.safe_delete_timer()
+
+    async def safe_delete_timer(self):
+        if self.timer_message:
+            try:
+                await self.timer_message.delete()
+            except discord.NotFound:
+                pass  # Message was already deleted
+            finally:
+                self.timer_message = None
 
     @discord.ui.button(label='A', style=discord.ButtonStyle.primary)
     async def button_a(self, interaction: discord.Interaction,
@@ -58,17 +89,24 @@ class TriviaView(discord.ui.View):
 
     async def check_answer(self, interaction: discord.Interaction,
                            chosen_answer):
-        self.clear_items()
+        self.answered = True
+        for item in self.children:
+            item.disabled = True
+        await self.safe_delete_timer()
         if chosen_answer == self.correct_answer:
             self.score += 1
             content = f"**Correct!** The answer was {self.correct_answer}."
-            await interaction.response.edit_message(content=content, view=None)
+            await interaction.response.edit_message(content=content, view=self)
+            await asyncio.sleep(2)
             await self.cog._send_trivia(interaction, self.user_id, self.score)
         else:
             content = f"**{chosen_answer}** was not the correct answer. The correct answer was **{self.correct_answer}**."
+            await interaction.response.edit_message(content=content, view=self)
+            await asyncio.sleep(2)
             play_again_view = PlayAgainView(self.cog, self.user_id, self.score)
-            await interaction.response.edit_message(content=content,
-                                                    view=play_again_view)
+            await interaction.edit_original_response(
+                content=f"Your final score: {self.score}",
+                view=play_again_view)
             play_again_view.message = await interaction.original_response()
 
 
@@ -77,7 +115,6 @@ class PlayAgainView(discord.ui.View):
     def __init__(self, cog, user_id, score):
         super().__init__(timeout=30.0)
         self.cog = cog
-        self.timeout_task = None
         self.user_id = user_id
         self.score = score
 
@@ -87,14 +124,7 @@ class PlayAgainView(discord.ui.View):
             await interaction.response.send_message("This isn't your game!",
                                                     ephemeral=True)
             return False
-        if self.timeout_task:
-            self.timeout_task.cancel()
-        self.timeout_task = asyncio.create_task(self.start_timeout())
         return True
-
-    async def start_timeout(self):
-        await asyncio.sleep(30.0)
-        await self.on_timeout()
 
     async def on_timeout(self):
         for item in self.children:
@@ -105,14 +135,13 @@ class PlayAgainView(discord.ui.View):
     async def play_again(self, interaction: discord.Interaction,
                          button: discord.ui.Button):
         await interaction.response.defer()
-        await self.cog._send_trivia(interaction, self.user_id, self.score)
+        await self.cog._send_trivia(interaction, self.user_id, 0)
 
 
 class Trivia(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.user_scores = {}
 
     @commands.command()
     async def trivia(self, ctx):
@@ -163,7 +192,7 @@ class Trivia(commands.Cog):
             message = await ctx.send(embed=embed, view=view)
 
         view.message = message
-        view.timeout_task = asyncio.create_task(view.start_timeout())
+        await view.start_timer(ctx.channel)
 
 
 async def setup(bot):
