@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import traceback
 import aiohttp
-from typing import Optional, Union, List
 from difflib import get_close_matches
 
 # Define the embed color

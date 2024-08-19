@@ -1,7 +1,6 @@
 from typing import Literal, Optional
 import discord
 from discord.ext import commands
-from main import Bot
 import aiohttp
 
 

@@ -1,10 +1,9 @@
 import discord
 from discord.ext import commands
 import random
-from discord import Member, File
+from discord import Member
 from io import BytesIO
 from PIL import Image
-from main import Bot
 from typing import Union
 from scripts.emojify import emojify_image
 from jokeapi import Jokes
@@ -14,7 +13,6 @@ from scripts.asciify import asciify
 import os
 from scripts.collatz import is_collatz_conjecture
 import aiofiles
-import asyncio
 
 
 class Fun(commands.Cog):

@@ -1,4 +1,4 @@
-import os  # Import the os module to access environment variables
+import os
 import discord
 from discord.ext import commands
 from discord import app_commands
