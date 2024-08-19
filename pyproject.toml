@@ -10,10 +10,7 @@ packages = [{include = "repl_nix_stellar"}]
 python = "^3.12"
 aiohttp = "^3.9.5"
 discord-py = "^2.4.0"
-beautifulsoup4 = "^4.12.3"
 requests = "^2.32.3"
-youtube-dl = "^2021.12.17"
-colorlog = "^6.8.2"
 flask = "^3.0.3"
 
 
