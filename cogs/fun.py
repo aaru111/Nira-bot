@@ -17,20 +17,13 @@ import aiofiles
 
 class Fun(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
-    async def close(self):
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
         await self.session.close()
-
-    @commands.Cog.listener()
-    async def on_shutdown(self):
-        await self.close()
-
-    @commands.Cog.listener()
-    async def on_disconnect(self):
-        await self.close()
 
     class Fun(commands.Cog):
 

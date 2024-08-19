@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import asyncio
 import random
+import aiohttp
 
 
 class TetrisPiece:
@@ -129,9 +130,14 @@ class TetrisGame:
 
 class TetrisCog(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.games = {}
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @commands.command(name="tetris")
     async def tetris(self, ctx):
@@ -301,5 +307,5 @@ class TetrisCog(commands.Cog):
         await channel.send(embed=help_embed)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(TetrisCog(bot))

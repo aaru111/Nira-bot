@@ -194,10 +194,15 @@ class GotoModal(discord.ui.Modal, title="Go to Page"):
 
 class Wiki(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.searcher = WikipediaSearcher()
         self.embed_creator = WikiEmbedCreator()
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @app_commands.command(name="wiki",
                           description="Search Wikipedia for information")
@@ -233,5 +238,5 @@ class Wiki(commands.Cog):
                 ephemeral=True)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Wiki(bot))

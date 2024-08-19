@@ -175,8 +175,9 @@ class MemeView(discord.ui.View):
 
 class MemeCog(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.meme_topics = {
             "general": [
                 "memes", "dankmemes", "funny", "me_irl", "wholesomememes",
@@ -210,6 +211,10 @@ class MemeCog(commands.Cog):
         }
         self.last_request_time = 0
         self.request_cooldown = 2  # 2 seconds between requests
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     async def fetch_single_meme(self, topic):
         current_time = asyncio.get_event_loop().time()

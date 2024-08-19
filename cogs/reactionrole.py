@@ -8,6 +8,7 @@ import string
 import asyncio
 from typing import Dict, Any, Set, List
 from abc import ABC, abstractmethod
+import aiohttp
 
 # File paths for storing data
 DATA_PATH = "data/reaction_roles.json"
@@ -252,7 +253,7 @@ class ReactionRoleManager:
 class ReactionRole(commands.Cog):
     """A Discord bot cog for managing reaction roles."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.role_manager = ReactionRoleManager(self)
         FileManager.ensure_data_files_exist()
@@ -263,6 +264,11 @@ class ReactionRole(commands.Cog):
         self.bot.loop.create_task(self.setup_reaction_roles())
         self.rate_limit_dict: Dict[int, float] = {}
         self.bot.loop.create_task(self.cleanup_rate_limit_dict())
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     def check_rate_limit(self, user_id: int) -> bool:
         """Check if a user has exceeded the rate limit for button clicks."""

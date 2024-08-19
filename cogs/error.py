@@ -24,6 +24,10 @@ class Errors(commands.Cog):
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
+
     async def send_error_embed(self, ctx: commands.Context, title: str,
                                description: str,
                                button_color: discord.ButtonStyle) -> None:
@@ -53,19 +57,9 @@ class Errors(commands.Cog):
                 "Failed to send an error embed because the channel was not found or bot lacks permissions."
             )
 
-    async def close(self) -> None:
-        """
-        Close the aiohttp client session.
-        """
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
         await self.session.close()
-
-    @commands.Cog.listener()
-    async def on_shutdown(self):
-        await self.close()
-
-    @commands.Cog.listener()
-    async def on_disconnect(self):
-        await self.close()
 
     async def handle_error(self, ctx: commands.Context,
                            error: commands.CommandError, description: str,

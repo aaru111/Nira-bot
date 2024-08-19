@@ -98,8 +98,13 @@ class UrbanDictionaryView(ui.View):
 
 class UrbanDictionary(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @staticmethod
     def format_definition(text):
@@ -169,5 +174,5 @@ class UrbanDictionary(commands.Cog):
         return pages
 
 
-async def setup(bot) -> None:
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(UrbanDictionary(bot))

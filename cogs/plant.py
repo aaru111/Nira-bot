@@ -54,11 +54,16 @@ class PlantView(discord.ui.View):
 
 class PlantIdentifier(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.api_key = os.environ["PLANTNET_API_KEY"]
         self.api_url = "https://my-api.plantnet.org/v2/identify/all"
         self.cooldowns = defaultdict(lambda: 0)
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     async def cooldown_check(self, interaction: discord.Interaction) -> bool:
         current_time = time.time()
@@ -219,5 +224,5 @@ class PlantIdentifier(commands.Cog):
         return pages
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(PlantIdentifier(bot))

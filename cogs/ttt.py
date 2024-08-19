@@ -5,6 +5,7 @@ from discord.ext import commands
 import asyncio
 import random
 import time
+import aiohttp
 
 DEFAULT_PLAYER_X = "❌"
 DEFAULT_PLAYER_O = "⭕"
@@ -356,6 +357,11 @@ class TicTacToe(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @app_commands.command(name="ttt",
                           description="Start a new Tic Tac Toe game")

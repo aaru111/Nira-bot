@@ -88,6 +88,10 @@ class EmbedCreator(commands.Cog):
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.embed_object = None
 
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
+
     @app_commands.command(
         name="embed",
         description="Create a custom embed message interactively.")

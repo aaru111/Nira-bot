@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import qrcode
 import io
 import time
+import aiohttp
 
 # Load environment variables from .env file
 load_dotenv()
@@ -23,8 +24,13 @@ RESET_INTERVAL = 60 * 60  # Reset interval in seconds (e.g., 1 hour)
 
 class URLShortener(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @app_commands.command(
         name="shorten",
@@ -144,6 +150,6 @@ class URLShortener(commands.Cog):
         return True
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     """Registers the URLShortener cog with the bot."""
     await bot.add_cog(URLShortener(bot))

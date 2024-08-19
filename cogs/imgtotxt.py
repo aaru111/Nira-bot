@@ -67,6 +67,7 @@ class Paginator(discord.ui.View):
         self.image_url = image_url
         self.current_page = 0
         self.message = None
+        
 
     async def update_embed(self,
                            interaction: discord.Interaction,
@@ -118,9 +119,14 @@ class Paginator(discord.ui.View):
 
 class ImageRecognition(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.ocr_service = OCRService(os.environ["ITT_KEY"])
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @app_commands.command(
         name="identify",
@@ -230,5 +236,5 @@ class ImageRecognition(commands.Cog):
         return formatted_chunks
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ImageRecognition(bot))

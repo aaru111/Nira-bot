@@ -192,9 +192,9 @@ class ConfirmationView(discord.ui.View):
 class Moderation(commands.Cog):
     """Cog for moderation commands."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session = aiohttp.ClientSession()
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.nuke_cooldowns = commands.CooldownMapping.from_cooldown(
             1, 300, commands.BucketType.member)
 

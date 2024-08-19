@@ -140,8 +140,13 @@ class PlayAgainView(discord.ui.View):
 
 class Trivia(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     @commands.command()
     async def trivia(self, ctx):
@@ -195,5 +200,5 @@ class Trivia(commands.Cog):
         await view.start_timer(ctx.channel)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Trivia(bot))

@@ -4,6 +4,7 @@ from discord import ui
 import random
 from datetime import timedelta, datetime
 import asyncio
+import aiohttp
 
 
 class MemoryGameButton(discord.ui.Button):
@@ -286,11 +287,16 @@ class RematchView(discord.ui.View):
         await self.message.edit(view=self)
 
 
-class MemoryGameCog(commands.Cog):
+class MemoryGame(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.ongoing_games = {}
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
     def start_game(self, user_id: int, game: MemoryGameView):
         self.ongoing_games[user_id] = game
@@ -331,5 +337,5 @@ class MemoryGameCog(commands.Cog):
                 await game.show_hint()
 
 
-async def setup(bot):
-    await bot.add_cog(MemoryGameCog(bot))
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(MemoryGame(bot))
