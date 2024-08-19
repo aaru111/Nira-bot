@@ -5,7 +5,7 @@ import aiohttp
 import os
 from io import BytesIO
 from PIL import Image
-from typing import Optional
+from typing import Optional, List
 
 
 class OCRService:
@@ -26,10 +26,94 @@ class OCRService:
             data.add_field('detectOrientation', 'true')
             data.add_field('scale', 'true')
             data.add_field('isTable', 'false')
-            data.add_field('OCREngine', '2')  # Using more advanced OCR engine
+            data.add_field('OCREngine',
+                           '2')  # Using the more advanced OCR engine
 
             async with session.post(self.url, data=data) as response:
                 return await response.json()
+
+
+class GoToPageModal(discord.ui.Modal, title="Go to Page"):
+    page_number = discord.ui.TextInput(label="Page Number",
+                                       style=discord.TextStyle.short,
+                                       placeholder="Enter the page number",
+                                       required=True)
+
+    def __init__(self, paginator):
+        super().__init__()
+        self.paginator = paginator
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            page_number = int(self.page_number.value) - 1
+            if 0 <= page_number < len(self.paginator.pages):
+                self.paginator.current_page = page_number
+                await self.paginator.update_embed(interaction)
+            else:
+                await interaction.response.send_message("Invalid page number.",
+                                                        ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message(
+                "Please enter a valid number.", ephemeral=True)
+
+
+class Paginator(discord.ui.View):
+
+    def __init__(self, interaction: discord.Interaction, pages: List[str],
+                 image_url: str):
+        super().__init__(timeout=30)  # Timeout after 30 seconds of inactivity
+        self.interaction = interaction
+        self.pages = pages
+        self.image_url = image_url
+        self.current_page = 0
+        self.message = None
+
+    async def update_embed(self,
+                           interaction: discord.Interaction,
+                           initial: bool = False):
+        embed = discord.Embed(title="Image Text Recognition",
+                              color=discord.Color.blue())
+        embed.set_thumbnail(url=self.image_url)
+        embed.add_field(
+            name=
+            f"Detected Text (Page {self.current_page + 1}/{len(self.pages)})",
+            value=self.pages[self.current_page],
+            inline=False)
+
+        if initial:
+            self.message = await interaction.followup.send(embed=embed,
+                                                           view=self)
+        else:
+            await self.message.edit(embed=embed, view=self)
+
+    @discord.ui.button(label="Prev", style=discord.ButtonStyle.primary)
+    async def prev_page(self, button: discord.ui.Button,
+                        interaction: discord.Interaction):
+        if self.current_page > 0:
+            self.current_page -= 1
+            await self.update_embed(interaction)
+        else:
+            await interaction.response.send_message(
+                "You're already on the first page.", ephemeral=True)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
+    async def next_page(self, button: discord.ui.Button,
+                        interaction: discord.Interaction):
+        if self.current_page < len(self.pages) - 1:
+            self.current_page += 1
+            await self.update_embed(interaction)
+        else:
+            await interaction.response.send_message(
+                "You're already on the last page.", ephemeral=True)
+
+    @discord.ui.button(label="Go to", style=discord.ButtonStyle.secondary)
+    async def go_to_page(self, button: discord.ui.Button,
+                         interaction: discord.Interaction):
+        await interaction.response.send_modal(GoToPageModal(self))
+
+    async def on_timeout(self):
+        if self.message:
+            await self.message.edit(view=None)
 
 
 class ImageRecognition(commands.Cog):
@@ -80,8 +164,18 @@ class ImageRecognition(commands.Cog):
                 )
                 return
 
-            await self.send_embed(interaction, image.url if image else url,
-                                  text_detected)
+            pages = self.format_text(text_detected)
+
+            if len(pages) > 1:
+                paginator = Paginator(interaction, pages,
+                                      image.url if image else url)
+                await paginator.update_embed(interaction, initial=True)
+            else:
+                await interaction.followup.send(embed=discord.Embed(
+                    title="Image Text Recognition",
+                    description=pages[0],
+                    color=discord.Color.blue()).set_thumbnail(
+                        url=image.url if image else url))
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}")
             import traceback
@@ -109,36 +203,29 @@ class ImageRecognition(commands.Cog):
                 return buffer.getvalue()
         return image_data
 
-    async def send_embed(self, interaction: discord.Interaction,
-                         image_url: str, text_detected: str):
-        embed = discord.Embed(title="Image Text Recognition",
-                              color=discord.Color.blue())
-        embed.set_thumbnail(url=image_url)
-
-        formatted_text = self.format_text(text_detected)
-        for i, chunk in enumerate(formatted_text, 1):
-            embed.add_field(name=f"Detected Text (Part {i})",
-                            value=chunk,
-                            inline=False)
-
-        await interaction.followup.send(embed=embed)
-
     @staticmethod
-    def format_text(text: str) -> list[str]:
-        # Preserve newlines and spaces
-        lines = text.split('\n')
+    def format_text(text: str) -> List[str]:
+        """
+        Formats the text to ensure proper spacing, indentation, and readability.
+        Splits the text into chunks if it exceeds Discord's character limits per field.
+        """
+        max_field_length = 1024  # Discord's character limit for a field value
+        lines = text.splitlines()
         formatted_chunks = []
         current_chunk = ""
 
         for line in lines:
-            if len(current_chunk) + len(line) + 1 > 1000:  # +1 for newline
-                formatted_chunks.append(f"```\n{current_chunk}```")
-                current_chunk = line + '\n'
+            stripped_line = line.rstrip()  # Keep the original line spacing
+            if len(current_chunk) + len(
+                    stripped_line
+            ) + 1 > max_field_length:  # +1 for the newline
+                formatted_chunks.append(f"```\n{current_chunk.strip()}```")
+                current_chunk = stripped_line + '\n'
             else:
-                current_chunk += line + '\n'
+                current_chunk += stripped_line + '\n'
 
-        if current_chunk:
-            formatted_chunks.append(f"```\n{current_chunk}```")
+        if current_chunk.strip():  # Add the last chunk if it exists
+            formatted_chunks.append(f"```\n{current_chunk.strip()}```")
 
         return formatted_chunks
 
