@@ -12,6 +12,7 @@ aiohttp = "^3.9.5"
 discord-py = "^2.4.0"
 requests = "^2.32.3"
 flask = "^3.0.3"
+ffmpeg = "1.4"
 
 
 [build-system]
