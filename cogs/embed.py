@@ -12,7 +12,7 @@ import asyncio
 import re
 from discord import ButtonStyle, Interaction
 from datetime import timedelta
-from typing import Optional
+from discord.utils import format_dt
 
 
 class BaseView(discord.ui.View):
@@ -493,7 +493,7 @@ class JumpToPageModal(Modal):
                 ephemeral=True)  # Updated error message
 
 
-class ScheduleModal(BaseModal):
+class ScheduleModal(Modal):
 
     def __init__(self, embed: discord.Embed, bot: commands.Bot,
                  original_channel: discord.TextChannel):
@@ -511,7 +511,7 @@ class ScheduleModal(BaseModal):
         self.add_item(self.schedule_time)
         self.add_item(self.channel)
 
-    async def handle_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction):
         if not self.is_embed_configured():
             await interaction.response.send_message(
                 "Error: The embed has not been configured yet. Please add some content before scheduling.",
@@ -541,24 +541,24 @@ class ScheduleModal(BaseModal):
                 ephemeral=True)
             return
 
-        human_readable_time = self.format_time_delta(delay)
+        scheduled_time = discord.utils.utcnow() + delay
+        scheduled_time_str = format_dt(scheduled_time, style='R')
 
         await interaction.response.send_message(
-            f"Embed scheduled to be sent in {channel.mention} {human_readable_time}",
+            f"Embed scheduled to be sent in {channel.mention} {scheduled_time_str}",
             ephemeral=True)
 
         # Schedule the embed to be sent
         await self.schedule_embed(delay, channel, interaction)
 
     def is_embed_configured(self) -> bool:
-        """Check if the embed has been configured with any content."""
         return any([
             self.embed.title, self.embed.description, self.embed.fields,
             self.embed.author, self.embed.footer, self.embed.image,
             self.embed.thumbnail
         ])
 
-    def parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
+    def parse_schedule_time(self, schedule_time: str) -> timedelta | None:
         match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
         if match:
             amount, unit = match.groups()
@@ -585,11 +585,17 @@ class ScheduleModal(BaseModal):
     async def schedule_embed(self, delay: timedelta,
                              channel: discord.TextChannel,
                              interaction: discord.Interaction):
+        scheduled_time = discord.utils.utcnow() + delay
         await asyncio.sleep(delay.total_seconds())
         sent_message = await channel.send(embed=self.embed)
         message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
         user = interaction.user
-        await user.send(f"Your scheduled embed has been sent! {message_link}")
+
+        scheduled_time_str = format_dt(scheduled_time, style='R')
+
+        await user.send(
+            f"Your scheduled embed has been sent {scheduled_time_str}! {message_link}"
+        )
 
 
 class PlusButton(BaseButton):
