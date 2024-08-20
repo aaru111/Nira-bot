@@ -4,7 +4,7 @@ from discord.ext import commands
 import aiohttp
 import random
 import asyncio
-from discord.errors import HTTPException
+from discord.errors import HTTPException, NotFound, InteractionResponded
 
 
 class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
@@ -16,7 +16,7 @@ class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
 
         self.topic = discord.ui.TextInput(
             label="Enter a new topic",
-            placeholder="e.g., general, anime, gaming",
+            placeholder="e.g., general, anime, gaming, shitposting",
             max_length=20)
         self.add_item(self.topic)
 
@@ -37,9 +37,12 @@ class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
         self.view.meme_history = []
         self.view.current_index = -1
         await self.view.change_meme(interaction, direction=1)
-        await interaction.followup.send(
-            f"Topic changed to '{new_topic}'. Here's a meme from this topic:",
-            ephemeral=True)
+        try:
+            await interaction.followup.send(
+                f"Topic changed to '{new_topic}'. Here's a meme from this topic:",
+                ephemeral=True)
+        except NotFound:
+            pass  # Ignore if the interaction is no longer valid
 
 
 class MemeView(discord.ui.View):
@@ -100,11 +103,6 @@ class MemeView(discord.ui.View):
                 "You cannot interact with this command.", ephemeral=True)
             return
 
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                "This interaction has already been processed.", ephemeral=True)
-            return
-
         try:
             if direction == 1:  # Next button
                 meme = await self.meme_cog.fetch_single_meme(self.topic)
@@ -125,7 +123,14 @@ class MemeView(discord.ui.View):
             if meme:
                 embed = self.create_meme_embed(meme)
                 self.update_button_states()
-                await interaction.response.edit_message(embed=embed, view=self)
+                try:
+                    await interaction.response.edit_message(embed=embed,
+                                                            view=self)
+                except InteractionResponded:
+                    await interaction.followup.edit_message(
+                        embed=embed,
+                        view=self,
+                        message_id=interaction.message.id)
             else:
                 await interaction.response.send_message(
                     "Failed to fetch a new meme. Please try again.",
@@ -137,18 +142,26 @@ class MemeView(discord.ui.View):
                 await asyncio.sleep(retry_after)
                 await self.change_meme(interaction, direction)
             else:
-                await interaction.followup.send(
-                    "An error occurred. Please try again later.",
-                    ephemeral=True)
-        except discord.errors.NotFound:
-            await interaction.followup.send(
-                "This interaction is no longer valid. Please try again.",
-                ephemeral=True)
+                await self.handle_error(
+                    interaction, "An error occurred. Please try again later.")
+        except NotFound:
+            await self.handle_error(
+                interaction,
+                "This interaction is no longer valid. Please try again.")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            await interaction.followup.send(
-                "An unexpected error occurred. Please try again later.",
-                ephemeral=True)
+            await self.handle_error(
+                interaction,
+                "An unexpected error occurred. Please try again later.")
+
+    async def handle_error(self, interaction: discord.Interaction,
+                           message: str):
+        try:
+            await interaction.response.send_message(message, ephemeral=True)
+        except InteractionResponded:
+            await interaction.followup.send(message, ephemeral=True)
+        except NotFound:
+            pass  # Ignore if the interaction is no longer valid
 
     def update_button_states(self):
         self.previous_button.disabled = self.current_index == 0
@@ -205,8 +218,12 @@ class MemeCog(commands.Cog):
                 "badlinguistics"
             ],
             "nsfw": [
-                "NSFWMemes", "pornmemes", "rule34memes", "SexyMemes",
-                "nsfwfunny", "lewdmemes"
+                "NSFWMemes", "porn", "NSFW_IndianMemes", "BrainrotSluts"
+            ],
+            "shitposting": [
+                "shitposting", "okbuddyretard", "surrealmemes",
+                "DeepFriedMemes", "nukedmemes", "bonehurtingjuice",
+                "comedyheaven"
             ]
         }
         self.last_request_time = 0
@@ -225,23 +242,17 @@ class MemeCog(commands.Cog):
         subreddit = random.choice(
             self.meme_topics.get(topic, self.meme_topics["general"]))
         url = f'https://meme-api.com/gimme/{subreddit}'
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url) as response:
-                    self.last_request_time = asyncio.get_event_loop().time()
-                    if response.status == 200:
-                        data = await response.json()
-                        if data['url'].endswith(
-                            ('.jpg', '.jpeg', '.png', '.gif')):
-                            return data
-                    elif response.status == 429:
-                        retry_after = int(
-                            response.headers.get('Retry-After', 5))
-                        await asyncio.sleep(retry_after)
-                        return await self.fetch_single_meme(topic)
-                    return None
-            except aiohttp.ClientError:
-                return None
+        async with self.session.get(url) as response:
+            self.last_request_time = asyncio.get_event_loop().time()
+            if response.status == 200:
+                data = await response.json()
+                if data['url'].endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    return data
+            elif response.status == 429:
+                retry_after = int(response.headers.get('Retry-After', 5))
+                await asyncio.sleep(retry_after)
+                return await self.fetch_single_meme(topic)
+            return None
 
     @app_commands.command(name="meme", description="Get a random meme")
     @app_commands.choices(topic=[
@@ -251,7 +262,8 @@ class MemeCog(commands.Cog):
         app_commands.Choice(name="Programming", value="programming"),
         app_commands.Choice(name="Science", value="science"),
         app_commands.Choice(name="History", value="history"),
-        app_commands.Choice(name="NSFW", value="nsfw")
+        app_commands.Choice(name="NSFW", value="nsfw"),
+        app_commands.Choice(name="Shitposting", value="shitposting")
     ])
     async def meme(self, interaction: discord.Interaction,
                    topic: app_commands.Choice[str]):
