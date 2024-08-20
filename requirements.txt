@@ -93,3 +93,6 @@ wheel==0.43.0
 yarg==0.1.9
 yarl==1.9.4
 youtube-dl==2021.12.17
+qrcode
+
+
