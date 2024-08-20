@@ -3,15 +3,12 @@ from discord.ext import commands
 from discord import app_commands
 import requests
 import os
-from dotenv import load_dotenv
 from urllib.parse import urlparse
 import qrcode
 import io
 import time
 import aiohttp
 
-# Load environment variables from .env file
-load_dotenv()
 
 # Retrieve the Bitly API token from environment variables
 BITLY_TOKEN = os.getenv("BITLY_API")
