@@ -34,12 +34,22 @@ class HelpCommand(commands.HelpCommand):
 
     async def send_bot_help(self, mapping: Dict[Optional[commands.Cog],
                                                 List[commands.Command]]):
+        embed = self.create_bot_help_embed()
+        options = self.create_category_options(mapping)
+        view = HelpView(self, options)
+        await self.get_destination().send(embed=embed, view=view)
+
+    def create_bot_help_embed(self) -> discord.Embed:
         embed = discord.Embed(title="Bot Help", color=discord.Color.blurple())
         embed.set_thumbnail(url=self.context.bot.user.avatar.url)
         embed.add_field(name="About",
                         value="Here's a list of all my commands:",
                         inline=False)
+        return embed
 
+    def create_category_options(
+        self, mapping: Dict[Optional[commands.Cog], List[commands.Command]]
+    ) -> List[discord.SelectOption]:
         options = []
         for cog, commands in mapping.items():
             if cog and commands:
@@ -47,18 +57,37 @@ class HelpCommand(commands.HelpCommand):
                 options.append(
                     discord.SelectOption(
                         label=name, description=f"{len(commands)} commands"))
-
         options.append(
             discord.SelectOption(label="Home",
                                  description="Go back to the main menu"))
-        view = HelpView(self, options)
-        await self.get_destination().send(embed=embed, view=view)
+        return options
 
     async def send_cog_help(self, cog: commands.Cog):
         embed = await self.create_category_embed(cog.qualified_name)
         await self.get_destination().send(embed=embed)
 
     async def send_command_help(self, command: commands.Command):
+        embed = self.create_command_help_embed(command)
+        await self.get_destination().send(embed=embed)
+
+    async def create_category_embed(self, category: str) -> discord.Embed:
+        cog = self.context.bot.get_cog(category)
+        if cog is None:
+            return self.create_bot_help_embed()
+
+        embed = discord.Embed(title=f"{category} Commands",
+                              color=discord.Color.blurple())
+        embed.set_thumbnail(url=self.context.bot.user.avatar.url)
+
+        filtered = await self.filter_commands(cog.get_commands())
+        for command in filtered:
+            description = command.short_doc or "No description provided."
+            embed.add_field(name=command.name, value=description, inline=False)
+
+        return embed
+
+    def create_command_help_embed(self,
+                                  command: commands.Command) -> discord.Embed:
         embed = discord.Embed(title=f"Command: {command.name}",
                               color=discord.Color.blurple())
         embed.add_field(name="Description",
@@ -71,22 +100,6 @@ class HelpCommand(commands.HelpCommand):
             embed.add_field(name="Aliases",
                             value=", ".join(command.aliases),
                             inline=False)
-        await self.get_destination().send(embed=embed)
-
-    async def create_category_embed(self, category: str):
-        cog = self.context.bot.get_cog(category)
-        if cog is None:
-            return await self.send_bot_help(self.get_bot_mapping())
-
-        embed = discord.Embed(title=f"{category} Commands",
-                              color=discord.Color.blurple())
-        embed.set_thumbnail(url=self.context.bot.user.avatar.url)
-
-        filtered = await self.filter_commands(cog.get_commands())
-        for command in filtered:
-            description = command.short_doc or "No description provided."
-            embed.add_field(name=command.name, value=description, inline=False)
-
         return embed
 
 
