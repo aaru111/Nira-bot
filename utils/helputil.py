@@ -33,8 +33,7 @@ class HelpEmbedUtil(EmbedUtilBase):
         embed = discord.Embed(title=title,
                               description=description,
                               color=color)
-        embed.set_thumbnail(
-            url="https://i.imgur.com/AfFp7pu.png")  # Example thumbnail
+        embed.set_thumbnail(url="https://i.imgur.com/LOqyPNj.png")
         embed.set_footer(text="<> - required | [] - optional")
         return embed
 
@@ -114,9 +113,9 @@ class HelpEmbedUtil(EmbedUtilBase):
     @staticmethod
     def create_main_embed() -> discord.Embed:
         embed = discord.Embed(
-            title="🔍 Bot Command Categories",
+            title="🔍 Commands Help",
             description=
-            ("**Welcome to the bot help menu!**\n\n"
+            ("**Welcome to the N.I.R.A help menu!**\n\n"
              "Use the dropdown below to select a command category. "
              "Each category provides information about the commands available under it.\n\n"
              "You can also use `.help <command>` to get detailed information on a specific command."
