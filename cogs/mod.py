@@ -1,12 +1,10 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from typing import Optional, List
 import aiohttp
 import asyncio
-import time
 from functools import wraps
 import io
-
 
 # Utility Functions
 def ensure_permissions(permission: str):
@@ -415,6 +413,38 @@ class Moderation(commands.Cog):
                 f"Removed role {role.mention} from {member.mention} after {time} seconds.",
                 ephemeral=True)
 
+    @commands.hybrid_command(name="role-remove")
+    @ensure_permissions("manage_roles")
+    async def role_remove(self,
+                          ctx: commands.Context,
+                          member: discord.Member,
+                          role: discord.Role):
+        """Remove a role from a user."""
+        await member.remove_roles(role)
+        await ctx.send(f"Removed role {role.mention} from {member.mention}.",
+                       ephemeral=True)
+
+    @commands.hybrid_command(name="role-list")
+    async def role_list(self, ctx: commands.Context, member: discord.Member):
+        """List all roles of a user."""
+        roles = [role.mention for role in member.roles if role != ctx.guild.default_role]
+        if roles:
+            roles_str = ", ".join(roles)
+            await ctx.send(f"{member.mention}'s roles: {roles_str}")
+        else:
+            await ctx.send(f"{member.mention} has no roles.")
+
+    @commands.hybrid_command(name="role-info")
+    async def role_info(self, ctx: commands.Context, role: discord.Role):
+        """Get information about a role."""
+        embed = discord.Embed(title=f"Role Info: {role.name}",
+                              color=role.color)
+        embed.add_field(name="ID", value=role.id)
+        embed.add_field(name="Mentionable", value=role.mentionable)
+        embed.add_field(name="Hoist", value=role.hoist)
+        embed.add_field(name="Position", value=role.position)
+        embed.add_field(name="Created At", value=role.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+        await ctx.send(embed=embed)
 
 async def setup(bot: commands.Bot) -> None:
     """Set up the Moderation cog."""
