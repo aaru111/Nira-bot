@@ -57,49 +57,50 @@ class HelpEmbedUtil(EmbedUtilBase):
             "General":
             [(".help [command]", "Displays help for a specific command")],
             "Image": [
-                ("plant <[image] or [image url]>",
+                ("/plant <[image] or [image url]>",
                  "Identify a plant using an image or image URL."),
-                ("identify <[image] or [image url]>",
+                ("/identify <[image] or [image url]>",
                  "Extract text from an image using an image or URL."),
-                ("asciify <image link>", "Convert an image into ASCII art."),
-                ("emojify <image link> <size>",
+                (".asciify <image link>", "Convert an image into ASCII art."),
+                (".emojify <image link> <size>",
                  "Convert an image into a grid of emojis."),
             ],
             "Games": [
-                ("ttt <opponent> [custom emoji] [custom emoji]",
+                ("/ttt <opponent> [custom emoji 1] [custom emoji 2]",
                  "Play a game of Tic-Tac-Toe with a friend."),
-                ("tetris", "Play a game of Tetris within Discord."),
-                ("memorygame",
+                (".tetris", "Play a game of Tetris within Discord."),
+                (".memorygame",
                  "Play a memory game where you match pairs of emojis."),
-                ("trivia", "Challenge yourself with a trivia quiz."),
+                (".trivia", "Challenge yourself with a trivia quiz."),
             ],
             "Moderation": [
-                ("kick <user> [reason]", "Kick a user from the server."),
-                ("ban <user> [reason]", "Ban a user from the server."),
-                ("unban <user>", "Unban a previously banned user."),
-                ("nuke",
+                ("/kick <user> [reason]", "Kick a user from the server."),
+                ("/ban <user> [reason]", "Ban a user from the server."),
+                ("/unban <user>", "Unban a previously banned user."),
+                ("/nuke",
                  "Delete and recreate a channel with the same properties."),
-                ("purge <no of messages>",
+                ("/purge <no of messages>",
                  "Clear a specified number of messages from a channel."),
-                ("avatar <user>", "Get the avatar of a user."),
-                ("channel_id <channel>", "Get the ID of a specified channel."),
-                ("ping", "Get the bot's latency."),
-                ("warn <member> [reason]", "Warn a member in the server."),
-                ("slowmode <time>",
+                ("/avatar <user>", "Get the avatar of a user."),
+                ("/channel_id <channel>",
+                 "Get the ID of a specified channel."),
+                ("/ping", "Get the bot's latency."),
+                ("/warn <member> [reason]", "Warn a member in the server."),
+                ("/slowmode <time>",
                  "Set slowmode in a channel for a specified duration."),
-                ("role-add <role> <member> [time]",
+                ("/role-add <role> <member> [time]",
                  "Add a role to a member for a specified duration."),
             ],
             "Fun": [
-                ("meme [category]",
+                ("/meme [category]",
                  "Fetch a meme from the specified category."),
-                ("wanted <user>",
+                ("/wanted <user>",
                  "Place a user's profile picture in a wanted poster."),
-                ("joke", "Get a random joke."),
-                ("collatz <number>",
+                (".joke", "Get a random joke."),
+                (".collatz <number>",
                  "Check if a number satisfies the Collatz conjecture."),
-                ("pp", "Get a random penis size."),
-                ("rng", "Generate a random number between 1 and 1000."),
+                (".pp", "Get a random penis size."),
+                (".rng", "Generate a random number between 1 and 1000."),
             ],
         }
 
@@ -125,11 +126,12 @@ class HelpEmbedUtil(EmbedUtilBase):
             url="https://i.imgur.com/AfFp7pu.png")  # Example thumbnail
         embed.add_field(
             name="Categories:",
-            value=("ℹ️ **General** - General bot commands.\n"
-                   "🖼️ **Image** - Commands related to image manipulation.\n"
-                   "🎮 **Games** - Fun games to play in Discord.\n"
-                   "🛡️ **Moderation** - Moderation tools for server admins.\n"
-                   "🎉 **Fun** - Miscellaneous and fun commands."),
+            value=(
+                "ℹ️ **General** - General bot commands.\n\n"
+                "🖼️ **Image** - Commands related to image manipulation.\n\n"
+                "🎮 **Games** - Fun games to play in Discord.\n\n"
+                "🛡️ **Moderation** - Moderation tools for server admins.\n\n"
+                "🎉 **Fun** - Miscellaneous and fun commands."),
             inline=False)
         embed.add_field(
             name="How to Use:",
