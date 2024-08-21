@@ -122,8 +122,7 @@ class HelpEmbedUtil(EmbedUtilBase):
              "You can also use `.help <command>` to get detailed information on a specific command."
              ),
             color=discord.Color.blue())
-        embed.set_thumbnail(
-            url="https://i.imgur.com/AfFp7pu.png")  # Example thumbnail
+        embed.set_thumbnail(url="https://i.imgur.com/LOqyPNj.png")
         embed.add_field(
             name="Categories:",
             value=(
