@@ -167,15 +167,16 @@ class MemeView(discord.ui.View):
         self.previous_button.disabled = self.current_index == 0
         self.next_button.disabled = False
 
-    @staticmethod
-    def create_meme_embed(meme):
+    def create_meme_embed(self, meme):
         embed = discord.Embed(
             title=meme['title'],
             description=f"[View on r/{meme['subreddit']}]({meme['postLink']})",
             color=discord.Color.random())
         embed.set_image(url=meme['url'])
         embed.set_footer(
-            text=f"Posted by u/{meme['author']} | 👍 {meme['ups']}")
+            text=
+            f"Posted by u/{meme['author']} | 👍 {meme['ups']} | Topic: {self.topic}"
+        )
         return embed
 
     async def on_timeout(self):
@@ -217,9 +218,7 @@ class MemeCog(commands.Cog):
                 "historymemes", "trippinthroughtime", "HistoryAnimemes",
                 "badlinguistics"
             ],
-            "nsfw": [
-                "NSFWMemes", "porn", "NSFW_IndianMemes", "BrainrotSluts"
-            ],
+            "nsfw": ["NSFWMemes", "porn", "NSFW_IndianMemes", "BrainrotSluts"],
             "shitposting": [
                 "shitposting", "okbuddyretard", "surrealmemes",
                 "DeepFriedMemes", "nukedmemes", "bonehurtingjuice",
