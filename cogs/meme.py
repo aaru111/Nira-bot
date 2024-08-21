@@ -96,6 +96,29 @@ class MemeView(discord.ui.View):
         modal = MemeTopicModal(self.meme_cog, self)
         await interaction.response.send_modal(modal)
 
+    @discord.ui.button(emoji="💾", style=discord.ButtonStyle.gray, row=2)
+    async def save_to_dm_button(self, interaction: discord.Interaction,
+                                button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message(
+                "You cannot interact with this command.", ephemeral=True)
+            return
+
+        if self.current_index >= 0:
+            meme = self.meme_history[self.current_index]
+            try:
+                await interaction.user.send(
+                    f"Here's the meme you requested:\n{meme['url']}")
+                await interaction.response.send_message(
+                    "Meme Saved!", ephemeral=True)
+            except discord.errors.Forbidden:
+                await interaction.response.send_message(
+                    "I don't have permission to send messages to your DMs.",
+                    ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                "No meme to save.", ephemeral=True)
+
     async def change_meme(self, interaction: discord.Interaction,
                           direction: int):
         if interaction.user != self.interaction.user:
@@ -166,6 +189,7 @@ class MemeView(discord.ui.View):
     def update_button_states(self):
         self.previous_button.disabled = self.current_index == 0
         self.next_button.disabled = False
+        self.save_to_dm_button.disabled = self.current_index < 0
 
     def create_meme_embed(self, meme):
         embed = discord.Embed(
