@@ -143,3 +143,8 @@ cython_debug/
 
 __pycache__/
 *.pyc
+
+# replit
+
+.replit
+replit.nix
