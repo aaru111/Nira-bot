@@ -6,6 +6,7 @@ import asyncio
 from functools import wraps
 import io
 
+
 # Utility Functions
 def ensure_permissions(permission: str):
     """Decorator to check user permissions."""
@@ -415,9 +416,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(name="role-remove")
     @ensure_permissions("manage_roles")
-    async def role_remove(self,
-                          ctx: commands.Context,
-                          member: discord.Member,
+    async def role_remove(self, ctx: commands.Context, member: discord.Member,
                           role: discord.Role):
         """Remove a role from a user."""
         await member.remove_roles(role)
@@ -427,10 +426,16 @@ class Moderation(commands.Cog):
     @commands.hybrid_command(name="role-list")
     async def role_list(self, ctx: commands.Context, member: discord.Member):
         """List all roles of a user."""
-        roles = [role.mention for role in member.roles if role != ctx.guild.default_role]
+        roles = [
+            role.mention for role in member.roles
+            if role != ctx.guild.default_role
+        ]
         if roles:
-            roles_str = ", ".join(roles)
-            await ctx.send(f"{member.mention}'s roles: {roles_str}")
+            roles_str = "\n".join(f"- {role}" for role in roles)
+            embed = discord.Embed(title=f"{member.display_name}'s Roles",
+                                  description=roles_str,
+                                  color=discord.Color.random())
+            await ctx.send(embed=embed)
         else:
             await ctx.send(f"{member.mention} has no roles.")
 
@@ -443,8 +448,10 @@ class Moderation(commands.Cog):
         embed.add_field(name="Mentionable", value=role.mentionable)
         embed.add_field(name="Hoist", value=role.hoist)
         embed.add_field(name="Position", value=role.position)
-        embed.add_field(name="Created At", value=role.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+        embed.add_field(name="Created At",
+                        value=role.created_at.strftime("%Y-%m-%d %H:%M:%S"))
         await ctx.send(embed=embed)
+
 
 async def setup(bot: commands.Bot) -> None:
     """Set up the Moderation cog."""
