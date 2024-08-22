@@ -133,6 +133,38 @@ async def _recreate_channel_data(new_channel: discord.TextChannel,
         files.clear()
 
 
+class RoleInfoView(discord.ui.View):
+
+    def __init__(self, role: discord.Role):
+        super().__init__()
+        self.role = role
+
+    @discord.ui.button(label="Show Members", style=discord.ButtonStyle.primary)
+    async def show_members(self, interaction: discord.Interaction,
+                           button: discord.ui.Button):
+        members = self.role.members
+        if not members:
+            await interaction.response.send_message(
+                "No members have this role.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title=f"Members with {self.role.name} role",
+                              color=self.role.color)
+        member_list = [member.mention for member in members]
+
+        # Split the list into chunks of 20 to avoid hitting the field value character limit
+        chunks = [
+            member_list[i:i + 20] for i in range(0, len(member_list), 20)
+        ]
+
+        for i, chunk in enumerate(chunks, 1):
+            embed.add_field(name=f"Members {i}",
+                            value="\n".join(chunk),
+                            inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class CustomButton(discord.ui.Button):
     """Custom button for Discord UI."""
 
@@ -450,7 +482,10 @@ class Moderation(commands.Cog):
         embed.add_field(name="Position", value=role.position)
         embed.add_field(name="Created At",
                         value=role.created_at.strftime("%Y-%m-%d %H:%M:%S"))
-        await ctx.send(embed=embed)
+        embed.add_field(name="Member Count", value=len(role.members))
+
+        view = RoleInfoView(role)
+        await ctx.send(embed=embed, view=view)
 
 
 async def setup(bot: commands.Bot) -> None:
