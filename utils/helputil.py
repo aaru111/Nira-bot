@@ -90,6 +90,12 @@ class HelpEmbedUtil(EmbedUtilBase):
                  "Set slowmode in a channel for a specified duration."),
                 ("/role-add <role> <member> [time]",
                  "Add a role to a member for a specified duration."),
+                ("/role-info <role>",
+                 "Get detailed information about a specific role."),
+                ("/role-list <member>",
+                 "List all roles assigned to a member."),
+                ("/role-remove <member> <role>",
+                 "Remove a specific role from a member."),
             ],
             "Fun": [
                 ("/meme [category]",

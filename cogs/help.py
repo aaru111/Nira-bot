@@ -8,7 +8,6 @@ class HelpDropdown(discord.ui.Select):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
         options = [
             discord.SelectOption(label="General",
@@ -32,9 +31,6 @@ class HelpDropdown(discord.ui.Select):
                          max_values=1,
                          options=options)
 
-    async def cog_unload(self):
-        await self.session.close()
-
     async def callback(self, interaction: discord.Interaction):
         category = self.values[0]
         embed = HelpEmbedUtil.create_category_embed(category)
@@ -50,10 +46,11 @@ class HelpView(discord.ui.View):
 
 class HelpCog(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._original_help_command = bot.help_command
         bot.help_command = None
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
     @commands.group(invoke_without_command=True)
     async def help(self, ctx, command: str = None):
@@ -265,6 +262,27 @@ class HelpCog(commands.Cog):
     async def rng(self, ctx):
         embed = HelpEmbedUtil.create_command_embed(
             ".rng", "Generate a random number between 1 and 1000.", ".rng")
+        await ctx.send(embed=embed)
+
+    @help.command()
+    async def role_info(self, ctx):
+        embed = HelpEmbedUtil.create_command_embed(
+            "/role-info", "Get detailed information about a specific role.",
+            "/role-info <role>")
+        await ctx.send(embed=embed)
+
+    @help.command()
+    async def role_list(self, ctx):
+        embed = HelpEmbedUtil.create_command_embed(
+            "/role-list", "List all roles assigned to a member.",
+            "/role-list <member>")
+        await ctx.send(embed=embed)
+
+    @help.command()
+    async def role_remove(self, ctx):
+        embed = HelpEmbedUtil.create_command_embed(
+            "/role-remove", "Remove a specific role from a member.",
+            "/role-remove <member> <role>")
         await ctx.send(embed=embed)
 
     async def cog_unload(self):
