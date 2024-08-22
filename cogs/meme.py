@@ -6,6 +6,40 @@ import random
 import asyncio
 from discord.errors import HTTPException, NotFound, InteractionResponded
 
+# Imported from utils/common_utils.py
+DEFAULT_TIMEOUT = 60  # Default timeout in seconds
+MAX_RETRIES = 3  # Maximum number of retries for API calls
+
+
+class TimeoutError(Exception):
+    """Custom exception for timeout errors"""
+    pass
+
+
+class APIError(Exception):
+    """Custom exception for API errors"""
+    pass
+
+
+async def fetch_with_retry(session, url, max_retries=MAX_RETRIES):
+    """Fetch data from URL with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            async with session.get(url, timeout=DEFAULT_TIMEOUT) as response:
+                if response.status == 200:
+                    return await response.json()
+                elif response.status == 429:
+                    # Rate limited, wait and retry
+                    await asyncio.sleep(2**attempt)
+                else:
+                    raise APIError(
+                        f"API returned status code {response.status}")
+        except asyncio.TimeoutError:
+            if attempt == max_retries - 1:
+                raise TimeoutError("Request timed out after multiple attempts")
+            await asyncio.sleep(2**attempt)
+    raise APIError("Max retries reached")
+
 
 class MemeTopicModal(discord.ui.Modal, title="Change Meme Topic"):
 
@@ -109,15 +143,15 @@ class MemeView(discord.ui.View):
             try:
                 await interaction.user.send(
                     f"Here's the meme you requested:\n{meme['url']}")
-                await interaction.response.send_message(
-                    "Meme Saved!", ephemeral=True)
+                await interaction.response.send_message("Meme Saved!",
+                                                        ephemeral=True)
             except discord.errors.Forbidden:
                 await interaction.response.send_message(
                     "I don't have permission to send messages to your DMs.",
                     ephemeral=True)
         else:
-            await interaction.response.send_message(
-                "No meme to save.", ephemeral=True)
+            await interaction.response.send_message("No meme to save.",
+                                                    ephemeral=True)
 
     async def change_meme(self, interaction: discord.Interaction,
                           direction: int):
@@ -215,7 +249,7 @@ class MemeCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession()
         self.meme_topics = {
             "general": [
                 "memes", "dankmemes", "funny", "me_irl", "wholesomememes",
@@ -265,17 +299,14 @@ class MemeCog(commands.Cog):
         subreddit = random.choice(
             self.meme_topics.get(topic, self.meme_topics["general"]))
         url = f'https://meme-api.com/gimme/{subreddit}'
-        async with self.session.get(url) as response:
+        try:
+            data = await fetch_with_retry(self.session, url)
             self.last_request_time = asyncio.get_event_loop().time()
-            if response.status == 200:
-                data = await response.json()
-                if data['url'].endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    return data
-            elif response.status == 429:
-                retry_after = int(response.headers.get('Retry-After', 5))
-                await asyncio.sleep(retry_after)
-                return await self.fetch_single_meme(topic)
-            return None
+            if data['url'].endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                return data
+        except (TimeoutError, APIError) as e:
+            print(f"Error fetching meme: {e}")
+        return None
 
     @app_commands.command(name="meme", description="Get a random meme")
     @app_commands.choices(topic=[
