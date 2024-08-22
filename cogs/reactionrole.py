@@ -9,12 +9,42 @@ import asyncio
 from typing import Dict, Any, Set, List
 from abc import ABC, abstractmethod
 import aiohttp
+import asyncpg
 
-# File paths for storing data
-DATA_PATH = "data/reaction_roles.json"
-TRACKED_MESSAGES_PATH = "data/tracked_messages.json"
+# Database connection settings
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+# Rate limits
 RATE_LIMIT_INTERVAL = 2
 RATE_LIMIT_CLEANUP_INTERVAL = 60
+
+
+async def initialize_database():
+    """Create necessary tables in the database if they don't exist."""
+    create_reaction_roles_table = """
+    CREATE TABLE IF NOT EXISTS reaction_roles (
+        guild_id TEXT,
+        message_id TEXT,
+        role_id TEXT,
+        channel_id TEXT,
+        emoji TEXT,
+        color TEXT,
+        custom_id TEXT,
+        link TEXT,
+        PRIMARY KEY (guild_id, message_id, role_id)
+    );
+    """
+
+    create_tracked_messages_table = """
+    CREATE TABLE IF NOT EXISTS tracked_messages (
+        message_id TEXT PRIMARY KEY
+    );
+    """
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute(create_reaction_roles_table)
+    await conn.execute(create_tracked_messages_table)
+    await conn.close()
 
 
 class RolesyncCooldown:
@@ -155,37 +185,41 @@ class DataManager(ABC):
         """Save data to a file."""
         pass
 
-
-class JsonDataManager(DataManager):
+    @staticmethod
+    @abstractmethod
+    async def load_from_db(query: str, *params: Any) -> Any:
+        """Load data from a database."""
+        pass
 
     @staticmethod
-    def load_data(file_path: str) -> Any:
-        """Load JSON data from a file."""
+    @abstractmethod
+    async def save_to_db(query: str, *params: Any) -> None:
+        """Save data to a database."""
+        pass
+
+
+class DatabaseManager(DataManager):
+
+    @staticmethod
+    async def load_from_db(query: str, *params: Any) -> Any:
+        """Load data from a database."""
+        conn = await asyncpg.connect(DATABASE_URL)
+        result = await conn.fetch(query, *params)
+        await conn.close()
+        return result
+
+    @staticmethod
+    async def save_to_db(query: str, *params: Any) -> None:
+        """Save data to a database."""
+        conn = await asyncpg.connect(DATABASE_URL)
+        # Convert all parameters to strings
+        string_params = [str(param) for param in params]
         try:
-            with open(file_path, "r") as file:
-                return json.load(file)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return {} if file_path == DATA_PATH else []
-
-    @staticmethod
-    def save_data(file_path: str, data: Any) -> None:
-        """Save data to a JSON file."""
-        with open(file_path, "w") as file:
-            json.dump(data, file, indent=4)
-
-
-class FileManager:
-    """Manages file operations for the bot."""
-
-    @staticmethod
-    def ensure_data_files_exist():
-        """Create necessary directories and files if they don't exist."""
-        os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-        os.makedirs(os.path.dirname(TRACKED_MESSAGES_PATH), exist_ok=True)
-        for file_path in [DATA_PATH, TRACKED_MESSAGES_PATH]:
-            if not os.path.exists(file_path):
-                JsonDataManager.save_data(file_path,
-                                          {} if file_path == DATA_PATH else [])
+            await conn.execute(query, *string_params)
+        except Exception as e:
+            print(f"Error saving to database: {e}")
+        finally:
+            await conn.close()
 
 
 class ReactionRoleManager:
@@ -207,14 +241,15 @@ class ReactionRoleManager:
             custom_id = role_data['custom_id']
             link = role_data.get('link')
 
-            if link:
-                button = discord.ui.Button(label="Click here",
-                                           url=link,
-                                           emoji=emoji)
-            else:
-                button = discord.ui.Button(style=color,
-                                           emoji=emoji,
-                                           custom_id=custom_id)
+        if link and link.lower().startswith(
+            ('http://', 'https://', 'discord:')):
+            button = discord.ui.Button(label="Click here",
+                                       url=link,
+                                       emoji=emoji)
+        else:
+            button = discord.ui.Button(style=color,
+                                       emoji=emoji,
+                                       custom_id=custom_id)
 
             button.callback = self.create_button_callback(role)
             view.add_item(button)
@@ -251,20 +286,41 @@ class ReactionRoleManager:
 
 
 class ReactionRole(commands.Cog):
-    """A Discord bot cog for managing reaction roles."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.role_manager = ReactionRoleManager(self)
-        FileManager.ensure_data_files_exist()
-        self.reaction_roles: Dict[str, Dict[str, List[Dict[
-            str, Any]]]] = JsonDataManager.load_data(DATA_PATH)
-        self.tracked_messages: Set[int] = set(
-            JsonDataManager.load_data(TRACKED_MESSAGES_PATH))
+        self.reaction_roles: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+        self.tracked_messages: Set[str] = set()
         self.bot.loop.create_task(self.setup_reaction_roles())
         self.rate_limit_dict: Dict[int, float] = {}
         self.bot.loop.create_task(self.cleanup_rate_limit_dict())
+        self.bot.loop.create_task(initialize_database())
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def initialize_database(self):
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS reaction_roles (
+                    guild_id TEXT,
+                    message_id TEXT,
+                    role_id TEXT,
+                    channel_id TEXT,
+                    emoji TEXT,
+                    color TEXT,
+                    custom_id TEXT,
+                    link TEXT,
+                    PRIMARY KEY (guild_id, message_id, role_id)
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS tracked_messages (
+                    message_id TEXT PRIMARY KEY
+                )
+            """)
+        finally:
+            await conn.close()
 
     async def cog_unload(self):
         """Clean up resources when the cog is unloaded."""
@@ -291,19 +347,95 @@ class ReactionRole(commands.Cog):
             }
             await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL)
 
-    def save_reaction_roles(self):
-        """Save the current reaction roles data to file."""
-        JsonDataManager.save_data(DATA_PATH, self.reaction_roles)
+    async def save_reaction_roles(self):
+        """Save the current reaction roles data to the database."""
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            await conn.execute("BEGIN")
+            # First, delete all existing entries
+            await conn.execute("DELETE FROM reaction_roles")
+            # Then, insert the current data
+            for guild_id, messages in self.reaction_roles.items():
+                for message_id, roles_data in messages.items():
+                    for role_data in roles_data:
+                        await conn.execute(
+                            """
+                            INSERT INTO reaction_roles (guild_id, message_id, role_id, channel_id, emoji, color, custom_id, link)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            """, str(guild_id), str(message_id),
+                            str(role_data['role_id']),
+                            str(role_data['channel_id']),
+                            str(role_data['emoji']), str(role_data['color']),
+                            str(role_data['custom_id']),
+                            str(role_data.get('link', '')))
+            await conn.execute("COMMIT")
+        except Exception as e:
+            await conn.execute("ROLLBACK")
+            print(f"Error saving reaction roles: {e}")
+        finally:
+            await conn.close()
 
-    def save_tracked_messages(self):
-        """Save the current tracked messages to file."""
-        JsonDataManager.save_data(TRACKED_MESSAGES_PATH,
-                                  list(self.tracked_messages))
+    async def save_tracked_messages(self):
+        """Save the current tracked messages to the database."""
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            await conn.execute("BEGIN")
+            # First, delete all existing entries
+            await conn.execute("DELETE FROM tracked_messages")
+            # Then, insert the current data
+            for message_id in self.tracked_messages:
+                await conn.execute(
+                    "INSERT INTO tracked_messages (message_id) VALUES ($1)",
+                    str(message_id))
+            await conn.execute("COMMIT")
+        except Exception as e:
+            await conn.execute("ROLLBACK")
+            print(f"Error saving tracked messages: {e}")
+        finally:
+            await conn.close()
 
     async def setup_reaction_roles(self):
         """Setup reaction roles when the bot starts."""
         await self.bot.wait_until_ready()
         to_delete = []
+
+        # Load data from the database
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            reaction_roles_data = await conn.fetch(
+                "SELECT * FROM reaction_roles")
+            tracked_messages_data = await conn.fetch(
+                "SELECT message_id FROM tracked_messages")
+        finally:
+            await conn.close()
+
+        # Convert the list of records into a nested dictionary
+        self.reaction_roles = {}
+        for record in reaction_roles_data:
+            guild_id = str(record['guild_id'])
+            message_id = str(record['message_id'])
+            if guild_id not in self.reaction_roles:
+                self.reaction_roles[guild_id] = {}
+            if message_id not in self.reaction_roles[guild_id]:
+                self.reaction_roles[guild_id][message_id] = []
+            self.reaction_roles[guild_id][message_id].append({
+                'role_id':
+                str(record['role_id']),
+                'channel_id':
+                str(record['channel_id']),
+                'emoji':
+                str(record['emoji']),
+                'color':
+                str(record['color']),
+                'custom_id':
+                str(record['custom_id']),
+                'link':
+                str(record['link']) if record['link'] else None
+            })
+
+        self.tracked_messages = set(
+            str(record['message_id']) for record in tracked_messages_data)
+
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
@@ -317,20 +449,20 @@ class ReactionRole(commands.Cog):
                         message = await channel.fetch_message(int(message_id))
                         await self.role_manager.add_buttons_to_message(
                             message, roles_data)
-                        self.tracked_messages.add(int(message_id))
+                        self.tracked_messages.add(str(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
                 await asyncio.sleep(0.1)  # Avoid rate limiting
 
-        await asyncio.sleep(30)
         for entry in to_delete:
             if isinstance(entry, tuple):
                 guild_id, message_id = entry
                 self.delete_reaction_role(guild_id, message_id)
             else:
                 del self.reaction_roles[entry]
-        self.save_reaction_roles()
-        self.save_tracked_messages()
+
+        await self.save_reaction_roles()
+        await self.save_tracked_messages()
 
     def delete_reaction_role(self, guild_id: str, message_id: str):
         """Delete a reaction role from the saved data."""
@@ -339,9 +471,9 @@ class ReactionRole(commands.Cog):
             del self.reaction_roles[guild_id][message_id]
             if not self.reaction_roles[guild_id]:
                 del self.reaction_roles[guild_id]
-        self.save_reaction_roles()
+        asyncio.create_task(self.save_reaction_roles())
         self.tracked_messages.discard(int(message_id))
-        self.save_tracked_messages()
+        asyncio.create_task(self.save_tracked_messages())
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
@@ -437,11 +569,11 @@ class ReactionRole(commands.Cog):
                 }
                 self.reaction_roles[guild_id][message_id].append(new_role_data)
 
-            self.save_reaction_roles()
+            await self.save_reaction_roles()
             await self.role_manager.add_buttons_to_message(
                 message, self.reaction_roles[guild_id][message_id])
             self.tracked_messages.add(int(message_id))
-            self.save_tracked_messages()
+            await self.save_tracked_messages()
             await interaction.followup.send(
                 "Reaction role added or updated successfully!", ephemeral=True)
         except (ValueError, discord.NotFound, discord.HTTPException) as e:
@@ -578,8 +710,8 @@ class ReactionRole(commands.Cog):
             else:
                 del self.reaction_roles[entry]
 
-        self.save_reaction_roles()
-        self.save_tracked_messages()
+        await self.save_reaction_roles()
+        await self.save_tracked_messages()
         return len(to_delete)
 
     async def create_message_reaction_roles_embed(
