@@ -12,7 +12,7 @@ import aiohttp
 # Logging Configuration
 # -------------------------
 logging.basicConfig(
-    level=logging.INFO,  # Adjust to ERROR or WARNING in production
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,11 @@ class Bot(commands.Bot):
 
     def __init__(self, command_prefix: str, intents: discord.Intents,
                  session: ClientSession, **kwargs: Any) -> None:
-        super().__init__(command_prefix=command_prefix,
+        super().__init__(command_prefix=self.get_prefix,
                          intents=intents,
                          **kwargs)
-        self.session = aiohttp.ClientSession()
+        self.session = session
+        self.default_prefix = command_prefix
 
     async def setup_hook(self) -> None:
         try:
@@ -35,7 +36,6 @@ class Bot(commands.Bot):
             logger.info("Extension 'jishaku' loaded successfully.")
         except Exception as e:
             logger.error(f"Failed to load extension 'jishaku': {e}")
-
         await self.load_all_cogs()
 
     async def load_all_cogs(self) -> None:
@@ -54,16 +54,24 @@ class Bot(commands.Bot):
         if self.user is None:
             logger.error("Bot user is not set. This should not happen.")
             return
-
         logger.info(f'Bot is ready as {self.user} (ID: {self.user.id}).')
+        await self.tree.sync()
 
     async def on_error(self, event_method: str, *args: Any,
                        **kwargs: Any) -> None:
         logger.error('Unhandled exception in %s.', event_method, exc_info=True)
 
     async def close(self) -> None:
-        await self.session.close()
         await super().close()
+
+    async def get_prefix(self, message: discord.Message) -> str:
+        if not message.guild:
+            return self.default_prefix
+
+        prefix_cog = self.get_cog('PrefixCog')
+        if prefix_cog:
+            return await prefix_cog.get_prefix(message)
+        return self.default_prefix
 
 
 # -------------------------
@@ -72,13 +80,12 @@ class Bot(commands.Bot):
 async def main() -> None:
     intents = discord.Intents.all()
     intents.message_content = True
-
     token = os.getenv('DISCORD_BOT_TOKEN')
     if not token:
         logger.error("DISCORD_BOT_TOKEN environment variable not set.")
         return
 
-    async with ClientSession() as session:  # Create session here
+    async with ClientSession() as session:
         bot = Bot(command_prefix=".",
                   case_insensitive=True,
                   intents=intents,
@@ -92,6 +99,7 @@ async def main() -> None:
         finally:
             if bot.is_closed():
                 logger.warning("Bot has been disconnected.")
+            await session.close()
 
 
 if __name__ == "__main__":
