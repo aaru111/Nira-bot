@@ -676,6 +676,21 @@ class MinusButton(BaseButton):
         await interaction.response.edit_message(
             content="Select a field to remove:", embed=self.embed, view=view)
 
+    async def remove_field_callback(self, interaction: Interaction):
+        value = interaction.data["values"][0]
+        field_index = int(value)
+        self.embed.remove_field(field_index)
+
+        # Ensure the embed has a description
+        if not self.embed.description:
+            self.embed.description = "\u200b"  # Zero-width space
+
+        await interaction.response.edit_message(content="✅ Field removed.",
+                                                embed=self.embed,
+                                                view=create_embed_view(
+                                                    self.embed,
+                                                    interaction.client))
+
 
 class BackButton(BaseButton):
 
