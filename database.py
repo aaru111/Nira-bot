@@ -52,7 +52,7 @@ class Database:
             raise
 
     async def execute(self, query: str, *params) -> None:
-        try:
+        try:    
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
                     await conn.execute(query, *params)
