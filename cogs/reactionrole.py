@@ -240,17 +240,15 @@ class ReactionRoleManager:
             custom_id = role_data['custom_id']
             link = role_data.get('link')
 
-        if link and link.lower().startswith(
-            ('http://', 'https://', 'discord:')):
-            button = discord.ui.Button(label="Click here",
-                                       url=link,
-                                       emoji=emoji)
-        else:
-            button = discord.ui.Button(style=color,
-                                       emoji=emoji,
-                                       custom_id=custom_id)
+            if link and link.lower().startswith(
+                ('http://', 'https://', 'discord:')):
+                button = discord.ui.Button(url=link, emoji=emoji)
+            else:
+                button = discord.ui.Button(style=color,
+                                           emoji=emoji,
+                                           custom_id=custom_id)
+                button.callback = self.create_button_callback(role)
 
-            button.callback = self.create_button_callback(role)
             view.add_item(button)
 
         await message.edit(view=view)
@@ -506,7 +504,8 @@ class ReactionRole(commands.Cog):
     @app_commands.describe(
         message_link="The message link or ID to add the reaction role to",
         role="The role to assign",
-        emoji="The custom emoji to use on the button",
+        emoji=
+        "The emoji to use on the button (can be a Unicode emoji or custom emoji ID)",
         color="The color of the button (optional, default is blurple)",
         link="A URL to make the button a link button (optional)")
     @app_commands.choices(color=[
@@ -520,7 +519,6 @@ class ReactionRole(commands.Cog):
                             emoji: str,
                             color: str = None,
                             link: str = None):
-        """Command to add a reaction role to a message."""
         await interaction.response.defer(ephemeral=True)
         try:
             message_id, channel_id = self.parse_message_link(
@@ -530,10 +528,18 @@ class ReactionRole(commands.Cog):
                 raise ValueError("Channel not found.")
             message = await channel.fetch_message(message_id)
             color = ColorMapping.get_style(color if color else "blurple")
-            emoji_obj = discord.utils.get(interaction.guild.emojis,
-                                          id=int(emoji))
-            if not emoji_obj:
-                raise ValueError("Invalid emoji selected.")
+
+            # Check if the emoji is a custom emoji ID or a Unicode emoji
+            if emoji.isdigit():
+                emoji_obj = discord.utils.get(interaction.guild.emojis,
+                                              id=int(emoji))
+                if not emoji_obj:
+                    raise ValueError("Invalid custom emoji ID.")
+                emoji = str(emoji_obj)
+            else:
+                # Assume it's a Unicode emoji
+                emoji = emoji
+
             guild_id = str(interaction.guild.id)
             message_id = str(message.id)
 
@@ -542,31 +548,17 @@ class ReactionRole(commands.Cog):
             if message_id not in self.reaction_roles[guild_id]:
                 self.reaction_roles[guild_id][message_id] = []
 
-            existing_role = next(
-                (role_data
-                 for role_data in self.reaction_roles[guild_id][message_id]
-                 if role_data["role_id"] == str(role.id)), None)
-
-            if existing_role:
-                custom_id = existing_role["custom_id"]
-                existing_role.update({
-                    "channel_id": str(channel.id),
-                    "emoji": str(emoji_obj),
-                    "color": color.value,
-                    "link": link
-                })
-            else:
-                custom_id = ''.join(
-                    random.choices(string.ascii_letters + string.digits, k=20))
-                new_role_data = {
-                    "role_id": str(role.id),
-                    "channel_id": str(channel.id),
-                    "emoji": str(emoji_obj),
-                    "color": color.value,
-                    "custom_id": custom_id,
-                    "link": link
-                }
-                self.reaction_roles[guild_id][message_id].append(new_role_data)
+            custom_id = ''.join(
+                random.choices(string.ascii_letters + string.digits, k=20))
+            new_role_data = {
+                "role_id": str(role.id),
+                "channel_id": str(channel.id),
+                "emoji": emoji,
+                "color": color.value,
+                "custom_id": custom_id,
+                "link": link
+            }
+            self.reaction_roles[guild_id][message_id].append(new_role_data)
 
             await self.save_reaction_roles()
             await self.role_manager.add_buttons_to_message(
@@ -574,16 +566,9 @@ class ReactionRole(commands.Cog):
             self.tracked_messages.add(int(message_id))
             await self.save_tracked_messages()
             await interaction.followup.send(
-                "Reaction role added or updated successfully!", ephemeral=True)
+                "Reaction role added successfully!", ephemeral=True)
         except (ValueError, discord.NotFound, discord.HTTPException) as e:
             await interaction.followup.send(f"Error: {str(e)}", ephemeral=True)
-
-    @reaction_role.autocomplete('emoji')
-    async def emoji_autocomplete(
-            self, interaction: discord.Interaction,
-            current: str) -> List[app_commands.Choice[str]]:
-        """Autocomplete function for custom emoji selection."""
-        return await self.get_emoji_choices(interaction)
 
     @staticmethod
     def parse_message_link(message_link: str,
