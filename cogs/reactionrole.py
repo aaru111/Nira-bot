@@ -8,42 +8,12 @@ import asyncio
 from typing import Dict, Any, Set, List
 from abc import ABC, abstractmethod
 import aiohttp
-import asyncpg
-
-# Database connection settings
-DATABASE_URL = os.getenv('DATABASE_URL')
+# Import the Database class from your database.py file
+from database import db
 
 # Rate limits
 RATE_LIMIT_INTERVAL = 2
 RATE_LIMIT_CLEANUP_INTERVAL = 60
-
-
-async def initialize_database():
-    """Create necessary tables in the database if they don't exist."""
-    create_reaction_roles_table = """
-    CREATE TABLE IF NOT EXISTS reaction_roles (
-        guild_id TEXT,
-        message_id TEXT,
-        role_id TEXT,
-        channel_id TEXT,
-        emoji TEXT,
-        color TEXT,
-        custom_id TEXT,
-        link TEXT,
-        PRIMARY KEY (guild_id, message_id, role_id)
-    );
-    """
-
-    create_tracked_messages_table = """
-    CREATE TABLE IF NOT EXISTS tracked_messages (
-        message_id TEXT PRIMARY KEY
-    );
-    """
-
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(create_reaction_roles_table)
-    await conn.execute(create_tracked_messages_table)
-    await conn.close()
 
 
 class RolesyncCooldown:
@@ -97,16 +67,16 @@ class NavigationView(discord.ui.View):
                           button: discord.ui.Button):
         if self.current_page > 0:
             self.current_page -= 1
-        self.update_button_state()
-        await self.update_embed(interaction)
+            self.update_button_state()
+            await self.update_embed(interaction)
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=1)
     async def next_button(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
         if self.current_page < len(self.message_ids) - 1:
             self.current_page += 1
-        self.update_button_state()
-        await self.update_embed(interaction)
+            self.update_button_state()
+            await self.update_embed(interaction)
 
     async def update_embed(self, interaction: discord.Interaction):
         if self.current_page == 0:
@@ -116,7 +86,6 @@ class NavigationView(discord.ui.View):
             message_id = self.message_ids[self.current_page]
             embed = await self.cog.create_message_reaction_roles_embed(
                 self.guild, self.channel, message_id)
-
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -202,23 +171,12 @@ class DatabaseManager(DataManager):
     @staticmethod
     async def load_from_db(query: str, *params: Any) -> Any:
         """Load data from a database."""
-        conn = await asyncpg.connect(DATABASE_URL)
-        result = await conn.fetch(query, *params)
-        await conn.close()
-        return result
+        return await db.fetch(query, *params)
 
     @staticmethod
     async def save_to_db(query: str, *params: Any) -> None:
         """Save data to a database."""
-        conn = await asyncpg.connect(DATABASE_URL)
-        # Convert all parameters to strings
-        string_params = [str(param) for param in params]
-        try:
-            await conn.execute(query, *string_params)
-        except Exception as e:
-            print(f"Error saving to database: {e}")
-        finally:
-            await conn.close()
+        await db.execute(query, *params)
 
 
 class ReactionRoleManager:
@@ -232,14 +190,12 @@ class ReactionRoleManager:
         """Add reaction role buttons to a message."""
         guild = message.guild
         view = discord.ui.View(timeout=None)
-
         for role_data in roles_data:
             role = guild.get_role(int(role_data['role_id']))
             emoji = role_data['emoji']
             color = discord.ButtonStyle(int(role_data['color']))
             custom_id = role_data['custom_id']
             link = role_data.get('link')
-
             if link and link.lower().startswith(
                 ('http://', 'https://', 'discord:')):
                 button = discord.ui.Button(url=link, emoji=emoji)
@@ -248,9 +204,7 @@ class ReactionRoleManager:
                                            emoji=emoji,
                                            custom_id=custom_id)
                 button.callback = self.create_button_callback(role)
-
             view.add_item(button)
-
         await message.edit(view=view)
 
     def create_button_callback(self, role: discord.Role):
@@ -261,7 +215,6 @@ class ReactionRoleManager:
                     "You're doing that too fast. Please wait a moment.",
                     ephemeral=True)
                 return
-
             if role in interaction.user.roles:
                 await interaction.user.remove_roles(role)
                 await interaction.response.send_message(
@@ -292,36 +245,14 @@ class ReactionRole(commands.Cog):
         self.bot.loop.create_task(self.setup_reaction_roles())
         self.rate_limit_dict: Dict[int, float] = {}
         self.bot.loop.create_task(self.cleanup_rate_limit_dict())
-        self.bot.loop.create_task(initialize_database())
+        self.bot.loop.create_task(
+            db.initialize())  # Initialize the database pool
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
-    async def initialize_database(self):
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS reaction_roles (
-                    guild_id TEXT,
-                    message_id TEXT,
-                    role_id TEXT,
-                    channel_id TEXT,
-                    emoji TEXT,
-                    color TEXT,
-                    custom_id TEXT,
-                    link TEXT,
-                    PRIMARY KEY (guild_id, message_id, role_id)
-                )
-            """)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS tracked_messages (
-                    message_id TEXT PRIMARY KEY
-                )
-            """)
-        finally:
-            await conn.close()
-
     async def cog_unload(self):
-        """Clean up resources when the cog is unloaded."""
+        """Cleanup resources when the cog is unloaded."""
         await self.session.close()
+        await db.close()
 
     def check_rate_limit(self, user_id: int) -> bool:
         """Check if a user has exceeded the rate limit for button clicks."""
@@ -334,7 +265,7 @@ class ReactionRole(commands.Cog):
         return True
 
     async def cleanup_rate_limit_dict(self):
-        """Periodically cleanup the rate limit dictionary to prevent memory leaks."""
+        """Periodically clean up the rate limit dictionary to prevent memory leaks."""
         while not self.bot.is_closed():
             current_time = asyncio.get_event_loop().time()
             self.rate_limit_dict = {
@@ -346,50 +277,44 @@ class ReactionRole(commands.Cog):
 
     async def save_reaction_roles(self):
         """Save the current reaction roles data to the database."""
-        conn = await asyncpg.connect(DATABASE_URL)
         try:
-            await conn.execute("BEGIN")
+            await db.execute("BEGIN")
             # First, delete all existing entries
-            await conn.execute("DELETE FROM reaction_roles")
+            await db.execute("DELETE FROM reaction_roles")
             # Then, insert the current data
             for guild_id, messages in self.reaction_roles.items():
                 for message_id, roles_data in messages.items():
                     for role_data in roles_data:
-                        await conn.execute(
-                            """
-                            INSERT INTO reaction_roles (guild_id, message_id, role_id, channel_id, emoji, color, custom_id, link)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                            """, str(guild_id), str(message_id),
+                        await db.execute(
+                            """INSERT INTO reaction_roles(guild_id, message_id, role_id, channel_id, emoji, color, custom_id, link)
+                               VALUES($1, $2, $3, $4, $5, $6, $7, $8)""",
+                            str(guild_id), str(message_id),
                             str(role_data['role_id']),
                             str(role_data['channel_id']),
                             str(role_data['emoji']), str(role_data['color']),
                             str(role_data['custom_id']),
                             str(role_data.get('link', '')))
-            await conn.execute("COMMIT")
+            await db.execute("COMMIT")
         except Exception as e:
-            await conn.execute("ROLLBACK")
+            await db.execute("ROLLBACK")
             print(f"Error saving reaction roles: {e}")
-        finally:
-            await conn.close()
 
     async def save_tracked_messages(self):
         """Save the current tracked messages to the database."""
-        conn = await asyncpg.connect(DATABASE_URL)
         try:
-            await conn.execute("BEGIN")
+            await db.execute("BEGIN")
             # First, delete all existing entries
-            await conn.execute("DELETE FROM tracked_messages")
+            await db.execute("DELETE FROM tracked_messages")
             # Then, insert the current data
             for message_id in self.tracked_messages:
-                await conn.execute(
-                    "INSERT INTO tracked_messages (message_id) VALUES ($1)",
+                # Use ON CONFLICT to ignore duplicate message_ids
+                await db.execute(
+                    "INSERT INTO tracked_messages(message_id) VALUES($1) ON CONFLICT (message_id) DO NOTHING",
                     str(message_id))
-            await conn.execute("COMMIT")
+            await db.execute("COMMIT")
         except Exception as e:
-            await conn.execute("ROLLBACK")
+            await db.execute("ROLLBACK")
             print(f"Error saving tracked messages: {e}")
-        finally:
-            await conn.close()
 
     async def setup_reaction_roles(self):
         """Setup reaction roles when the bot starts."""
@@ -397,14 +322,14 @@ class ReactionRole(commands.Cog):
         to_delete = []
 
         # Load data from the database
-        conn = await asyncpg.connect(DATABASE_URL)
         try:
-            reaction_roles_data = await conn.fetch(
-                "SELECT * FROM reaction_roles")
-            tracked_messages_data = await conn.fetch(
+            reaction_roles_data = await db.fetch("SELECT * FROM reaction_roles"
+                                                 )
+            tracked_messages_data = await db.fetch(
                 "SELECT message_id FROM tracked_messages")
-        finally:
-            await conn.close()
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return
 
         # Convert the list of records into a nested dictionary
         self.reaction_roles = {}
@@ -432,7 +357,6 @@ class ReactionRole(commands.Cog):
 
         self.tracked_messages = set(
             str(record['message_id']) for record in tracked_messages_data)
-
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
@@ -451,6 +375,7 @@ class ReactionRole(commands.Cog):
                         to_delete.append((guild_id, message_id))
                 await asyncio.sleep(0.1)  # Avoid rate limiting
 
+        # Clean up any missing guilds or messages
         for entry in to_delete:
             if isinstance(entry, tuple):
                 guild_id, message_id = entry
@@ -528,7 +453,6 @@ class ReactionRole(commands.Cog):
                 raise ValueError("Channel not found.")
             message = await channel.fetch_message(message_id)
             color = ColorMapping.get_style(color if color else "blurple")
-
             # Check if the emoji is a custom emoji ID or a Unicode emoji
             if emoji.isdigit():
                 emoji_obj = discord.utils.get(interaction.guild.emojis,
@@ -539,15 +463,12 @@ class ReactionRole(commands.Cog):
             else:
                 # Assume it's a Unicode emoji
                 emoji = emoji
-
             guild_id = str(interaction.guild.id)
             message_id = str(message.id)
-
             if guild_id not in self.reaction_roles:
                 self.reaction_roles[guild_id] = {}
             if message_id not in self.reaction_roles[guild_id]:
                 self.reaction_roles[guild_id][message_id] = []
-
             custom_id = ''.join(
                 random.choices(string.ascii_letters + string.digits, k=20))
             new_role_data = {
@@ -559,7 +480,6 @@ class ReactionRole(commands.Cog):
                 "link": link
             }
             self.reaction_roles[guild_id][message_id].append(new_role_data)
-
             await self.save_reaction_roles()
             await self.role_manager.add_buttons_to_message(
                 message, self.reaction_roles[guild_id][message_id])
@@ -594,13 +514,11 @@ class ReactionRole(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         invalid_entries = await self.sync_reaction_roles()
         guild_id = str(interaction.guild.id)
-
         if guild_id not in self.reaction_roles or not self.reaction_roles[
                 guild_id]:
             await interaction.followup.send(
                 "No reaction roles configured in this server.", ephemeral=True)
             return
-
         channel_ids = {
             int(roles_data[0]['channel_id'])
             for roles_data in self.reaction_roles[guild_id].values()
@@ -611,24 +529,22 @@ class ReactionRole(commands.Cog):
                 value=str(channel_id)) for channel_id in channel_ids
             if interaction.guild.get_channel(channel_id)
         ]
-
         if not options:
             await interaction.followup.send(
                 "No valid channels with reaction roles found.", ephemeral=True)
             return
-
         view = ChannelSelectView(self, options)
         embed = discord.Embed(
-            title="📊__**Reaction Roles Summary**__",
+            title="📊 __**Reaction Roles Summary**__",
             description=
             "```yaml\nSelect a channel below to view its configured reaction roles:```",
             color=discord.Color.blurple())
         embed.add_field(
-            name="📌__Total Channels__",
+            name="📌 __Total Channels__",
             value=f"```css\n{len(options)} channel(s) with reaction roles```",
             inline=False)
         embed.add_field(
-            name="ℹ️__How to Use__",
+            name="ℹ️ __How to Use__",
             value=(
                 "1️⃣ Choose a channel from the dropdown menu\n"
                 "2️⃣ View the overview and reaction roles for that channel\n"
@@ -636,7 +552,7 @@ class ReactionRole(commands.Cog):
                 "4️⃣ Manage roles using the `/reaction-role` command"),
             inline=False)
         embed.add_field(
-            name="🔄__Sync Results__",
+            name="🔄 __Sync Results__",
             value=
             f"```diff\n{'+' if invalid_entries > 0 else '-'}{invalid_entries} invalid entries removed```",
             inline=False)
@@ -686,14 +602,12 @@ class ReactionRole(commands.Cog):
                 else:
                     to_delete.append((guild_id, message_id))
                     self.tracked_messages.discard(int(message_id))
-
         for entry in to_delete:
             if isinstance(entry, tuple):
                 guild_id, message_id = entry
                 self.delete_reaction_role(guild_id, message_id)
             else:
                 del self.reaction_roles[entry]
-
         await self.save_reaction_roles()
         await self.save_tracked_messages()
         return len(to_delete)
@@ -702,29 +616,25 @@ class ReactionRole(commands.Cog):
             self, guild: discord.Guild, channel: discord.TextChannel,
             message_id: str) -> discord.Embed:
         embed = discord.Embed(
-            title=f"🎭__Reaction Roles in #{channel.name}__",
+            title=f"🎭 __Reaction Roles in #{channel.name}__",
             description="```yaml\nConfigured reaction roles for message:```",
             color=discord.Color.blurple())
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
         guild_id = str(guild.id)
-
         if guild_id not in self.reaction_roles or message_id not in self.reaction_roles[
                 guild_id]:
             embed.add_field(name="Error",
                             value="No reaction roles found for this message.",
                             inline=False)
             return embed
-
         roles_data = self.reaction_roles[guild_id][message_id]
         message_link = f"https://discord.com/channels/{guild_id}/{channel.id}/{message_id}"
         field_value = f"[🔗 Jump to Message]({message_link})\n\n"
-
         for role_data in roles_data:
             role = guild.get_role(int(role_data['role_id']))
             emoji = role_data['emoji']
             field_value += f"{emoji} {role.mention if role else 'Unknown Role'}\n"
-
-        embed.add_field(name=f"📝__Message ID: {message_id}__",
+        embed.add_field(name=f"📝 __Message ID: {message_id}__",
                         value=field_value,
                         inline=False)
         embed.set_footer(
@@ -737,14 +647,13 @@ class ReactionRole(commands.Cog):
             self, guild: discord.Guild,
             channel: discord.TextChannel) -> discord.Embed:
         embed = discord.Embed(
-            title=f"🎭__Reaction Roles in #{channel.name}__",
+            title=f"🎭 __Reaction Roles in #{channel.name}__",
             description=
             "```yaml\nOverview of reaction roles in this channel:```",
             color=discord.Color.blurple())
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
         guild_id = str(guild.id)
         channel_id = str(channel.id)
-
         message_count = sum(
             1 for roles_data in self.reaction_roles.get(guild_id, {}).values()
             if roles_data[0]['channel_id'] == channel_id)
@@ -752,9 +661,8 @@ class ReactionRole(commands.Cog):
             len(roles_data)
             for roles_data in self.reaction_roles.get(guild_id, {}).values()
             if roles_data[0]['channel_id'] == channel_id)
-
         embed.add_field(
-            name="📊__Summary__",
+            name="📊 __Summary__",
             value=
             f"```css\nTotal Messages: {message_count}\nTotal Roles: {role_count}```",
             inline=False)
