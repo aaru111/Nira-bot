@@ -223,15 +223,22 @@ class Wiki(commands.Cog):
             content_chunks = self.embed_creator.split_content(
                 page_info['summary'])
 
-            view = WikiView(base_embed, content_chunks)
             initial_embed = base_embed.copy()
             initial_embed.description = content_chunks[0]
-            initial_embed.set_footer(
-                text=f"Page 1/{len(content_chunks)} | Source: Wikipedia")
-            message = await interaction.followup.send(embed=initial_embed,
-                                                      view=view)
-            view.message = message
-            view.reset_timer()
+
+            if len(content_chunks) == 1:
+                # If there's only one page, don't use the WikiView
+                initial_embed.set_footer(text="Source: Wikipedia")
+                await interaction.followup.send(embed=initial_embed)
+            else:
+                # If there are multiple pages, use the WikiView
+                view = WikiView(base_embed, content_chunks)
+                initial_embed.set_footer(
+                    text=f"Page 1/{len(content_chunks)} | Source: Wikipedia")
+                message = await interaction.followup.send(embed=initial_embed,
+                                                          view=view)
+                view.message = message
+                view.reset_timer()
         except Exception as e:
             await interaction.followup.send(
                 f"An error occurred while processing your request: {str(e)}",
