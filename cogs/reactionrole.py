@@ -1,14 +1,12 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import os
 import random
 import string
 import asyncio
-from typing import Dict, Any, Set, List
+from typing import Dict, Any, Set, List, Optional, Tuple
 from abc import ABC, abstractmethod
 import aiohttp
-# Import the Database class from your database.py file
 from database import db
 
 # Rate limits
@@ -18,12 +16,12 @@ RATE_LIMIT_CLEANUP_INTERVAL = 60
 
 class RolesyncCooldown:
 
-    def __init__(self, rate, per):
+    def __init__(self, rate: int, per: int) -> None:
         self.rate = rate
         self.per = per
-        self.last_used = {}
+        self.last_used: Dict[int, float] = {}
 
-    def __call__(self, ctx):
+    def __call__(self, ctx: commands.Context) -> bool:
         now = ctx.message.created_at.timestamp()
         bucket = ctx.guild.id if ctx.guild else ctx.author.id
         if bucket in self.last_used:
@@ -40,7 +38,7 @@ class RolesyncCooldown:
 class NavigationView(discord.ui.View):
 
     def __init__(self, cog: 'ReactionRole', guild: discord.Guild,
-                 channel: discord.TextChannel):
+                 channel: discord.TextChannel) -> None:
         super().__init__(timeout=None)
         self.cog = cog
         self.guild = guild
@@ -55,7 +53,7 @@ class NavigationView(discord.ui.View):
             if roles_data[0]['channel_id'] == str(self.channel.id)
         ]
 
-    def update_button_state(self):
+    def update_button_state(self) -> None:
         self.prev_button.disabled = self.current_page == 0
         self.next_button.disabled = self.current_page == len(
             self.message_ids) - 1
@@ -64,7 +62,7 @@ class NavigationView(discord.ui.View):
                        style=discord.ButtonStyle.primary,
                        row=1)
     async def prev_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
+                          button: discord.ui.Button) -> None:
         if self.current_page > 0:
             self.current_page -= 1
             self.update_button_state()
@@ -72,13 +70,13 @@ class NavigationView(discord.ui.View):
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=1)
     async def next_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
+                          button: discord.ui.Button) -> None:
         if self.current_page < len(self.message_ids) - 1:
             self.current_page += 1
             self.update_button_state()
             await self.update_embed(interaction)
 
-    async def update_embed(self, interaction: discord.Interaction):
+    async def update_embed(self, interaction: discord.Interaction) -> None:
         if self.current_page == 0:
             embed = await self.cog.create_channel_reaction_roles_embed(
                 self.guild, self.channel)
@@ -92,11 +90,11 @@ class NavigationView(discord.ui.View):
 class ChannelSelect(discord.ui.Select):
 
     def __init__(self, cog: 'ReactionRole',
-                 options: List[discord.SelectOption]):
+                 options: List[discord.SelectOption]) -> None:
         super().__init__(placeholder="Select a channel", options=options)
         self.cog = cog
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction) -> None:
         channel_id = int(self.values[0])
         channel = interaction.guild.get_channel(channel_id)
         if channel:
@@ -110,7 +108,7 @@ class ChannelSelect(discord.ui.Select):
 class ChannelSelectView(discord.ui.View):
 
     def __init__(self, cog: 'ReactionRole',
-                 options: List[discord.SelectOption]):
+                 options: List[discord.SelectOption]) -> None:
         super().__init__()
         self.add_item(ChannelSelect(cog, options))
 
@@ -182,11 +180,11 @@ class DatabaseManager(DataManager):
 class ReactionRoleManager:
     """Manages reaction role operations, reducing code duplication."""
 
-    def __init__(self, cog: commands.Cog):
+    def __init__(self, cog: commands.Cog) -> None:
         self.cog = cog
 
     async def add_buttons_to_message(self, message: discord.Message,
-                                     roles_data: List[Dict[str, Any]]):
+                                     roles_data: List[Dict[str, Any]]) -> None:
         """Add reaction role buttons to a message."""
         guild = message.guild
         view = discord.ui.View(timeout=None)
@@ -207,9 +205,9 @@ class ReactionRoleManager:
             view.add_item(button)
         await message.edit(view=view)
 
-    def create_button_callback(self, role: discord.Role):
+    def create_button_callback(self, role: discord.Role) -> discord.ui.Button:
 
-        async def button_callback(interaction: discord.Interaction):
+        async def button_callback(interaction: discord.Interaction) -> None:
             if not self.cog.check_rate_limit(interaction.user.id):
                 await interaction.response.send_message(
                     "You're doing that too fast. Please wait a moment.",
@@ -226,7 +224,7 @@ class ReactionRoleManager:
 
         return button_callback
 
-    async def handle_message_deletion(self, message: discord.Message):
+    async def handle_message_deletion(self, message: discord.Message) -> None:
         """Handle message deletion events."""
         guild_id = str(message.guild.id)
         message_id = str(message.id)
@@ -249,7 +247,7 @@ class ReactionRole(commands.Cog):
             db.initialize())  # Initialize the database pool
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
-    async def cog_unload(self):
+    async def cog_unload(self) -> None:
         """Cleanup resources when the cog is unloaded."""
         await self.session.close()
         await db.close()
@@ -264,7 +262,7 @@ class ReactionRole(commands.Cog):
         self.rate_limit_dict[user_id] = current_time
         return True
 
-    async def cleanup_rate_limit_dict(self):
+    async def cleanup_rate_limit_dict(self) -> None:
         """Periodically clean up the rate limit dictionary to prevent memory leaks."""
         while not self.bot.is_closed():
             current_time = asyncio.get_event_loop().time()
@@ -275,39 +273,55 @@ class ReactionRole(commands.Cog):
             }
             await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL)
 
-    async def save_reaction_roles(self):
+    async def save_reaction_roles(self) -> None:
         """Save the current reaction roles data to the database."""
         try:
+            # Start a database transaction
             await db.execute("BEGIN")
-            # First, delete all existing entries
-            await db.execute("DELETE FROM reaction_roles")
-            # Then, insert the current data
+
+            # Iterate through the saved reaction roles in memory
             for guild_id, messages in self.reaction_roles.items():
                 for message_id, roles_data in messages.items():
                     for role_data in roles_data:
+                        # Insert the reaction role data into the database
+                        # If a conflict occurs on the (guild_id, message_id, role_id) combination,
+                        # update the existing record with the new data
                         await db.execute(
                             """INSERT INTO reaction_roles(guild_id, message_id, role_id, channel_id, emoji, color, custom_id, link)
-                               VALUES($1, $2, $3, $4, $5, $6, $7, $8)""",
-                            str(guild_id), str(message_id),
-                            str(role_data['role_id']),
-                            str(role_data['channel_id']),
-                            str(role_data['emoji']), str(role_data['color']),
-                            str(role_data['custom_id']),
-                            str(role_data.get('link', '')))
+                               VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+                               ON CONFLICT (guild_id, message_id, role_id)
+                               DO UPDATE SET channel_id = EXCLUDED.channel_id,
+                                             emoji = EXCLUDED.emoji,
+                                             color = EXCLUDED.color,
+                                             custom_id = EXCLUDED.custom_id,
+                                             link = EXCLUDED.link""",
+                            # Bind the values for the SQL query
+                            str(guild_id),  # Guild ID
+                            str(message_id),  # Message ID
+                            str(role_data['role_id']),  # Role ID
+                            str(role_data['channel_id']),  # Channel ID
+                            str(role_data['emoji']),  # Emoji
+                            str(role_data['color']),  # Color
+                            str(role_data['custom_id']
+                                ),  # Custom ID for the button
+                            str(role_data.get(
+                                'link', ''))  # Optional link for the button
+                        )
+
+            # Commit the transaction to save all changes to the database
             await db.execute("COMMIT")
+
         except Exception as e:
+            # If an error occurs, roll back the transaction to prevent partial updates
             await db.execute("ROLLBACK")
             print(f"Error saving reaction roles: {e}")
 
-    async def save_tracked_messages(self):
+    async def save_tracked_messages(self) -> None:
         """Save the current tracked messages to the database."""
         try:
             await db.execute("BEGIN")
-            # First, delete all existing entries
             await db.execute("DELETE FROM tracked_messages")
-            # Then, insert the current data
             for message_id in self.tracked_messages:
-                # Use ON CONFLICT to ignore duplicate message_ids
                 await db.execute(
                     "INSERT INTO tracked_messages(message_id) VALUES($1) ON CONFLICT (message_id) DO NOTHING",
                     str(message_id))
@@ -316,12 +330,11 @@ class ReactionRole(commands.Cog):
             await db.execute("ROLLBACK")
             print(f"Error saving tracked messages: {e}")
 
-    async def setup_reaction_roles(self):
+    async def setup_reaction_roles(self) -> None:
         """Setup reaction roles when the bot starts."""
         await self.bot.wait_until_ready()
-        to_delete = []
+        to_delete: List[Tuple[str, Optional[str]]] = []
 
-        # Load data from the database
         try:
             reaction_roles_data = await db.fetch("SELECT * FROM reaction_roles"
                                                  )
@@ -331,7 +344,6 @@ class ReactionRole(commands.Cog):
             print(f"Error fetching data: {e}")
             return
 
-        # Convert the list of records into a nested dictionary
         self.reaction_roles = {}
         for record in reaction_roles_data:
             guild_id = str(record['guild_id'])
@@ -360,7 +372,7 @@ class ReactionRole(commands.Cog):
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
-                to_delete.append(guild_id)
+                to_delete.append((guild_id, None))
                 continue
             for message_id, roles_data in messages.items():
                 channel = self.bot.get_channel(int(
@@ -373,20 +385,19 @@ class ReactionRole(commands.Cog):
                         self.tracked_messages.add(str(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
-                await asyncio.sleep(0.1)  # Avoid rate limiting
+                await asyncio.sleep(0.1)
 
-        # Clean up any missing guilds or messages
         for entry in to_delete:
-            if isinstance(entry, tuple):
-                guild_id, message_id = entry
+            guild_id, message_id = entry
+            if message_id:
                 self.delete_reaction_role(guild_id, message_id)
             else:
-                del self.reaction_roles[entry]
+                del self.reaction_roles[guild_id]
 
         await self.save_reaction_roles()
         await self.save_tracked_messages()
 
-    def delete_reaction_role(self, guild_id: str, message_id: str):
+    def delete_reaction_role(self, guild_id: str, message_id: str) -> None:
         """Delete a reaction role from the saved data."""
         if guild_id in self.reaction_roles and message_id in self.reaction_roles[
                 guild_id]:
@@ -398,7 +409,8 @@ class ReactionRole(commands.Cog):
         asyncio.create_task(self.save_tracked_messages())
 
     @commands.Cog.listener()
-    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+    async def on_guild_channel_delete(
+            self, channel: discord.abc.GuildChannel) -> None:
         """Event listener for channel deletions."""
         guild_id = str(channel.guild.id)
         if guild_id in self.reaction_roles:
@@ -411,7 +423,7 @@ class ReactionRole(commands.Cog):
                 self.delete_reaction_role(guild_id, message_id)
 
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message):
+    async def on_message_delete(self, message: discord.Message) -> None:
         """Event listener for message deletions."""
         await self.role_manager.handle_message_deletion(message)
 
@@ -442,8 +454,8 @@ class ReactionRole(commands.Cog):
                             message_link: str,
                             role: discord.Role,
                             emoji: str,
-                            color: str = None,
-                            link: str = None):
+                            color: Optional[str] = None,
+                            link: Optional[str] = None) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
             message_id, channel_id = self.parse_message_link(
@@ -453,16 +465,13 @@ class ReactionRole(commands.Cog):
                 raise ValueError("Channel not found.")
             message = await channel.fetch_message(message_id)
             color = ColorMapping.get_style(color if color else "blurple")
-            # Check if the emoji is a custom emoji ID or a Unicode emoji
+
             if emoji.isdigit():
                 emoji_obj = discord.utils.get(interaction.guild.emojis,
                                               id=int(emoji))
                 if not emoji_obj:
                     raise ValueError("Invalid custom emoji ID.")
                 emoji = str(emoji_obj)
-            else:
-                # Assume it's a Unicode emoji
-                emoji = emoji
             guild_id = str(interaction.guild.id)
             message_id = str(message.id)
             if guild_id not in self.reaction_roles:
@@ -492,7 +501,7 @@ class ReactionRole(commands.Cog):
 
     @staticmethod
     def parse_message_link(message_link: str,
-                           default_channel_id: int) -> tuple[int, int]:
+                           default_channel_id: int) -> Tuple[int, int]:
         """Parse a message link or ID to get message and channel IDs."""
         if "/" in message_link:
             message_id = int(message_link.split("/")[-1])
@@ -510,7 +519,8 @@ class ReactionRole(commands.Cog):
                                   10.0,
                                   key=lambda i: (i.guild_id, i.user.id))
     @app_commands.checks.has_permissions(manage_roles=True)
-    async def reaction_role_summary(self, interaction: discord.Interaction):
+    async def reaction_role_summary(self,
+                                    interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         invalid_entries = await self.sync_reaction_roles()
         guild_id = str(interaction.guild.id)
@@ -566,9 +576,9 @@ class ReactionRole(commands.Cog):
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @reaction_role_summary.error
-    async def reaction_role_summary_error(self,
-                                          interaction: discord.Interaction,
-                                          error: app_commands.AppCommandError):
+    async def reaction_role_summary_error(
+            self, interaction: discord.Interaction,
+            error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(
                 f"This command is on cooldown. Try again in {error.retry_after:.2f} seconds.",
@@ -584,11 +594,11 @@ class ReactionRole(commands.Cog):
 
     async def sync_reaction_roles(self) -> int:
         """Sync reaction roles data with current server state."""
-        to_delete = []
+        to_delete: List[Tuple[str, Optional[str]]] = []
         for guild_id, messages in self.reaction_roles.items():
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
-                to_delete.append(guild_id)
+                to_delete.append((guild_id, None))
                 continue
             for message_id, roles_data in messages.items():
                 channel = self.bot.get_channel(int(
@@ -602,12 +612,14 @@ class ReactionRole(commands.Cog):
                 else:
                     to_delete.append((guild_id, message_id))
                     self.tracked_messages.discard(int(message_id))
+
         for entry in to_delete:
-            if isinstance(entry, tuple):
-                guild_id, message_id = entry
+            guild_id, message_id = entry
+            if message_id:
                 self.delete_reaction_role(guild_id, message_id)
             else:
-                del self.reaction_roles[entry]
+                del self.reaction_roles[guild_id]
+
         await self.save_reaction_roles()
         await self.save_tracked_messages()
         return len(to_delete)
