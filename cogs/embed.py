@@ -1,25 +1,15 @@
 import discord
-from discord.ext import commands  # Ensure this line is present
+from discord.ext import commands
 from discord import app_commands
-from discord.ui import View, Select
 import aiohttp
 import random
 from urllib.parse import urlparse
 import webcolors
 from utils.custom_colors import custom_colors
-from utils.helpembed import get_help_embed
-import asyncio
-import re
-from datetime import timedelta
-from discord.utils import format_dt
 
 # Import all classes and methods from embedmod.py
-from modules.embedmod import (
-    BaseView, BaseButton, BaseModal, AuthorModal, BodyModal, ImagesModal,
-    FooterModal, AddFieldModal, JumpToPageModal, ScheduleModal, PlusButton,
-    MinusButton, HelpButton, JumpToPageButton, PreviousButton, NextButton,
-    EditFieldButton, SendButton, ResetButton, SendToButton, FieldsButton,
-    FieldCountButton, HelpNavigationView, create_embed_view)
+from modules.embedmod import (AuthorModal, BodyModal, ImagesModal, FooterModal,
+                              ScheduleModal, create_embed_view)
 
 
 class EmbedCreator(commands.Cog):

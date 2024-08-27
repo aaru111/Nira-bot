@@ -1,12 +1,7 @@
 import discord
-from discord.ext import commands  
+from discord.ext import commands
 from discord.ui import View, Select, Modal, TextInput
 from discord import ButtonStyle, Interaction
-import aiohttp
-from urllib.parse import urlparse
-import webcolors
-import random
-from utils.custom_colors import custom_colors
 from utils.helpembed import get_help_embed
 import asyncio
 import re
@@ -154,9 +149,9 @@ class BodyModal(BaseModal):
         self.bot = bot
         self.is_edit = is_edit
         self.titl = TextInput(label="Title",
-                               max_length=256,
-                               default=self.embed.title if is_edit else None,
-                               required=False)
+                              max_length=256,
+                              default=self.embed.title if is_edit else None,
+                              required=False)
         self.description = TextInput(
             label="Description",
             max_length=4000,
