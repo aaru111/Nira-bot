@@ -7,6 +7,7 @@ import asyncio
 import re
 from discord.utils import format_dt
 from datetime import timedelta
+from math import ceil
 
 
 class BaseView(discord.ui.View):
@@ -746,6 +747,7 @@ class SendToButton(BaseButton):
     def __init__(self, embed):
         super().__init__(label="Send To", style=ButtonStyle.green, emoji="📤")
         self.embed = embed
+        self.page = 0  # Current page for pagination
 
     async def handle_callback(self, interaction: Interaction):
         if not self.is_embed_valid():
@@ -756,30 +758,22 @@ class SendToButton(BaseButton):
                 color=discord.Color.red()),
                                                     ephemeral=True)
             return
+
+        # Get all channels the user has permission to send messages in
         channels = [
             channel for channel in interaction.guild.text_channels
             if channel.permissions_for(interaction.user).send_messages
         ]
+
+        # Check if there are no available channels
         if not channels:
             await interaction.response.send_message(
                 "You don't have permission to send messages in any channel.",
                 ephemeral=True)
             return
-        options = [
-            discord.SelectOption(label=channel.name, value=str(channel.id))
-            for channel in channels
-        ]
-        view = View(timeout=None)
-        select = discord.ui.Select(
-            placeholder="Select a channel to send the embed to...",
-            options=options)
-        select.callback = self.send_to_channel_callback
-        view.add_item(select)
-        view.add_item(BackButton(self.embed))
-        await interaction.response.edit_message(
-            content="Select a channel to send the embed to:",
-            embed=self.embed,
-            view=view)
+
+        # Display the first page of the channel list
+        await self.show_channel_page(interaction, channels, self.page)
 
     def is_embed_valid(self) -> bool:
         if self.embed is None:
@@ -790,8 +784,47 @@ class SendToButton(BaseButton):
             self.embed.thumbnail
         ])
 
-    async def send_to_channel_callback(self, interaction: Interaction):
-        channel_id = int(interaction.data["values"][0])
+    async def show_channel_page(self, interaction: Interaction, channels,
+                                page: int):
+        """Display the specified page of the channel list."""
+        max_per_page = 25
+        start_index = page * max_per_page
+        end_index = start_index + max_per_page
+        channel_page = channels[start_index:end_index]
+
+        options = [
+            discord.SelectOption(label=channel.name, value=str(channel.id))
+            for channel in channel_page
+        ]
+
+        # Create the select menu for channel selection
+        view = View(timeout=None)
+        select = discord.ui.Select(
+            placeholder="Select a channel to send the embed to...",
+            options=options)
+        select.callback = lambda inter: self.send_to_channel_callback(
+            inter, channels, page)
+        view.add_item(select)
+
+        # Add pagination buttons if necessary
+        total_pages = ceil(len(channels) / max_per_page)
+        if total_pages > 1:
+            if page > 0:
+                view.add_item(PreviousPageButton(self, channels, page))
+            if page < total_pages - 1:
+                view.add_item(NextPageButton(self, channels, page))
+
+        view.add_item(BackButton(self.embed))
+        await interaction.response.edit_message(
+            content="Select a channel to send the embed to:",
+            embed=self.embed,
+            view=view)
+
+    async def send_to_channel_callback(self, interaction: Interaction,
+                                       channels, page: int):
+        value = interaction.data["values"][0]
+
+        channel_id = int(value)
         channel = interaction.guild.get_channel(channel_id)
         if channel is None:
             await interaction.response.send_message(
@@ -814,6 +847,37 @@ class SendToButton(BaseButton):
             await interaction.response.send_message(
                 f"I don't have permission to send messages in #{channel.mention}.",
                 ephemeral=True)
+
+
+class PreviousPageButton(BaseButton):
+
+    def __init__(self, parent: SendToButton, channels, current_page: int):
+        super().__init__(label="Previous", style=discord.ButtonStyle.blurple)
+        self.parent = parent
+        self.channels = channels
+        self.current_page = current_page
+
+    async def handle_callback(self, interaction: Interaction):
+        # Decrement the page number and show the previous page
+        self.parent.page = max(0, self.current_page - 1)
+        await self.parent.show_channel_page(interaction, self.channels,
+                                            self.parent.page)
+
+
+class NextPageButton(BaseButton):
+
+    def __init__(self, parent: SendToButton, channels, current_page: int):
+        super().__init__(label="Next", style=discord.ButtonStyle.blurple)
+        self.parent = parent
+        self.channels = channels
+        self.current_page = current_page
+
+    async def handle_callback(self, interaction: Interaction):
+        # Increment the page number and show the next page
+        total_pages = ceil(len(self.channels) / 25)
+        self.parent.page = min(total_pages - 1, self.current_page + 1)
+        await self.parent.show_channel_page(interaction, self.channels,
+                                            self.parent.page)
 
 
 class FieldsButton(BaseButton):
