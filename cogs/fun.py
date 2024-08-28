@@ -196,6 +196,49 @@ class Fun(commands.Cog):
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
 
+    @commands.command()
+    async def slap(self, ctx, who: discord.Member, *reason):
+        li = [
+            'https://media.tenor.com/aCZMe2OKWX0AAAAC/fail-water.gif',
+            'https://media.tenor.com/pUatwfgNCZUAAAAd/fish-slap-w2s.gif',
+            'https://media.tenor.com/pmCZDX1MB1gAAAAC/johnny-knoxville-slap.gif',
+            'https://media.tenor.com/83tH-nXQeAMAAAAC/fish-slap.gif',
+            'https://media.tenor.com/-RSry4HDatUAAAAC/slap-out-kast.gif',
+            'https://media.tenor.com/__oycZBexeAAAAAC/slap.gif',
+            'https://media.tenor.com/WsKM5ZDigvgAAAAC/penguin-penguins.gif',
+            'https://media.tenor.com/tKF3HiguDmEAAAAC/wrrruutchxxxxiii-slapt.gif',
+            'https://media.tenor.com/2L_eT6hPUhcAAAAC/spongebob-squarepants-patrick-star.gif',
+            'https://media.tenor.com/fw6gs_ia_UIAAAAd/slap-slapping.gif',
+            'https://media.tenor.com/OXFdOzVbsW0AAAAC/smack-you.gif',
+            'https://media.tenor.com/R6LaPVpPwfcAAAAd/slap-slapping.gif',
+            'https://media.tenor.com/zdNVA6sB53AAAAAC/molorant-ckaz.gif',
+            'https://media.tenor.com/E3OW-MYYum0AAAAC/no-angry.gif',
+            'https://media.tenor.com/2-r7BEc-cb8AAAAC/slap-smack.gif',
+            'https://media.tenor.com/rVXByOZKidMAAAAd/anime-slap.gif',
+            'https://media.tenor.com/Ws6Dm1ZW_vMAAAAC/girl-slap.gif',
+            'https://media.tenor.com/5jBuDXkDsjYAAAAC/slap.gif',
+            'https://media.tenor.com/eU5H6GbVjrcAAAAC/slap-jjk.gif',
+            'https://media.tenor.com/0yMtzZ0GUGsAAAAC/hyouka-good.gif'
+        ]
+
+        reason_li = [
+            "an eyesore", "a fool", "stupid", "a dumbass", "a moron",
+            "a loser", "a noob", "a bot", "a fool"
+        ]
+
+        if not reason:
+            reason = random.choice(reason_li)
+
+        embed = discord.Embed(
+            colour=discord.Color.random(),
+            description=
+            f"# {ctx.author.mention} slaps {who.mention} for being  {' '.join(reason)}"
+        )
+        embed.set_author(name=ctx.author.display_name,
+                         icon_url=ctx.author.display_avatar.url)
+        embed.set_image(url=random.choice(li))
+        await ctx.send(embed=embed)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Fun(bot))
