@@ -8,6 +8,7 @@ import re
 from discord.utils import format_dt
 from datetime import timedelta
 from math import ceil
+from typing import Optional
 
 
 class BaseView(discord.ui.View):
@@ -23,14 +24,14 @@ class BaseView(discord.ui.View):
         self.current_page = current_page
         self.total_pages = total_pages
 
-    def add_navigation_buttons(self):
+    def add_navigation_buttons(self) -> None:
         if self.current_page > 1:
             self.add_item(PreviousButton(self.current_page, self.total_pages))
         if self.current_page < self.total_pages:
             self.add_item(NextButton(self.current_page, self.total_pages))
         self.add_item(JumpToPageButton())
 
-    def add_embed_buttons(self):
+    def add_embed_buttons(self) -> None:
         self.add_item(SendButton(self.embed))
         self.add_item(SendToButton(self.embed))
         self.add_item(ResetButton(self.embed))
@@ -55,10 +56,10 @@ class BaseButton(discord.ui.Button):
                          row=row,
                          disabled=disabled)
 
-    async def callback(self, interaction: Interaction):
+    async def callback(self, interaction: Interaction) -> None:
         await self.handle_callback(interaction)
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         raise NotImplementedError(
             "Subclasses must implement handle_callback method")
 
@@ -68,10 +69,10 @@ class BaseModal(discord.ui.Modal):
     def __init__(self, title: str, *args, **kwargs):
         super().__init__(title=title, *args, **kwargs)
 
-    async def on_submit(self, interaction: Interaction):
+    async def on_submit(self, interaction: Interaction) -> None:
         await self.handle_submit(interaction)
 
-    async def handle_submit(self, interaction: Interaction):
+    async def handle_submit(self, interaction: Interaction) -> None:
         raise NotImplementedError(
             "Subclasses must implement handle_submit method")
 
@@ -102,36 +103,42 @@ class AuthorModal(BaseModal):
         self.add_item(self.author_url)
         self.add_item(self.author_icon_url)
 
-    async def handle_submit(self, interaction: discord.Interaction):
-        # Validate URLs if provided
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
+        await self._validate_and_set_author(interaction)
+
+    async def _validate_and_set_author(
+            self, interaction: discord.Interaction) -> None:
         if self.author_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.author_url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=
-                f"Invalid URL in Author URL: {self.author_url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
-            return
-        if self.author_icon_url.value and not self.bot.get_cog(
-                "EmbedCreator").is_valid_url(self.author_icon_url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=
-                f"Invalid URL in Author Icon URL: {self.author_icon_url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=
+                    f"Invalid URL in Author URL: {self.author_url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
 
-        # Set the author details in the embed
+        if self.author_icon_url.value and not self.bot.get_cog(
+                "EmbedCreator").is_valid_url(self.author_icon_url.value):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=
+                    f"Invalid URL in Author Icon URL: {self.author_icon_url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         self.embed.set_author(
             name=self.author.value,
             url=self.author_url.value or None,
             icon_url=self.author_icon_url.value or None,
         )
-        # Confirm the author configuration to the user
         await interaction.response.edit_message(content="✅ Author configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -170,19 +177,23 @@ class BodyModal(BaseModal):
         self.add_item(self.url)
         self.add_item(self.color)
 
-    async def handle_submit(self, interaction: discord.Interaction):
-        # Validate the URL if provided
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
+        await self._validate_and_set_body(interaction)
+
+    async def _validate_and_set_body(self,
+                                     interaction: discord.Interaction) -> None:
         if self.url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=f"Invalid URL in Body URL: {self.url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=f"Invalid URL in Body URL: {self.url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
 
-        # Process the color input and set the embed color
         if self.color.value:
             if self.color.value.lower() == "random":
                 self.embed.color = discord.Color.random()
@@ -196,20 +207,21 @@ class BodyModal(BaseModal):
                 if color:
                     self.embed.color = color
                 else:
-                    await interaction.response.send_message(embed=discord.Embed(
-                        title="Error",
-                        description=f"Invalid color value: {self.color.value}",
-                        color=discord.Color.red(),
-                    ),
-                                                            ephemeral=True)
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description=
+                            f"Invalid color value: {self.color.value}",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
                     return
 
-        # Set the title, description, and URL in the embed
         self.embed.title = self.titl.value
         self.embed.description = self.description.value or None
         self.embed.url = self.url.value or None
 
-        # Confirm the body configuration to the user
         await interaction.response.edit_message(content="✅ Body configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -239,35 +251,40 @@ class ImagesModal(BaseModal):
         self.add_item(self.image_url)
         self.add_item(self.thumbnail_url)
 
-    async def handle_submit(self, interaction: discord.Interaction):
-        # Validate the image URL
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
+        await self._validate_and_set_images(interaction)
+
+    async def _validate_and_set_images(
+            self, interaction: discord.Interaction) -> None:
         if self.image_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.image_url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=f"Invalid URL in Image URL: {self.image_url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=
+                    f"Invalid URL in Image URL: {self.image_url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
 
-        # Validate the thumbnail URL
         if self.thumbnail_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.thumbnail_url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=
-                f"Invalid URL in Thumbnail URL: {self.thumbnail_url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=
+                    f"Invalid URL in Thumbnail URL: {self.thumbnail_url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
 
-        # Set the image and thumbnail in the embed
         self.embed.set_image(url=self.image_url.value or None)
         self.embed.set_thumbnail(url=self.thumbnail_url.value or None)
 
-        # Confirm the images configuration to the user
         await interaction.response.edit_message(content="✅ Images configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -303,24 +320,29 @@ class FooterModal(BaseModal):
         self.add_item(self.timestamp)
         self.add_item(self.footer_icon_url)
 
-    async def handle_submit(self, interaction: discord.Interaction):
-        # Validate the footer icon URL
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
+        await self._validate_and_set_footer(interaction)
+
+    async def _validate_and_set_footer(
+            self, interaction: discord.Interaction) -> None:
         if self.footer_icon_url.value and not self.bot.get_cog(
                 "EmbedCreator").is_valid_url(self.footer_icon_url.value):
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description=
-                f"Invalid URL in Footer Icon URL: {self.footer_icon_url.value}",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description=
+                    f"Invalid URL in Footer Icon URL: {self.footer_icon_url.value}",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
 
-        # Set the footer details in the embed
-        self.embed.set_footer(text=self.footer.value,
-                              icon_url=self.footer_icon_url.value or None)
+        self.embed.set_footer(
+            text=self.footer.value,
+            icon_url=self.footer_icon_url.value or None,
+        )
 
-        # Handle the timestamp
         if self.timestamp.value:
             if self.timestamp.value.lower() == "auto":
                 self.embed.timestamp = discord.utils.utcnow()
@@ -329,18 +351,19 @@ class FooterModal(BaseModal):
                     self.embed.timestamp = discord.utils.parse_time(
                         self.timestamp.value)
                 except ValueError:
-                    await interaction.response.send_message(embed=discord.Embed(
-                        title="Error",
-                        description=
-                        f"Invalid timestamp format: {self.timestamp.value}",
-                        color=discord.Color.red(),
-                    ),
-                                                            ephemeral=True)
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description=
+                            f"Invalid timestamp format: {self.timestamp.value}",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
                     return
         else:
             self.embed.timestamp = None
 
-        # Confirm the footer configuration to the user
         await interaction.response.edit_message(content="✅ Footer configured.",
                                                 embed=self.embed,
                                                 view=create_embed_view(
@@ -360,7 +383,7 @@ class AddFieldModal(BaseModal):
         self.add_item(self.field_value)
         self.add_item(self.inline)
 
-    async def handle_submit(self, interaction: discord.Interaction):
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
         name = self.field_name.value
         value = self.field_value.value
         inline = self.inline.value.lower(
@@ -389,19 +412,16 @@ class JumpToPageModal(Modal):
         """Handle the submission of the jump to page modal."""
         try:
             page = int(self.page_number.value)
-            if 1 <= page <= 16:  # Updated range
+            if 1 <= page <= 16:
                 await interaction.response.edit_message(
                     embed=get_help_embed(page),
-                    view=HelpNavigationView(interaction.client, page,
-                                            16))  # Updated total_pages
+                    view=HelpNavigationView(interaction.client, page, 16))
             else:
                 await interaction.response.send_message(
-                    "Please enter a valid page number (1-16).",
-                    ephemeral=True)  # Updated error message
+                    "Please enter a valid page number (1-16).", ephemeral=True)
         except ValueError:
             await interaction.response.send_message(
-                "Please enter a valid page number (1-16).",
-                ephemeral=True)  # Updated error message
+                "Please enter a valid page number (1-16).", ephemeral=True)
 
 
 class ScheduleModal(Modal):
@@ -422,48 +442,36 @@ class ScheduleModal(Modal):
         self.add_item(self.schedule_time)
         self.add_item(self.channel)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        if not self.is_embed_configured():
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if not is_embed_configured(self.embed):
             await interaction.response.send_message(
                 "Error: The embed has not been configured yet. Please add some content before scheduling.",
                 ephemeral=True)
             return
+
         schedule_time = self.schedule_time.value
         channel_id = self.channel.value
-        if channel_id:
-            try:
-                channel = self.bot.get_channel(int(channel_id))
-                if not channel:
-                    raise ValueError("Invalid channel ID")
-            except ValueError:
-                await interaction.response.send_message(
-                    "Invalid channel ID. Using the current channel instead.",
-                    ephemeral=True)
-                channel = self.original_channel
-        else:
-            channel = self.original_channel
-        delay = self.parse_schedule_time(schedule_time)
+        channel = await self._get_channel(channel_id, interaction)
+
+        if not channel:
+            return
+
+        delay = self._parse_schedule_time(schedule_time)
         if delay is None:
             await interaction.response.send_message(
                 "Invalid schedule time format. Please use formats like '5m', '2h', '1d', or '1w'.",
                 ephemeral=True)
             return
+
         scheduled_time = discord.utils.utcnow() + delay
         scheduled_time_str = format_dt(scheduled_time, style='R')
         await interaction.response.send_message(
             f"Embed scheduled to be sent in {channel.mention} {scheduled_time_str}",
             ephemeral=True)
-        # Schedule the embed to be sent
-        await self.schedule_embed(delay, channel, interaction)
 
-    def is_embed_configured(self) -> bool:
-        return any([
-            self.embed.title, self.embed.description, self.embed.fields,
-            self.embed.author, self.embed.footer, self.embed.image,
-            self.embed.thumbnail
-        ])
+        await self._schedule_embed(delay, channel, interaction)
 
-    def parse_schedule_time(self, schedule_time: str) -> timedelta | None:
+    def _parse_schedule_time(self, schedule_time: str) -> Optional[timedelta]:
         match = re.match(r'^(\d+)([mhdw])$', schedule_time.lower())
         if match:
             amount, unit = match.groups()
@@ -478,9 +486,25 @@ class ScheduleModal(Modal):
                 return timedelta(weeks=amount)
         return None
 
-    async def schedule_embed(self, delay: timedelta,
-                             channel: discord.TextChannel,
-                             interaction: discord.Interaction):
+    async def _get_channel(
+            self, channel_id: str,
+            interaction: discord.Interaction) -> Optional[discord.TextChannel]:
+        if channel_id:
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+                if not channel:
+                    raise ValueError("Invalid channel ID")
+            except ValueError:
+                await interaction.response.send_message(
+                    "Invalid channel ID. Using the current channel instead.",
+                    ephemeral=True)
+                return self.original_channel
+        else:
+            return self.original_channel
+
+    async def _schedule_embed(self, delay: timedelta,
+                              channel: discord.TextChannel,
+                              interaction: discord.Interaction) -> None:
         scheduled_time = discord.utils.utcnow() + delay
         await asyncio.sleep(delay.total_seconds())
         sent_message = await channel.send(embed=self.embed)
@@ -494,11 +518,11 @@ class ScheduleModal(Modal):
 
 class PlusButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="", style=ButtonStyle.green, emoji="➕", row=2)
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         await interaction.response.send_modal(AddFieldModal(self.embed))
 
 
@@ -518,7 +542,7 @@ class EditFieldModal(BaseModal):
         self.add_item(self.field_value)
         self.add_item(self.inline)
 
-    async def handle_submit(self, interaction: discord.Interaction):
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
         name = self.field_name.value
         value = self.field_value.value
         inline = self.inline.value.lower(
@@ -536,25 +560,27 @@ class EditFieldModal(BaseModal):
 
 class MinusButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="", style=ButtonStyle.red, emoji="➖", row=2)
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         if not self.embed.fields:
-            await interaction.response.send_message(embed=discord.Embed(
-                title="Error",
-                description="No fields available to remove.",
-                color=discord.Color.red(),
-            ),
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description="No fields available to remove.",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
             return
+
         options = [
-            discord.SelectOption(
-                label=f"Field {i + 1}: {field.name}",
-                value=str(i),
-                description=field.value[:100],
-            ) for i, field in enumerate(self.embed.fields)
+            discord.SelectOption(label=f"Field {i + 1}: {field.name}",
+                                 value=str(i),
+                                 description=field.value[:100])
+            for i, field in enumerate(self.embed.fields)
         ]
         view = View(timeout=None)
         select = discord.ui.Select(placeholder="Select a field to remove...",
@@ -565,11 +591,10 @@ class MinusButton(BaseButton):
         await interaction.response.edit_message(
             content="Select a field to remove:", embed=self.embed, view=view)
 
-    async def remove_field_callback(self, interaction: Interaction):
+    async def remove_field_callback(self, interaction: Interaction) -> None:
         value = interaction.data["values"][0]
         field_index = int(value)
         self.embed.remove_field(field_index)
-        # Ensure the embed has a description
         if not self.embed.description:
             self.embed.description = "\u200b"  # Zero-width space
         await interaction.response.edit_message(content="✅ Field removed.",
@@ -581,11 +606,11 @@ class MinusButton(BaseButton):
 
 class BackButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="Back", style=ButtonStyle.secondary)
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         await interaction.response.edit_message(
             content="Embed Configuration Preview:",
             embed=self.embed,
@@ -594,12 +619,12 @@ class BackButton(BaseButton):
 
 class SendButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="Send", style=ButtonStyle.green, emoji="🚀")
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
-        if not self.is_embed_configured():
+    async def handle_callback(self, interaction: Interaction) -> None:
+        if not is_embed_configured(self.embed):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
                 description=
@@ -607,6 +632,7 @@ class SendButton(BaseButton):
                 color=discord.Color.red()),
                                                     ephemeral=True)
             return
+
         sent_message = await interaction.channel.send(embed=self.embed)
         message_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}/{sent_message.id}"
         await interaction.response.edit_message(
@@ -615,25 +641,16 @@ class SendButton(BaseButton):
             embed=self.embed,
             view=create_embed_view(self.embed, interaction.client))
 
-    def is_embed_configured(self) -> bool:
-        return any([
-            self.embed.title, self.embed.description, self.embed.fields,
-            self.embed.author, self.embed.footer, self.embed.image,
-            self.embed.thumbnail
-        ])
-
 
 class ResetButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="Reset", style=ButtonStyle.red, emoji="🔄")
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
-        # Create a new Embed object instead of trying to clear the existing one
+    async def handle_callback(self, interaction: Interaction) -> None:
         new_embed = discord.Embed(description="** **")
-        new_embed.color = self.embed.color  # Preserve the original color if desired
-        # Update the reference to the new embed
+        new_embed.color = self.embed.color
         self.embed = new_embed
         await interaction.response.edit_message(content="✅ Embed reset.",
                                                 embed=self.embed,
@@ -650,7 +667,7 @@ class HelpButton(BaseButton):
                          emoji="🔍",
                          row=3)
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         await interaction.response.send_message(embed=get_help_embed(1),
                                                 view=HelpNavigationView(
                                                     interaction.client, 1, 10),
@@ -664,7 +681,7 @@ class JumpToPageButton(BaseButton):
                          style=ButtonStyle.grey,
                          emoji="🔍")
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         await interaction.response.send_modal(JumpToPageModal())
 
 
@@ -677,7 +694,7 @@ class PreviousButton(BaseButton):
         self.current_page = current_page
         self.total_pages = total_pages
 
-    async def handle_callback(self, interaction: discord.Interaction):
+    async def handle_callback(self, interaction: discord.Interaction) -> None:
         new_page = max(1, self.current_page - 1)
         await interaction.response.edit_message(
             embed=get_help_embed(new_page),
@@ -694,7 +711,7 @@ class NextButton(BaseButton):
         self.current_page = current_page
         self.total_pages = total_pages
 
-    async def handle_callback(self, interaction: discord.Interaction):
+    async def handle_callback(self, interaction: discord.Interaction) -> None:
         new_page = min(self.total_pages, self.current_page + 1)
         await interaction.response.edit_message(
             embed=get_help_embed(new_page),
@@ -704,7 +721,7 @@ class NextButton(BaseButton):
 
 class EditFieldButton(BaseButton):
 
-    def __init__(self, embed, bot):
+    def __init__(self, embed: discord.Embed, bot: commands.Bot):
         super().__init__(label="Edit Fields",
                          style=ButtonStyle.grey,
                          emoji="📝",
@@ -712,7 +729,7 @@ class EditFieldButton(BaseButton):
         self.embed = embed
         self.bot = bot
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         if not self.embed.fields:
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -720,6 +737,7 @@ class EditFieldButton(BaseButton):
                 color=discord.Color.red()),
                                                     ephemeral=True)
             return
+
         options = [
             discord.SelectOption(label=f"Field {i + 1}: {field.name}",
                                  value=f"field_{i}",
@@ -735,7 +753,7 @@ class EditFieldButton(BaseButton):
         await interaction.response.edit_message(
             content="Select a field to edit:", embed=self.embed, view=view)
 
-    async def edit_field_callback(self, interaction: Interaction):
+    async def edit_field_callback(self, interaction: Interaction) -> None:
         value = interaction.data["values"][0]
         field_index = int(value.split("_")[1])
         await interaction.response.send_modal(
@@ -744,13 +762,13 @@ class EditFieldButton(BaseButton):
 
 class SendToButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         super().__init__(label="Send To", style=ButtonStyle.green, emoji="📤")
         self.embed = embed
         self.page = 0  # Current page for pagination
 
-    async def handle_callback(self, interaction: Interaction):
-        if not self.is_embed_valid():
+    async def handle_callback(self, interaction: Interaction) -> None:
+        if not is_embed_configured(self.embed):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Embed Not Configured",
                 description=
@@ -759,82 +777,66 @@ class SendToButton(BaseButton):
                                                     ephemeral=True)
             return
 
-        # Get all channels the user has permission to send messages in
         channels = [
             channel for channel in interaction.guild.text_channels
             if channel.permissions_for(interaction.user).send_messages
         ]
-
-        # Check if there are no available channels
         if not channels:
             await interaction.response.send_message(
                 "You don't have permission to send messages in any channel.",
                 ephemeral=True)
             return
 
-        # Display the first page of the channel list
-        await self.show_channel_page(interaction, channels, self.page)
+        await self._show_channel_page(interaction, channels, self.page)
 
-    def is_embed_valid(self) -> bool:
-        if self.embed is None:
-            return False
-        return any([
-            self.embed.title, self.embed.description, self.embed.fields,
-            self.embed.author, self.embed.footer, self.embed.image,
-            self.embed.thumbnail
-        ])
-
-    async def show_channel_page(self, interaction: Interaction, channels,
-                                page: int):
-        """Display the specified page of the channel list."""
+    async def _show_channel_page(self, interaction: Interaction,
+                                 channels: list[discord.TextChannel],
+                                 page: int) -> None:
         max_per_page = 25
         start_index = page * max_per_page
         end_index = start_index + max_per_page
         channel_page = channels[start_index:end_index]
-
         options = [
             discord.SelectOption(label=channel.name, value=str(channel.id))
             for channel in channel_page
         ]
-
-        # Create the select menu for channel selection
         view = View(timeout=None)
         select = discord.ui.Select(
             placeholder="Select a channel to send the embed to...",
             options=options)
-        select.callback = lambda inter: self.send_to_channel_callback(
+        select.callback = lambda inter: self._send_to_channel_callback(
             inter, channels, page)
         view.add_item(select)
 
-        # Add pagination buttons if necessary
         total_pages = ceil(len(channels) / max_per_page)
         if total_pages > 1:
             if page > 0:
                 view.add_item(PreviousPageButton(self, channels, page))
             if page < total_pages - 1:
                 view.add_item(NextPageButton(self, channels, page))
-
         view.add_item(BackButton(self.embed))
         await interaction.response.edit_message(
             content="Select a channel to send the embed to:",
             embed=self.embed,
             view=view)
 
-    async def send_to_channel_callback(self, interaction: Interaction,
-                                       channels, page: int):
+    async def _send_to_channel_callback(self, interaction: Interaction,
+                                        channels: list[discord.TextChannel],
+                                        page: int) -> None:
         value = interaction.data["values"][0]
-
         channel_id = int(value)
         channel = interaction.guild.get_channel(channel_id)
         if channel is None:
             await interaction.response.send_message(
                 "The selected channel no longer exists.", ephemeral=True)
             return
-        if not self.is_embed_valid():
+
+        if not is_embed_configured(self.embed):
             await interaction.response.send_message(
                 "The embed is not properly configured. Please add some content before sending.",
                 ephemeral=True)
             return
+
         try:
             sent_message = await channel.send(embed=self.embed)
             message_link = f"https://discord.com/channels/{interaction.guild.id}/{channel.id}/{sent_message.id}"
@@ -851,33 +853,33 @@ class SendToButton(BaseButton):
 
 class PreviousPageButton(BaseButton):
 
-    def __init__(self, parent: SendToButton, channels, current_page: int):
+    def __init__(self, parent: SendToButton,
+                 channels: list[discord.TextChannel], current_page: int):
         super().__init__(label="Previous", style=discord.ButtonStyle.blurple)
         self.parent = parent
         self.channels = channels
         self.current_page = current_page
 
-    async def handle_callback(self, interaction: Interaction):
-        # Decrement the page number and show the previous page
+    async def handle_callback(self, interaction: Interaction) -> None:
         self.parent.page = max(0, self.current_page - 1)
-        await self.parent.show_channel_page(interaction, self.channels,
-                                            self.parent.page)
+        await self.parent._show_channel_page(interaction, self.channels,
+                                             self.parent.page)
 
 
 class NextPageButton(BaseButton):
 
-    def __init__(self, parent: SendToButton, channels, current_page: int):
+    def __init__(self, parent: SendToButton,
+                 channels: list[discord.TextChannel], current_page: int):
         super().__init__(label="Next", style=discord.ButtonStyle.blurple)
         self.parent = parent
         self.channels = channels
         self.current_page = current_page
 
-    async def handle_callback(self, interaction: Interaction):
-        # Increment the page number and show the next page
+    async def handle_callback(self, interaction: Interaction) -> None:
         total_pages = ceil(len(self.channels) / 25)
         self.parent.page = min(total_pages - 1, self.current_page + 1)
-        await self.parent.show_channel_page(interaction, self.channels,
-                                            self.parent.page)
+        await self.parent._show_channel_page(interaction, self.channels,
+                                             self.parent.page)
 
 
 class FieldsButton(BaseButton):
@@ -888,14 +890,14 @@ class FieldsButton(BaseButton):
                          disabled=True,
                          row=2)
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         # This button is disabled and does nothing, so we don't need to implement any callback logic
         pass
 
 
 class FieldCountButton(BaseButton):
 
-    def __init__(self, embed):
+    def __init__(self, embed: discord.Embed):
         field_count = len(
             embed.fields) if embed and hasattr(embed, 'fields') else 0
         super().__init__(label=f"{field_count}/25 fields",
@@ -904,7 +906,7 @@ class FieldCountButton(BaseButton):
                          row=3)
         self.embed = embed
 
-    async def handle_callback(self, interaction: Interaction):
+    async def handle_callback(self, interaction: Interaction) -> None:
         # This button is disabled and does nothing, so we don't need to implement any callback logic
         pass
 
@@ -939,3 +941,10 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view.add_item(FieldCountButton(embed))
     view.add_embed_buttons()
     return view
+
+
+def is_embed_configured(embed: discord.Embed) -> bool:
+    return any([
+        embed.title, embed.description, embed.fields, embed.author,
+        embed.footer, embed.image, embed.thumbnail
+    ])
