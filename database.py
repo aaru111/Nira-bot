@@ -24,6 +24,12 @@ class Database:
             raise
 
     async def create_tables(self) -> None:
+        create_guild_prefixes_table: str = """
+        CREATE TABLE IF NOT EXISTS guild_prefixes(
+            guild_id BIGINT PRIMARY KEY,
+            prefix VARCHAR(10) NOT NULL DEFAULT '.'
+        );
+        """
         create_reaction_roles_table: str = """
         CREATE TABLE IF NOT EXISTS reaction_roles(
             guild_id TEXT,
@@ -47,6 +53,7 @@ class Database:
                 raise ValueError("Database pool is not initialized")
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
+                    await conn.execute(create_guild_prefixes_table)
                     await conn.execute(create_reaction_roles_table)
                     await conn.execute(create_tracked_messages_table)
         except Exception as e:
