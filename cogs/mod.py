@@ -247,7 +247,7 @@ class PrevButton(discord.ui.Button):
         super().__init__(label="Prev", style=discord.ButtonStyle.primary)
 
     async def callback(self, interaction: discord.Interaction):
-        view: ChannelDropdownView = self.view  # Use the view attribute automatically provided by discord.py
+        view: ChannelDropdownView = self.view
         view.page -= 1
         view.update_dropdown_options()
         await interaction.response.edit_message(view=view)
@@ -274,11 +274,12 @@ class ChannelDropdownView(discord.ui.View):
                  channels: List[discord.TextChannel],
                  cog,
                  page: int = 0):
-        super().__init__()
+        super().__init__(timeout=20)  # Set timeout to 20 seconds
         self.ctx = ctx
         self.channels = channels
         self.page = page
         self.cog = cog
+        self.message = None  # Store the message object to delete it later
         self.update_dropdown_options()
 
     def update_dropdown_options(self):
@@ -296,6 +297,23 @@ class ChannelDropdownView(discord.ui.View):
                 self.add_item(PrevButton())
             if end_index < len(self.channels):
                 self.add_item(NextButton())
+
+    async def on_timeout(self):
+        """Handles the timeout for the view after 20 seconds of inactivity."""
+        for child in self.children:
+            child.disabled = True  # Disable all buttons in the view
+
+        if self.message:  # Check if the message has been stored
+            await self.message.edit(content="This interaction has timed out.",
+                                    view=self)
+            await asyncio.sleep(
+                5)  # Wait for 5 seconds before deleting the message
+            await self.message.delete()
+
+    async def start(self):
+        """Start the view by sending a message and storing its reference."""
+        self.message = await self.ctx.send("Select a channel to get its ID:",
+                                           view=self)
 
 
 class Moderation(commands.Cog):
@@ -403,7 +421,7 @@ class Moderation(commands.Cog):
             return
 
         view = ChannelDropdownView(ctx, accessible_channels, self)
-        await ctx.send("Select a channel to get its ID:", view=view)
+        await view.start()
 
     @commands.hybrid_command()
     @ensure_permissions("manage_channels")
