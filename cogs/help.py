@@ -20,7 +20,8 @@ class HelpCog(commands.Cog):
         command: Union[commands.Command[Any, Any, Any], app_commands.Command],
         prefix: str,
     ) -> str:
-        if isinstance(command, app_commands.Command):
+        if isinstance(command, app_commands.Command) or isinstance(
+                command, commands.HybridCommand):
             return f"/{command.qualified_name} {' '.join([f'<{param.name}>' if param.required else f'[{param.name}]' for param in command.parameters])}"
 
         command_name = command.qualified_name
@@ -56,9 +57,15 @@ class HelpCog(commands.Cog):
 
         for cmd in self.bot.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
-                choices.append(
-                    app_commands.Choice(name=f"{prefix}{cmd.qualified_name}",
-                                        value=cmd.qualified_name))
+                if isinstance(cmd, commands.HybridCommand):
+                    choices.append(
+                        app_commands.Choice(name=f"/{cmd.qualified_name}",
+                                            value=f"/{cmd.qualified_name}"))
+                else:
+                    choices.append(
+                        app_commands.Choice(
+                            name=f"{prefix}{cmd.qualified_name}",
+                            value=cmd.qualified_name))
 
         for cmd in self.bot.tree.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
@@ -79,13 +86,15 @@ class HelpCog(commands.Cog):
                 command = self.bot.tree.get_command(command_name.lstrip('/'))
 
             if command:
-                embed.title = f"Help for {prefix if isinstance(command, commands.Command) else '/'}{command.qualified_name}"
+                is_hybrid = isinstance(command, commands.HybridCommand)
+                embed.title = f"Help for {'/' if is_hybrid else prefix}{command.qualified_name}"
                 embed.description = command.description or "No description available."
 
                 usage = self.generate_usage(command, prefix)
                 embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
 
-                if isinstance(command, commands.Command) and command.aliases:
+                if isinstance(command, commands.Command
+                              ) and command.aliases and not is_hybrid:
                     embed.add_field(name="Aliases",
                                     value=", ".join(
                                         f"{prefix}{alias}"
@@ -102,15 +111,22 @@ class HelpCog(commands.Cog):
                 if command.cog:
                     if command.cog.qualified_name not in cog_commands:
                         cog_commands[command.cog.qualified_name] = []
-                    cog_commands[command.cog.qualified_name].append(
-                        f"`{prefix}{command.name}`")
+                    if isinstance(command, commands.HybridCommand):
+                        cog_commands[command.cog.qualified_name].append(
+                            f"`/{command.name}`")
+                    else:
+                        cog_commands[command.cog.qualified_name].append(
+                            f"`{prefix}{command.name}`")
 
             for command in self.bot.tree.walk_commands():
                 if isinstance(command, app_commands.Command):
                     cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
                     if cog_name not in cog_commands:
                         cog_commands[cog_name] = []
-                    cog_commands[cog_name].append(f"`/{command.name}`")
+                    if not any(
+                            cmd.startswith(f"`/{command.name}`")
+                            for cmd in cog_commands[cog_name]):
+                        cog_commands[cog_name].append(f"`/{command.name}`")
 
             for cog_name, commands_list in cog_commands.items():
                 embed.add_field(name=cog_name,
@@ -118,7 +134,9 @@ class HelpCog(commands.Cog):
                                 inline=False)
 
         embed.set_footer(
-            text=f"Type {prefix}help <command> for more info on a command.")
+            text=
+            f"Type {prefix}help <command> or /help command:<command> for more info on a command."
+        )
         await interaction.response.send_message(embed=embed)
 
 
