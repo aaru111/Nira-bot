@@ -8,7 +8,7 @@
 
 ## Features
 
-- **Powered by GPT-4**: Leverages the latest AI technology to understand and respond naturally to user commands.
+- **Powered by GPT-4o**: Leverages the latest AI technology to understand and respond naturally to user commands.
 - **Homework Help**: Assists with homework and answers questions across various subjects.
 - **Interactive and Fun**: Engages users with games, jokes, and fun commands.
 - **Best Friend**: Provides friendly interactions and can even become your virtual best friend!
