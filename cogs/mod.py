@@ -6,6 +6,7 @@ import asyncio
 from functools import wraps
 import io
 import time
+import json
 
 
 # Utility Functions
@@ -221,6 +222,83 @@ class ConfirmationView(discord.ui.View):
         self.stop()
 
 
+class ChannelSelect(discord.ui.Select):
+    """Select menu for choosing a channel to get its ID."""
+
+    def __init__(self, options: List[discord.SelectOption], cog):
+        super().__init__(placeholder="Select a channel to get its ID...",
+                         min_values=1,
+                         max_values=1,
+                         options=options)
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_channel = discord.utils.get(interaction.guild.channels,
+                                             id=int(self.values[0]))
+        if selected_channel:
+            await interaction.response.send_message(
+                f"The Channel {selected_channel.mention}'s ID is: ||`{selected_channel.id}`||",
+                ephemeral=True)
+
+
+class ChannelDropdownView(discord.ui.View):
+    """View containing the channel select dropdown and pagination buttons."""
+
+    def __init__(self,
+                 ctx: commands.Context,
+                 channels: List[discord.TextChannel],
+                 cog,
+                 page: int = 0):
+        super().__init__()
+        self.ctx = ctx
+        self.channels = channels
+        self.page = page
+        self.cog = cog
+        self.update_dropdown_options()
+
+    def update_dropdown_options(self):
+        start_index = self.page * 25
+        end_index = start_index + 25
+        channel_options = [
+            discord.SelectOption(label=channel.name, value=str(channel.id))
+            for channel in self.channels[start_index:end_index]
+        ]
+        self.clear_items()
+        self.add_item(ChannelSelect(channel_options, cog=self.cog))
+
+        if len(self.channels) > 25:
+            if self.page > 0:
+                self.add_item(PrevButton(self))
+            if end_index < len(self.channels):
+                self.add_item(NextButton(self))
+
+
+class PrevButton(discord.ui.Button):
+    """Button to go to the previous page of the channel dropdown."""
+
+    def __init__(self, view: ChannelDropdownView):
+        super().__init__(label="Prev", style=discord.ButtonStyle.primary)
+        self.view = view
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.page -= 1
+        self.view.update_dropdown_options()
+        await interaction.response.edit_message(view=self.view)
+
+
+class NextButton(discord.ui.Button):
+    """Button to go to the next page of the channel dropdown."""
+
+    def __init__(self, view: ChannelDropdownView):
+        super().__init__(label="Next", style=discord.ButtonStyle.primary)
+        self.view = view
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.page += 1
+        self.view.update_dropdown_options()
+        await interaction.response.edit_message(view=self.view)
+
+
 class Moderation(commands.Cog):
     """Cog for moderation commands."""
 
@@ -314,14 +392,19 @@ class Moderation(commands.Cog):
             await ctx.send("User not found or not banned.", ephemeral=True)
 
     @commands.hybrid_command()
-    async def channel_id(self, ctx: commands.Context, channel_name: str):
-        """Get a channel's ID by name."""
-        channel = discord.utils.get(ctx.guild.channels, name=channel_name)
-        if channel:
-            await ctx.send(
-                f"The Channel {channel.mention}'s ID is: `{channel.id}`")
-        else:
-            await ctx.send("Channel not found.", ephemeral=True)
+    async def channel_id(self, ctx: commands.Context):
+        """Get a channel's ID by selecting from a dropdown menu."""
+        accessible_channels = [
+            channel for channel in ctx.guild.text_channels
+            if channel.permissions_for(ctx.author).view_channel
+        ]
+
+        if not accessible_channels:
+            await ctx.send("No accessible channels found.", ephemeral=True)
+            return
+
+        view = ChannelDropdownView(ctx, accessible_channels, self)
+        await ctx.send("Select a channel to get its ID:", view=view)
 
     @commands.hybrid_command()
     @ensure_permissions("manage_channels")
@@ -487,6 +570,60 @@ class Moderation(commands.Cog):
 
         view = RoleInfoView(role)
         await ctx.send(embed=embed, view=view)
+
+    @commands.hybrid_command()
+    @commands.has_permissions(administrator=True)
+    async def lock(self,
+                   ctx: commands.Context,
+                   *,
+                   reason: Optional[str] = "No reason provided"):
+        """Lock a channel by preventing the default role from sending messages."""
+        await self._set_channel_permission(ctx.channel, send_messages=False)
+        embed = discord.Embed(title="🔒 Locked",
+                              description=f"Reason: {reason}",
+                              color=discord.Color.red())
+        await ctx.send(embed=embed)
+
+    @commands.hybrid_command()
+    @commands.has_permissions(administrator=True)
+    async def unlock(self, ctx: commands.Context):
+        """Unlock a channel by allowing the default role to send messages."""
+        await self._set_channel_permission(ctx.channel, send_messages=True)
+        embed = discord.Embed(title="🔓 Unlocked", color=discord.Color.green())
+        await ctx.send(embed=embed)
+
+    @commands.hybrid_command()
+    @commands.has_permissions(administrator=True)
+    async def lock_server(self, ctx: commands.Context):
+        """Lock the server by preventing the default role from viewing all text channels."""
+        await self._set_server_permissions(ctx.guild, view_channel=False)
+        await ctx.send("Server has been locked.")
+
+    @commands.hybrid_command()
+    @commands.has_permissions(administrator=True)
+    async def unlock_server(self, ctx: commands.Context):
+        """Unlock the server by allowing the default role to view all text channels."""
+        await self._set_server_permissions(ctx.guild, view_channel=True)
+        await ctx.send("Server has been unlocked.")
+
+    async def _set_channel_permission(self,
+                                      channel: discord.TextChannel,
+                                      send_messages: Optional[bool] = None):
+        """Set send_messages permission for default role in a channel."""
+        overwrite = channel.overwrites_for(channel.guild.default_role)
+        overwrite.send_messages = send_messages
+        await channel.set_permissions(channel.guild.default_role,
+                                      overwrite=overwrite)
+
+    async def _set_server_permissions(self,
+                                      guild: discord.Guild,
+                                      view_channel: Optional[bool] = None):
+        """Set view_channel permission for default role in all text channels in the server."""
+        for channel in guild.text_channels:
+            overwrite = channel.overwrites_for(guild.default_role)
+            overwrite.view_channel = view_channel
+            await channel.set_permissions(guild.default_role,
+                                          overwrite=overwrite)
 
 
 async def setup(bot: commands.Bot) -> None:

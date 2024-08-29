@@ -47,19 +47,20 @@ class Errors(commands.Cog):
         view.add_item(HelpButton(ctx, title, description, button_color))
 
         try:
-            await ctx.send(embed=embed,
-                           view=view,
-                           ephemeral=True,
-                           delete_after=DELETE_AFTER)
+            message = await ctx.send(embed=embed, view=view, ephemeral=True)
+            await message.delete(
+                delay=DELETE_AFTER
+            )  # Attempt to delete the message after a delay
         except discord.errors.NotFound:
-            # The channel was not found, possibly deleted or bot lacks permissions
+            # The message or channel was not found, possibly deleted or bot lacks permissions
             print(
-                "Failed to send an error embed because the channel was not found or bot lacks permissions."
+                "Failed to send or delete an error embed because the message or channel was not found, or bot lacks permissions."
             )
-
-    async def cog_unload(self):
-        """Clean up resources when the cog is unloaded."""
-        await self.session.close()
+        except discord.errors.Forbidden:
+            # The bot does not have the necessary permissions to delete the message
+            print(
+                "Failed to delete the error embed because the bot lacks the necessary permissions."
+            )
 
     async def handle_error(self, ctx: commands.Context,
                            error: commands.CommandError, description: str,
