@@ -91,20 +91,18 @@ class HelpCog(commands.Cog):
             if current.lower() in cmd.qualified_name.lower():
                 if isinstance(cmd, commands.HybridCommand):
                     choices.append(
-                        app_commands.Choice(name=f"/{cmd.qualified_name}",
-                                            value=f"/{cmd.qualified_name}"))
+                        app_commands.Choice(name=f"{cmd.qualified_name}",
+                                            value=f"{cmd.qualified_name}"))
                 else:
                     choices.append(
-                        app_commands.Choice(
-                            name=f"{prefix}{cmd.qualified_name}",
-                            value=cmd.qualified_name))
+                        app_commands.Choice(name=f"{cmd.qualified_name}",
+                                            value=cmd.qualified_name))
 
         for cmd in self.bot.tree.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
                 choices.append(
-                    app_commands.Choice(name=f"/{cmd.qualified_name}",
-                                        value=f"/{cmd.qualified_name}"))
-
+                    app_commands.Choice(name=f"{cmd.qualified_name}",
+                                        value=f"{cmd.qualified_name}"))
         return choices[:25]
 
     async def send_help_embed(self, interaction: discord.Interaction,
