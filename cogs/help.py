@@ -20,13 +20,22 @@ class HelpCog(commands.Cog):
         command: Union[commands.Command[Any, Any, Any], app_commands.Command],
         prefix: str,
     ) -> str:
-        if isinstance(command, app_commands.Command) or isinstance(
-                command, commands.HybridCommand):
-            return f"/{command.qualified_name} {' '.join([f'<{param.name}>' if param.required else f'[{param.name}]' for param in command.parameters])}"
+        if isinstance(command, app_commands.Command):
+            usage = f"/{command.qualified_name}"
+        elif isinstance(command, commands.HybridCommand):
+            usage = f"/{command.qualified_name}"
+        else:
+            usage = f"{prefix}{command.qualified_name}"
 
-        command_name = command.qualified_name
-        usage = f"{prefix}{command_name}"
-        parameters: Dict[str, commands.Parameter] = command.clean_params
+        if hasattr(command, 'usage') and command.usage:
+            return f"{usage} {command.usage}"
+
+        parameters: Dict[
+            str, inspect.Parameter] = command.clean_params if isinstance(
+                command, commands.Command) else {
+                    param.name: param
+                    for param in command.parameters
+                }
 
         for param_name, param in parameters.items():
             if param_name in ["ctx", "self"]:
@@ -39,6 +48,25 @@ class HelpCog(commands.Cog):
 
         return usage
 
+    @staticmethod
+    def get_command_permissions(
+        command: Union[commands.Command[Any, Any, Any], app_commands.Command]
+    ) -> List[str]:
+        permissions = []
+        if isinstance(command, commands.Command):
+            for check in command.checks:
+                if hasattr(check, 'permissions'):
+                    permissions.extend(
+                        perm.replace('_', ' ').title()
+                        for perm, value in check.permissions.items() if value)
+        elif isinstance(command, app_commands.Command):
+            if command.default_permissions:
+                permissions.extend(
+                    perm.replace('_', ' ').title()
+                    for perm, value in command.default_permissions.items()
+                    if value)
+        return permissions
+
     @app_commands.command(name="help",
                           description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
@@ -46,6 +74,8 @@ class HelpCog(commands.Cog):
                          interaction: discord.Interaction,
                          command: Optional[str] = None) -> None:
         prefix = await self.bot.get_prefix(interaction)
+        if isinstance(prefix, list):
+            prefix = prefix[0]
         await self.send_help_embed(interaction, command, prefix)
 
     @help_slash.autocomplete("command")
@@ -54,6 +84,8 @@ class HelpCog(commands.Cog):
             current: str) -> List[app_commands.Choice[str]]:
         choices: List[app_commands.Choice[str]] = []
         prefix = await self.bot.get_prefix(interaction)
+        if isinstance(prefix, list):
+            prefix = prefix[0]
 
         for cmd in self.bot.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
@@ -86,15 +118,19 @@ class HelpCog(commands.Cog):
                 command = self.bot.tree.get_command(command_name.lstrip('/'))
 
             if command:
-                is_hybrid = isinstance(command, commands.HybridCommand)
-                embed.title = f"Help for {'/' if is_hybrid else prefix}{command.qualified_name}"
+                embed.title = f"Help for /{command.qualified_name}"
                 embed.description = command.description or "No description available."
 
                 usage = self.generate_usage(command, prefix)
                 embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
 
-                if isinstance(command, commands.Command
-                              ) and command.aliases and not is_hybrid:
+                permissions = self.get_command_permissions(command)
+                if permissions:
+                    embed.add_field(name="Required Permissions",
+                                    value=", ".join(permissions),
+                                    inline=False)
+
+                if isinstance(command, commands.Command) and command.aliases:
                     embed.add_field(name="Aliases",
                                     value=", ".join(
                                         f"{prefix}{alias}"
@@ -123,10 +159,7 @@ class HelpCog(commands.Cog):
                     cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
                     if cog_name not in cog_commands:
                         cog_commands[cog_name] = []
-                    if not any(
-                            cmd.startswith(f"`/{command.name}`")
-                            for cmd in cog_commands[cog_name]):
-                        cog_commands[cog_name].append(f"`/{command.name}`")
+                    cog_commands[cog_name].append(f"`/{command.name}`")
 
             for cog_name, commands_list in cog_commands.items():
                 embed.add_field(name=cog_name,
@@ -134,9 +167,7 @@ class HelpCog(commands.Cog):
                                 inline=False)
 
         embed.set_footer(
-            text=
-            f"Type {prefix}help <command> or /help command:<command> for more info on a command."
-        )
+            text=f"Type {prefix}help <command> for more info on a command.")
         await interaction.response.send_message(embed=embed)
 
 
