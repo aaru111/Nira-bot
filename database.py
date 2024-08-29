@@ -32,10 +32,10 @@ class Database:
         """
         create_reaction_roles_table: str = """
         CREATE TABLE IF NOT EXISTS reaction_roles(
-            guild_id TEXT,
-            message_id TEXT,
-            role_id TEXT,
-            channel_id TEXT,
+            guild_id BIGINT,
+            message_id BIGINT,
+            role_id BIGINT,
+            channel_id BIGINT,
             emoji TEXT,
             color TEXT,
             custom_id TEXT,
@@ -45,7 +45,7 @@ class Database:
         """
         create_tracked_messages_table: str = """
         CREATE TABLE IF NOT EXISTS tracked_messages(
-            message_id TEXT PRIMARY KEY
+            message_id BIGINT PRIMARY KEY
         );
         """
         try:
@@ -56,6 +56,12 @@ class Database:
                     await conn.execute(create_guild_prefixes_table)
                     await conn.execute(create_reaction_roles_table)
                     await conn.execute(create_tracked_messages_table)
+        except asyncpg.UniqueViolationError as e:
+            print(f"Unique violation error while creating tables: {e}")
+            raise
+        except asyncpg.DuplicateObjectError as e:
+            print(f"Duplicate object error while creating tables: {e}")
+            raise
         except Exception as e:
             print(f"Error creating tables: {e}")
             raise
@@ -67,6 +73,9 @@ class Database:
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
                     await conn.execute(query, *params)
+        except asyncpg.UniqueViolationError as e:
+            print(f"Unique violation error while executing query: {e}")
+            raise
         except Exception as e:
             print(f"Error executing query: {e}")
             raise
