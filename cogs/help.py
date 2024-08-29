@@ -1,295 +1,126 @@
 import discord
 from discord.ext import commands
-from utils.helputil import HelpEmbedUtil
-import aiohttp
-
-
-class HelpDropdown(discord.ui.Select):
-
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-
-        options = [
-            discord.SelectOption(label="General",
-                                 description="General bot commands",
-                                 emoji="ℹ️"),
-            discord.SelectOption(label="Image",
-                                 description="Image-related commands",
-                                 emoji="🖼️"),
-            discord.SelectOption(label="Games",
-                                 description="Game commands",
-                                 emoji="🎮"),
-            discord.SelectOption(label="Moderation",
-                                 description="Moderation commands",
-                                 emoji="🛡️"),
-            discord.SelectOption(label="Fun",
-                                 description="Fun and miscellaneous commands",
-                                 emoji="🎉"),
-        ]
-        super().__init__(placeholder="Choose a category... 🗂️",
-                         min_values=1,
-                         max_values=1,
-                         options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        category = self.values[0]
-        embed = HelpEmbedUtil.create_category_embed(category)
-        await interaction.response.edit_message(embed=embed)
-
-
-class HelpView(discord.ui.View):
-
-    def __init__(self, bot: commands.Bot):
-        super().__init__()
-        self.add_item(HelpDropdown(bot))
+from discord import app_commands
+from typing import List, Optional, Union, Any, Dict
+import inspect
 
 
 class HelpCog(commands.Cog):
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._original_help_command = bot.help_command
         bot.help_command = None
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
-    @commands.group(invoke_without_command=True)
-    async def help(self, ctx, command: str = None):
-        if command is None:
-            embed = HelpEmbedUtil.create_main_embed()
-            await ctx.send(embed=embed, view=HelpView(self.bot))
-        else:
-            cmd = self.bot.get_command(command)
-            if cmd is None:
-                await ctx.send("Command not found.")
-            else:
-                embed = HelpEmbedUtil.create_command_embed(
-                    command, cmd.help or "No description available.",
-                    f"{ctx.prefix}{cmd.qualified_name} {cmd.signature}")
-                await ctx.send(embed=embed)
-
-    @help.command()
-    async def plant(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/plant", "Identify a plant using an image or image URL.",
-            "/plant <[image] or [image url]>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def meme(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/meme", "Fetch a meme from the specified category.",
-            "/meme [category]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def identify(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/identify", "Extract text from an image using an image or URL.",
-            "/identify <[image] or [image url]>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def embed(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/embed", "Create an interactive embed within Discord.", ".embed")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def ttt(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/ttt", "Play a game of Tic-Tac-Toe with a friend.",
-            "/ttt <opponent> [custom emoji] [custom emoji]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def tetris(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".tetris", "Play a game of Tetris within Discord.", ".tetris")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def memorygame(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/memorygame",
-            "Play a memory game where you match pairs of emojis.",
-            "/memorygame")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def trivia(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".trivia", "Challenge yourself with a trivia quiz.", ".trivia")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def reaction_role(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/reaction-role", "Setup reaction roles with buttons.",
-            "/reaction-role <role> [color] [emoji] [link]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def reaction_role_summary(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/reaction-role-summary",
-            "Get a summary of all reaction roles setup in the server.",
-            "/reaction-role-summary")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def shorten(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/shorten", "Shorten URLs and optionally generate a QR code.",
-            "/shorten <link to shorten> [qrcode true/false]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def urban(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/urban", "Search any word in the Urban Dictionary.",
-            "/urban <word>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def weather(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/weather", "Get the weather status in your city.",
-            "/weather <city>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def wiki(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed("/wiki",
-                                                   "Search from Wikipedia.",
-                                                   "/wiki <query>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def kick(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/kick", "Kick a user from the server.", "/kick <user> [reason]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def ban(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/ban", "Ban a user from the server.", "/ban <user> [reason]")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def unban(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/unban", "Unban a previously banned user.", "/unban <user>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def nuke(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/nuke", "Delete and recreate a channel with the same properties.",
-            "/nuke")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def purge(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/purge", "Clear a specified number of messages from a channel.",
-            "/purge <no of messages>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def avatar(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/avatar", "Get the avatar of a user.", "/avatar <user>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def channel_id(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/channel_id", "Get the ID of a specified channel.",
-            "/channel_id <channel>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def ping(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed("/ping",
-                                                   "Get the bot's latency.",
-                                                   "/ping")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def wanted(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".wanted", "Place a user's profile picture in a wanted poster.",
-            ".wanted <user>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def emojify(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".emojify", "Convert an image into a grid of emojis.",
-            ".emojify <image link> <size>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def asciify(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".asciify", "Convert an image into ASCII art.",
-            ".asciify <image link>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def joke(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(".joke",
-                                                   "Get a random joke.",
-                                                   ".joke")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def collatz(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".collatz", "Check if a number satisfies the Collatz conjecture.",
-            ".collatz <number>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def pp(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(".pp",
-                                                   "Get a random penis size.",
-                                                   ".pp")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def rng(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            ".rng", "Generate a random number between 1 and 1000.", ".rng")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def role_info(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/role-info", "Get detailed information about a specific role.",
-            "/role-info <role>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def role_list(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/role-list", "List all roles assigned to a member.",
-            "/role-list <member>")
-        await ctx.send(embed=embed)
-
-    @help.command()
-    async def role_remove(self, ctx):
-        embed = HelpEmbedUtil.create_command_embed(
-            "/role-remove", "Remove a specific role from a member.",
-            "/role-remove <member> <role>")
-        await ctx.send(embed=embed)
-
-    async def cog_unload(self):
+    def cog_unload(self) -> None:
         self.bot.help_command = self._original_help_command
-        await self.session.close()
+
+    @staticmethod
+    def generate_usage(
+        command: Union[commands.Command[Any, Any, Any], app_commands.Command],
+        prefix: str,
+    ) -> str:
+        if isinstance(command, app_commands.Command):
+            return f"/{command.qualified_name} {' '.join([f'<{param.name}>' if param.required else f'[{param.name}]' for param in command.parameters])}"
+
+        command_name = command.qualified_name
+        usage = f"{prefix}{command_name}"
+        parameters: Dict[str, commands.Parameter] = command.clean_params
+
+        for param_name, param in parameters.items():
+            if param_name in ["ctx", "self"]:
+                continue
+            is_optional = param.default != inspect.Parameter.empty
+            usage += f" {'[' if is_optional else '<'}{param_name}{'>' if not is_optional else ']'}"
+
+        if isinstance(command, commands.Group):
+            usage += " <subcommand>"
+
+        return usage
+
+    @app_commands.command(name="help",
+                          description="Shows help for bot commands")
+    @app_commands.describe(command="The command to get help for")
+    async def help_slash(self,
+                         interaction: discord.Interaction,
+                         command: Optional[str] = None) -> None:
+        prefix = await self.bot.get_prefix(interaction)
+        await self.send_help_embed(interaction, command, prefix)
+
+    @help_slash.autocomplete("command")
+    async def command_autocomplete(
+            self, interaction: discord.Interaction,
+            current: str) -> List[app_commands.Choice[str]]:
+        choices: List[app_commands.Choice[str]] = []
+        prefix = await self.bot.get_prefix(interaction)
+
+        for cmd in self.bot.walk_commands():
+            if current.lower() in cmd.qualified_name.lower():
+                choices.append(
+                    app_commands.Choice(name=f"{prefix}{cmd.qualified_name}",
+                                        value=cmd.qualified_name))
+
+        for cmd in self.bot.tree.walk_commands():
+            if current.lower() in cmd.qualified_name.lower():
+                choices.append(
+                    app_commands.Choice(name=f"/{cmd.qualified_name}",
+                                        value=f"/{cmd.qualified_name}"))
+
+        return choices[:25]
+
+    async def send_help_embed(self, interaction: discord.Interaction,
+                              command_name: Optional[str],
+                              prefix: str) -> None:
+        embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
+
+        if command_name:
+            command = self.bot.get_command(command_name.lstrip('/'))
+            if not command:
+                command = self.bot.tree.get_command(command_name.lstrip('/'))
+
+            if command:
+                embed.title = f"Help for {prefix if isinstance(command, commands.Command) else '/'}{command.qualified_name}"
+                embed.description = command.description or "No description available."
+
+                usage = self.generate_usage(command, prefix)
+                embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+
+                if isinstance(command, commands.Command) and command.aliases:
+                    embed.add_field(name="Aliases",
+                                    value=", ".join(
+                                        f"{prefix}{alias}"
+                                        for alias in command.aliases),
+                                    inline=False)
+            else:
+                embed.description = f"No command found named '{command_name}'."
+        else:
+            embed.description = "Here are all available commands:"
+
+            cog_commands: Dict[str, List[str]] = {}
+
+            for command in self.bot.commands:
+                if command.cog:
+                    if command.cog.qualified_name not in cog_commands:
+                        cog_commands[command.cog.qualified_name] = []
+                    cog_commands[command.cog.qualified_name].append(
+                        f"`{prefix}{command.name}`")
+
+            for command in self.bot.tree.walk_commands():
+                if isinstance(command, app_commands.Command):
+                    cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
+                    if cog_name not in cog_commands:
+                        cog_commands[cog_name] = []
+                    cog_commands[cog_name].append(f"`/{command.name}`")
+
+            for cog_name, commands_list in cog_commands.items():
+                embed.add_field(name=cog_name,
+                                value=", ".join(commands_list),
+                                inline=False)
+
+        embed.set_footer(
+            text=f"Type {prefix}help <command> for more info on a command.")
+        await interaction.response.send_message(embed=embed)
 
 
-# Setup the cog
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))
