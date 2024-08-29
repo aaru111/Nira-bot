@@ -1,4 +1,5 @@
 modules = ["python-3.12"]
+run = "python main.py"
 
 [nix]
 channel = "stable-24_05"
@@ -10,3 +11,6 @@ externalPort = 80
 [auth]
 pageEnabled = false
 buttonEnabled = false
+
+[deployment]
+run = ["sh", "-c", "python main.py"]

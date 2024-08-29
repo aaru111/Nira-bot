@@ -148,6 +148,8 @@ __pycache__/
 
 .replit
 replit.nix
+poetry.lock
+pyproject.toml
 
 # log
 

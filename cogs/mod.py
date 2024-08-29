@@ -6,7 +6,6 @@ import asyncio
 from functools import wraps
 import io
 import time
-import json
 
 
 # Utility Functions
@@ -241,6 +240,32 @@ class ChannelSelect(discord.ui.Select):
                 ephemeral=True)
 
 
+class PrevButton(discord.ui.Button):
+    """Button to go to the previous page of the channel dropdown."""
+
+    def __init__(self):
+        super().__init__(label="Prev", style=discord.ButtonStyle.primary)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: ChannelDropdownView = self.view  # Use the view attribute automatically provided by discord.py
+        view.page -= 1
+        view.update_dropdown_options()
+        await interaction.response.edit_message(view=view)
+
+
+class NextButton(discord.ui.Button):
+    """Button to go to the next page of the channel dropdown."""
+
+    def __init__(self):
+        super().__init__(label="Next", style=discord.ButtonStyle.primary)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: ChannelDropdownView = self.view
+        view.page += 1
+        view.update_dropdown_options()
+        await interaction.response.edit_message(view=view)
+
+
 class ChannelDropdownView(discord.ui.View):
     """View containing the channel select dropdown and pagination buttons."""
 
@@ -268,35 +293,9 @@ class ChannelDropdownView(discord.ui.View):
 
         if len(self.channels) > 25:
             if self.page > 0:
-                self.add_item(PrevButton(self))
+                self.add_item(PrevButton())
             if end_index < len(self.channels):
-                self.add_item(NextButton(self))
-
-
-class PrevButton(discord.ui.Button):
-    """Button to go to the previous page of the channel dropdown."""
-
-    def __init__(self, view: ChannelDropdownView):
-        super().__init__(label="Prev", style=discord.ButtonStyle.primary)
-        self.view = view
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.page -= 1
-        self.view.update_dropdown_options()
-        await interaction.response.edit_message(view=self.view)
-
-
-class NextButton(discord.ui.Button):
-    """Button to go to the next page of the channel dropdown."""
-
-    def __init__(self, view: ChannelDropdownView):
-        super().__init__(label="Next", style=discord.ButtonStyle.primary)
-        self.view = view
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.page += 1
-        self.view.update_dropdown_options()
-        await interaction.response.edit_message(view=self.view)
+                self.add_item(NextButton())
 
 
 class Moderation(commands.Cog):
