@@ -3,31 +3,11 @@ from discord.ext import commands
 from typing import Optional, List
 import aiohttp
 import asyncio
-from functools import wraps
 import io
 import time
 
 
 # Utility Functions
-def ensure_permissions(permission: str):
-    """Decorator to check user permissions."""
-
-    def decorator(func):
-
-        @wraps(func)
-        async def wrapper(self, ctx: commands.Context, *args, **kwargs):
-            if not getattr(ctx.author.guild_permissions, permission):
-                await ctx.send(
-                    f"You don't have the {permission} permission to use this command.",
-                    ephemeral=True)
-                return
-            return await func(self, ctx, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 async def _get_channel_properties(channel: discord.TextChannel) -> dict:
     """Retrieve a channel's properties."""
     return {
@@ -343,7 +323,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embed, view=AvatarView(user.display_avatar.url))
 
     @commands.hybrid_command()
-    @ensure_permissions("kick_members")
+    @commands.has_permissions(kick_members=True)
     async def kick(self,
                    ctx: commands.Context,
                    member: discord.Member,
@@ -357,7 +337,7 @@ class Moderation(commands.Cog):
             ephemeral=True)
 
     @commands.hybrid_command()
-    @ensure_permissions("ban_members")
+    @commands.has_permissions(ban_members=True)
     async def ban(self,
                   ctx: commands.Context,
                   member: discord.Member,
@@ -370,7 +350,7 @@ class Moderation(commands.Cog):
                        ephemeral=True)
 
     @commands.hybrid_command()
-    @ensure_permissions("kick_members")
+    @commands.has_permissions(kick_members=True)
     async def warn(self,
                    ctx: commands.Context,
                    member: discord.Member,
@@ -383,7 +363,7 @@ class Moderation(commands.Cog):
         )
 
     @commands.hybrid_command(name="purge")
-    @ensure_permissions("manage_messages")
+    @commands.has_permissions(manage_messages=True)
     async def purge(self, ctx: commands.Context, amount: int = 2):
         """Delete messages."""
         if not isinstance(ctx.channel, discord.TextChannel):
@@ -397,7 +377,7 @@ class Moderation(commands.Cog):
                        delete_after=5)
 
     @commands.hybrid_command()
-    @ensure_permissions("ban_members")
+    @commands.has_permissions(ban_members=True)
     async def unban(self, ctx: commands.Context, user_id: str):
         """Unban a user."""
         try:
@@ -424,7 +404,7 @@ class Moderation(commands.Cog):
         await view.start()
 
     @commands.hybrid_command()
-    @ensure_permissions("manage_channels")
+    @commands.has_permissions(manage_channels=True)
     async def slowmode(self, ctx: commands.Context,
                        channel: discord.TextChannel, delay: int):
         """Set a channel's slowmode delay."""
@@ -529,7 +509,7 @@ class Moderation(commands.Cog):
         await message.edit(content=None, embed=embed)
 
     @commands.hybrid_command(name="role-add")
-    @ensure_permissions("manage_roles")
+    @commands.has_permissions(manage_roles=True)
     async def role_add(self,
                        ctx: commands.Context,
                        member: discord.Member,
@@ -548,7 +528,7 @@ class Moderation(commands.Cog):
                 ephemeral=True)
 
     @commands.hybrid_command(name="role-remove")
-    @ensure_permissions("manage_roles")
+    @commands.has_permissions(manage_roles=True)
     async def role_remove(self, ctx: commands.Context, member: discord.Member,
                           role: discord.Role):
         """Remove a role from a user."""
