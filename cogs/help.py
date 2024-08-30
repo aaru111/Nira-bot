@@ -4,167 +4,99 @@ from discord import app_commands
 from typing import List, Optional, Union, Any, Dict
 import inspect
 
-# Global variables
-EMBED_COLOR = discord.Color.red()
-THUMBNAIL_URL = None
-COMMANDS_PER_PAGE = 8
-FOOTER_TEXT = "[] -> Optional arguments | <> -> Required arguments"
-EXCLUDED_COGS = ["jishaku", "sync",
-                 "error"]  # Add cogs you want to exclude from help command
+# Global variables for easy modification
+DEFAULT_EMBED_COLOR = discord.Color.blue()
+DEFAULT_EMBED_TITLE = "<:nira_ai2:1267876148201914560> N.I.R.A™ HelpDesk"
+DEFAULT_EMBED_FOOTER = "Type {prefix}help <command> for more info on a command."
+DEFAULT_OWNER_ONLY_MESSAGE = "This command does not exist or you don't have permission to view its details."
+DEFAULT_NO_CATEGORY_NAME = "No Category"
 
 
-class HelpView(discord.ui.View):
-
-    def __init__(self,
-                 cog: 'HelpCog',
-                 embeds: List[discord.Embed],
-                 timeout: float = 30.0):
-        super().__init__(timeout=timeout)
-        self.cog = cog
-        self.embeds = embeds
-        self.current_page = 0
-        self.category = "Home"
-        self.message = None
-        self.update_buttons()
-
-    async def interaction_check(self,
-                                interaction: discord.Interaction) -> bool:
-        if interaction.user != self.cog.context.author:
-            await interaction.response.send_message(
-                "This pagination menu is not for you.", ephemeral=True)
-            return False
-        return True
-
-    def update_buttons(self):
-        self.clear_items()
-        if len(self.embeds) > 1:
-            self.add_item(self.prev_button)
-            self.add_item(self.page_indicator)
-            self.add_item(self.next_button)
-            self.add_item(self.goto_button)
-        self.add_item(self.category_select)
-
-        if len(self.embeds) > 1:
-            self.prev_button.disabled = self.current_page == 0
-            self.next_button.disabled = self.current_page == len(
-                self.embeds) - 1
-            self.page_indicator.label = f"Page {self.current_page + 1}/{len(self.embeds)}"
-
-    async def update_view(self, interaction: discord.Interaction):
-        self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
-
-    @discord.ui.button(label="Prev", style=discord.ButtonStyle.red)
-    async def prev_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
-        self.current_page = max(0, self.current_page - 1)
-        await self.update_view(interaction)
-
-    @discord.ui.button(label="Page",
-                       style=discord.ButtonStyle.blurple,
-                       disabled=True)
-    async def page_indicator(self, interaction: discord.Interaction,
-                             button: discord.ui.Button):
-        pass
-
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.green)
-    async def next_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
-        self.current_page = min(len(self.embeds) - 1, self.current_page + 1)
-        await self.update_view(interaction)
-
-    @discord.ui.button(label="Go To", style=discord.ButtonStyle.gray)
-    async def goto_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
-        modal = GoToModal(self)
-        await interaction.response.send_modal(modal)
-
-    @discord.ui.select(placeholder="Select a category")
-    async def category_select(self, interaction: discord.Interaction,
-                              select: discord.ui.Select):
-        self.category = select.values[0]
-        self.embeds = await self.cog.create_paginated_help_embeds(
-            self.cog.prefix, self.category)
-        self.current_page = 0
-        self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
-
-    async def on_timeout(self) -> None:
-        if self.message:
-            await self.message.edit(view=None)
-
-
-class GoToModal(discord.ui.Modal, title="Go To Page"):
-    page_number = discord.ui.TextInput(label="Page Number",
-                                       placeholder="Enter the page number")
-
-    def __init__(self, view: HelpView):
-        super().__init__()
-        self.view = view
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            page = int(self.page_number.value) - 1
-            if 0 <= page < len(self.view.embeds):
-                self.view.current_page = page
-                self.view.update_buttons()
-                await interaction.response.edit_message(
-                    embed=self.view.embeds[self.view.current_page],
-                    view=self.view)
-            else:
-                await interaction.response.send_message(
-                    f"Invalid page number. Please enter a number between 1 and {len(self.view.embeds)}.",
-                    ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message(
-                "Please enter a valid number.", ephemeral=True)
-
-
-class HelpCog(commands.Cog):
+class BaseHelpCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._original_help_command = bot.help_command
         bot.help_command = None
-        self.context = None
-        self.prefix = "/"
+
+        # Instance variables that can be overridden
+        self.embed_color = DEFAULT_EMBED_COLOR
+        self.embed_title = DEFAULT_EMBED_TITLE
+        self.embed_footer = DEFAULT_EMBED_FOOTER
+        self.owner_only_message = DEFAULT_OWNER_ONLY_MESSAGE
+        self.no_category_name = DEFAULT_NO_CATEGORY_NAME
 
     def cog_unload(self) -> None:
         self.bot.help_command = self._original_help_command
 
     @staticmethod
-    def generate_usage(command: Union[commands.Command[Any, Any, Any],
-                                      app_commands.Command],
-                       prefix: str) -> str:
-        if isinstance(command, app_commands.Command):
-            usage = f"/{command.qualified_name}"
-        elif isinstance(command, commands.HybridCommand):
-            usage = f"/{command.qualified_name}"
+    def generate_usage(
+        command: Union[commands.Command[Any, Any, Any], app_commands.Command],
+        flag_converter: Optional[type[commands.FlagConverter]] = None,
+    ) -> str:
+        command_name = command.qualified_name
+        usage = f"{command_name}"
+
+        if isinstance(command, commands.Command):
+            try:
+                parameters = inspect.signature(command.callback).parameters
+            except ValueError:
+                parameters = {}
         else:
-            usage = f"{prefix}{command.qualified_name}"
+            parameters = getattr(command, '_params', {})
 
-        if hasattr(command, 'usage') and command.usage:
-            return f"{usage} {command.usage}"
-
-        parameters: Dict[
-            str, inspect.Parameter] = command.clean_params if isinstance(
-                command, commands.Command) else {
-                    param.name: param
-                    for param in command.parameters
-                }
+        if flag_converter:
+            flag_prefix = getattr(flag_converter, "__commands_flag_prefix__",
+                                  "-")
+            flags: dict[str, commands.Flag] = flag_converter.get_flags()
+        else:
+            flags = {}
 
         for param_name, param in parameters.items():
-            if param_name in ["ctx", "self"]:
+            if param_name in ["self", "ctx", "interaction", "flags"]:
                 continue
-            is_optional = param.default != inspect.Parameter.empty
-            usage += f" {'[' if is_optional else '<'}{param_name}{'>' if not is_optional else ']'}"
+            is_required = param.default == inspect.Parameter.empty
+            usage += f" <{param_name}>" if is_required else f" [{param_name}]"
 
-        if isinstance(command, commands.Group):
-            usage += " <subcommand>"
+        for flag_name, flag_obj in flags.items():
+            if flag_obj.required:
+                usage += f" {flag_prefix}<{flag_name}>"
+            else:
+                usage += f" {flag_prefix}[{flag_name}]"
 
         return usage
+
+    def is_owner_only(
+        self, command: Union[commands.Command[Any, Any, Any],
+                             app_commands.Command]
+    ) -> bool:
+        if isinstance(command, commands.Command):
+            return command.checks and any(
+                check.__qualname__.startswith('is_owner')
+                for check in command.checks)
+        elif isinstance(command, app_commands.Command):
+            return command.checks and any(
+                check.__qualname__.startswith('is_owner')
+                for check in command.checks)
+        return False
+
+    def is_jishaku_command(
+        self, command: Union[commands.Command[Any, Any, Any],
+                             app_commands.Command]
+    ) -> bool:
+        if isinstance(command, commands.Command):
+            return command.cog and command.cog.qualified_name.lower(
+            ) == "jishaku"
+        elif isinstance(command, app_commands.Command):
+            return command.module and "jishaku" in command.module.lower()
+        return False
+
+    async def is_owner(self, user: Union[discord.User,
+                                         discord.Member]) -> bool:
+        return await self.bot.is_owner(user)
+
+
+class HelpCog(BaseHelpCog):
 
     @commands.hybrid_command(name="help",
                              description="Shows help for bot commands")
@@ -172,144 +104,108 @@ class HelpCog(commands.Cog):
     async def help_command(self,
                            ctx: commands.Context,
                            command: Optional[str] = None) -> None:
-        self.context = ctx
-        self.prefix = await self.bot.get_prefix(ctx.message)
-        if isinstance(self.prefix, list):
-            self.prefix = self.prefix[0]
-        await self.send_help_embed(ctx, command)
+        prefix = await self.bot.get_prefix(ctx.message)
+        prefix = prefix[0] if isinstance(prefix, list) else prefix
+        await self.send_help_embed(ctx, command, prefix)
 
     @help_command.autocomplete("command")
     async def command_autocomplete(
             self, interaction: discord.Interaction,
             current: str) -> List[app_commands.Choice[str]]:
         choices: List[app_commands.Choice[str]] = []
+        is_owner = await self.is_owner(interaction.user)
         for cmd in self.bot.walk_commands():
-            if current.lower() in cmd.qualified_name.lower():
+            if current.lower() in cmd.qualified_name.lower() and (
+                    not self.is_owner_only(cmd) or is_owner):
                 choices.append(
                     app_commands.Choice(name=f"{cmd.qualified_name}",
                                         value=cmd.qualified_name))
         for cmd in self.bot.tree.walk_commands():
-            if current.lower() in cmd.qualified_name.lower():
+            if current.lower() in cmd.qualified_name.lower() and (
+                    not self.is_owner_only(cmd) or is_owner):
                 choices.append(
                     app_commands.Choice(name=f"{cmd.qualified_name}",
-                                        value=f"{cmd.qualified_name}"))
-        return choices[:25]
+                                        value=cmd.qualified_name))
+        return sorted(choices, key=lambda c: c.name)[:25]
 
     async def send_help_embed(self, ctx: Union[commands.Context,
                                                discord.Interaction],
-                              command_name: Optional[str]) -> None:
-        global THUMBNAIL_URL
-        THUMBNAIL_URL = self.bot.user.avatar.url
+                              command_name: Optional[str],
+                              prefix: str) -> None:
+        embed = discord.Embed(title=self.embed_title, color=self.embed_color)
+        is_owner = await self.is_owner(
+            ctx.author if isinstance(ctx, commands.Context) else ctx.user)
 
         if command_name:
-            embed = await self.create_command_embed(command_name)
-            if isinstance(ctx, commands.Context):
-                await ctx.send(embed=embed)
+            command = self.bot.get_command(
+                command_name.lstrip('/')) or self.bot.tree.get_command(
+                    command_name.lstrip('/'))
+            if command:
+                if (self.is_owner_only(command)
+                        or self.is_jishaku_command(command)) and not is_owner:
+                    await self.send_owner_only_message(ctx)
+                    return
+                embed.title = f"Help for /{command.qualified_name}"
+                embed.description = command.description or "No description available."
+                flag_converter = getattr(command, 'flags', None)
+                usage = self.generate_usage(command, flag_converter)
+                embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+                if isinstance(command, commands.Command) and command.aliases:
+                    embed.add_field(name="Aliases",
+                                    value=", ".join(
+                                        sorted(f"{prefix}{alias}"
+                                               for alias in command.aliases)),
+                                    inline=False)
             else:
-                await ctx.response.send_message(embed=embed)
+                embed.description = self.owner_only_message
         else:
-            embeds = await self.create_paginated_help_embeds(
-                self.prefix, "Home")
-            view = HelpView(self, embeds)
-            categories = ["Home", "All"] + [
-                cog.qualified_name for cog in self.bot.cogs.values()
-                if cog.qualified_name.lower() not in EXCLUDED_COGS
-            ]
-            view.category_select.options = [
-                discord.SelectOption(label=category) for category in categories
-            ]
-            if isinstance(ctx, commands.Context):
-                view.message = await ctx.send(embed=embeds[0], view=view)
-            else:
-                await ctx.response.send_message(embed=embeds[0], view=view)
-                view.message = await ctx.original_response()
+            embed.description = "Here are all available commands:"
+            cog_commands: Dict[str, List[str]] = {}
+            for command in sorted(self.bot.commands, key=lambda c: c.name):
+                if (self.is_owner_only(command)
+                        or self.is_jishaku_command(command)) and not is_owner:
+                    continue
+                cog_name = command.cog.qualified_name if command.cog else self.no_category_name
+                if cog_name not in cog_commands:
+                    cog_commands[cog_name] = []
+                cmd_name = f"/{command.name}" if isinstance(
+                    command,
+                    commands.HybridCommand) else f"{prefix}{command.name}"
+                cog_commands[cog_name].append(f"`{cmd_name}`")
+            for command in sorted(self.bot.tree.walk_commands(),
+                                  key=lambda c: c.name):
+                if isinstance(command, app_commands.Command) and (
+                        not self.is_owner_only(command) or is_owner):
+                    cog_name = command.binding.__class__.__name__ if command.binding else self.no_category_name
+                    if cog_name not in cog_commands:
+                        cog_commands[cog_name] = []
+                    cog_commands[cog_name].append(f"`/{command.name}`")
 
-    async def create_command_embed(self, command_name: str) -> discord.Embed:
-        embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
-        command = self.bot.get_command(command_name.lstrip('/'))
-        if not command:
-            command = self.bot.tree.get_command(command_name.lstrip('/'))
-
-        if command:
-            embed.title = f"Help for /{command.qualified_name}"
-            embed.description = command.description or "No description available."
-
-            usage = self.generate_usage(command, self.prefix)
-            embed.add_field(name="Usage", value=f"```{usage}```", inline=False)
-
-            if isinstance(command, commands.Command) and command.aliases:
-                embed.add_field(name="Aliases",
-                                value=", ".join(f"`{self.prefix}{alias}`"
-                                                for alias in command.aliases),
+            for cog_name in sorted(cog_commands.keys()):
+                commands_list = sorted(cog_commands[cog_name])
+                embed.add_field(name=cog_name,
+                                value=", ".join(commands_list),
                                 inline=False)
+
+        embed.set_footer(text=self.embed_footer.format(prefix=prefix))
+
+        if isinstance(ctx, commands.Context):
+            await ctx.send(embed=embed, ephemeral=True)
         else:
-            embed.description = f"No command found named '{command_name}'."
+            await ctx.response.send_message(embed=embed, ephemeral=True)
 
-        embed.set_footer(text=FOOTER_TEXT)
-        embed.set_thumbnail(url=THUMBNAIL_URL)
-        return embed
+    async def send_owner_only_message(
+            self, ctx: Union[commands.Context, discord.Interaction]) -> None:
+        embed = discord.Embed(title=self.embed_title,
+                              description=self.owner_only_message,
+                              color=self.embed_color)
+        embed.set_footer(text=self.embed_footer.format(
+            prefix=ctx.prefix if isinstance(ctx, commands.Context) else '/'))
 
-    async def create_paginated_help_embeds(self,
-                                           prefix: str,
-                                           category: str = "Home"
-                                           ) -> List[discord.Embed]:
-        cog_commands: Dict[str, List[str]] = {}
-
-        # Helper function to add a command to cog_commands
-        def add_command(cog_name: str, command_name: str):
-            if cog_name not in cog_commands:
-                cog_commands[cog_name] = []
-            if command_name not in cog_commands[cog_name]:
-                cog_commands[cog_name].append(command_name)
-
-        # Process regular and hybrid commands
-        for command in self.bot.commands:
-            if command.cog and command.cog.qualified_name.lower(
-            ) not in EXCLUDED_COGS:
-                cog_name = command.cog.qualified_name
-                if category in ["Home", "All"] or cog_name == category:
-                    command_name = f"/{command.name}" if isinstance(
-                        command,
-                        commands.HybridCommand) else f"{prefix}{command.name}"
-                    add_command(cog_name, command_name)
-
-        # Process app commands
-        for command in self.bot.tree.walk_commands():
-            if isinstance(command, app_commands.Command):
-                cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
-                if cog_name.lower() not in EXCLUDED_COGS:
-                    if category in ["Home", "All"] or cog_name == category:
-                        add_command(cog_name, f"/{command.name}")
-
-        embeds = []
-        if category == "Home":
-            embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
-            embed.description = "**Welcome to the Help Menu!**\n\nSelect a category from the dropdown menu below to view commands in that category."
-            for cog_name in cog_commands.keys():
-                embed.add_field(name=cog_name, value="\u200b", inline=True)
-            embeds.append(embed)
+        if isinstance(ctx, commands.Context):
+            await ctx.send(embed=embed, ephemeral=True)
         else:
-            all_commands = []
-            for commands_list in cog_commands.values():
-                all_commands.extend(commands_list)
-
-            chunks = [
-                all_commands[i:i + COMMANDS_PER_PAGE]
-                for i in range(0, len(all_commands), COMMANDS_PER_PAGE)
-            ]
-
-            for chunk in chunks:
-                embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
-                embed.description = f"**Commands in {'all categories' if category == 'All' else category} category:**\n\n"
-                embed.description += "\n".join(f"`{command}`"
-                                               for command in chunk)
-                embeds.append(embed)
-
-        for embed in embeds:
-            embed.set_footer(text=FOOTER_TEXT)
-            embed.set_thumbnail(url=THUMBNAIL_URL)
-
-        return embeds
+            await ctx.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
