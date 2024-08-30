@@ -150,30 +150,32 @@ class TicTacToeGame:
         self.current_player = self.player2 if self.current_player == self.player1 else self.player1
         self.current_symbol = self.player_o if self.current_symbol == self.player_x else self.player_x
 
-    def check_winner(self) -> bool:
-        board = [[self.get_button(x, y).emoji for x in range(3)]
-                 for y in range(3)]
+    def check_winner(self) -> discord.PartialEmoji | None:
+        winning_combinations = [
+            [(0, 0), (0, 1), (0, 2)],  # Top row
+            [(1, 0), (1, 1), (1, 2)],  # Middle row
+            [(2, 0), (2, 1), (2, 2)],  # Bottom row
+            [(0, 0), (1, 0), (2, 0)],  # Left column
+            [(0, 1), (1, 1), (2, 1)],  # Middle column
+            [(0, 2), (1, 2), (2, 2)],  # Right column
+            [(0, 0), (1, 1), (2, 2)],  # Diagonal from top-left
+            [(0, 2), (1, 1), (2, 0)]  # Diagonal from top-right
+        ]
 
-        # Check rows and columns
-        for i in range(3):
-            if all(board[i][j] == board[i][0] is not None for j in range(3)):
-                return True
-            if all(board[j][i] == board[0][i] is not None for j in range(3)):
-                return True
+        for combo in winning_combinations:
+            symbols = [self.get_button(x, y).emoji for x, y in combo]
+            if symbols[0] is not None and all(symbol == symbols[0]
+                                              for symbol in symbols):
+                return symbols[0]  # Return the winning symbol
 
-        # Check diagonals
-        if all(board[i][i] == board[0][0] is not None for i in range(3)):
-            return True
-        if all(board[i][2 - i] == board[0][2] is not None for i in range(3)):
-            return True
-
-        return False
+        return None  # No winner found
 
     def get_button(self, x: int, y: int) -> TicTacToeButton:
         for button in self.board_view.children:
             if isinstance(button,
                           TicTacToeButton) and button.x == x and button.y == y:
                 return button
+        return None
 
     def check_draw(self) -> bool:
         return all(button.emoji is not None
@@ -181,11 +183,13 @@ class TicTacToeGame:
                    if isinstance(button, TicTacToeButton))
 
     async def show_winner(self, interaction: discord.Interaction):
-        winner = self.current_player
-        loser = self.player2 if winner == self.player1 else self.player1
-        await self.end_game("win", winner=winner, loser=loser)
-        await interaction.edit_original_response(content="",
-                                                 view=self.board_view)
+        winning_symbol = self.check_winner()
+        if winning_symbol:
+            winner = self.player1 if winning_symbol == self.player_x else self.player2
+            loser = self.player2 if winner == self.player1 else self.player1
+            await self.end_game("win", winner=winner, loser=loser)
+            await interaction.edit_original_response(content="",
+                                                     view=self.board_view)
 
     async def show_draw(self, interaction: discord.Interaction):
         await self.end_game("draw")
@@ -254,7 +258,8 @@ class TicTacToeGame:
             self.reset_timeout_task(
             )  # Reset the inactivity timer after bot's move
 
-            if self.check_winner():
+            winning_symbol = self.check_winner()
+            if winning_symbol:
                 await self.show_winner(interaction)
             elif self.check_draw():
                 await self.show_draw(interaction)
