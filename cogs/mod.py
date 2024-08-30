@@ -6,6 +6,7 @@ import asyncio
 import io
 import time
 from discord import app_commands
+from discord.ext.commands import Context
 
 # Utility Functions
 async def _get_channel_properties(channel: discord.TextChannel) -> dict:
