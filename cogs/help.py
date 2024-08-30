@@ -44,18 +44,18 @@ class HelpView(discord.ui.View):
         await self.update_message(interaction)
 
     async def update_message(self, interaction: discord.Interaction):
-        if self.current_category:
-            embed = self.create_category_embed(self.current_category)
-            self.update_button_states()
-        else:
+        if self.current_category == "Home" or not self.current_category:
             embed = self.create_home_embed()
             self.previous_button.disabled = True
             self.next_button.disabled = True
+        else:
+            embed = self.create_category_embed(self.current_category)
+            self.update_button_states()
 
         await interaction.response.edit_message(embed=embed, view=self)
 
     def update_button_states(self):
-        if self.current_category:
+        if self.current_category and self.current_category != "Home":
             max_pages = math.ceil(len(self.categories[self.current_category]) / COMMANDS_PER_PAGE)
             self.previous_button.disabled = self.current_page == 0
             self.next_button.disabled = self.current_page >= max_pages - 1
@@ -70,11 +70,12 @@ class HelpView(discord.ui.View):
             color=self.cog.embed_color
         )
         for category in self.categories.keys():
-            embed.add_field(
-                name=f"**{category}**",
-                value=f"`{len(self.categories[category])}` commands",
-                inline=True
-            )
+            if category != "Home":
+                embed.add_field(
+                    name=f"**{category}**",
+                    value=f"`{len(self.categories[category])}` commands",
+                    inline=True
+                )
         embed.set_footer(text=self.cog.embed_footer.format(prefix=self.get_prefix()))
         return embed
 
@@ -243,7 +244,7 @@ class HelpCog(commands.Cog):
 
     async def send_interactive_help(self, ctx: ContextType, prefix: str) -> None:
         is_owner = await self.is_owner(ctx.author if isinstance(ctx, commands.Context) else ctx.user)
-        cog_commands: Dict[str, List[CommandType]] = {}
+        cog_commands: Dict[str, List[CommandType]] = {"Home": []}
         seen_commands = set()
 
         # Process application commands first
@@ -264,7 +265,12 @@ class HelpCog(commands.Cog):
                 cog_commands[cog_name].append(command)
 
         view = HelpView(self, ctx, cog_commands)
-        view.category_select.options = [discord.SelectOption(label=category, description=f"{len(commands)} commands") for category, commands in cog_commands.items()]
+        view.category_select.options = [
+            discord.SelectOption(label="Home", description="Return to the main help menu", emoji="🏠")
+        ] + [
+            discord.SelectOption(label=category, description=f"{len(commands)} commands")
+            for category, commands in cog_commands.items() if category != "Home"
+        ]
 
         initial_embed = view.create_home_embed()
 
