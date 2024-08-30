@@ -4,71 +4,95 @@ from discord import app_commands
 from typing import List, Optional, Union, Any, Dict
 import inspect
 import asyncio
+import math
+
 
 class HelpView(discord.ui.View):
-    def __init__(self, cog: 'HelpCog', embeds: List[discord.Embed], timeout: float = 30.0):
+
+    def __init__(self,
+                 cog: 'HelpCog',
+                 embeds: List[discord.Embed],
+                 timeout: float = 30.0):
         super().__init__(timeout=timeout)
         self.cog = cog
         self.embeds = embeds
         self.current_page = 0
         self.category = "All"
+        self.message = None
         self.update_buttons()
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
         if interaction.user != self.cog.context.author:
-            await interaction.response.send_message("This pagination menu is not for you.", ephemeral=True)
+            await interaction.response.send_message(
+                "This pagination menu is not for you.", ephemeral=True)
             return False
         return True
 
     def update_buttons(self):
-        if self.category == "All" or len(self.embeds) <= 1:
-            self.clear_items()
-            self.add_item(self.category_select)
-        else:
-            self.clear_items()
+        self.clear_items()
+        if len(self.embeds) > 1:
             self.add_item(self.prev_button)
             self.add_item(self.page_indicator)
             self.add_item(self.next_button)
             self.add_item(self.goto_button)
-            self.add_item(self.category_select)
+        self.add_item(self.category_select)
 
+        if len(self.embeds) > 1:
             self.prev_button.disabled = self.current_page == 0
-            self.next_button.disabled = self.current_page == len(self.embeds) - 1
+            self.next_button.disabled = self.current_page == len(
+                self.embeds) - 1
             self.page_indicator.label = f"Page {self.current_page + 1}/{len(self.embeds)}"
 
     async def update_view(self, interaction: discord.Interaction):
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.current_page], view=self)
 
     @discord.ui.button(label="Prev", style=discord.ButtonStyle.red)
-    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def prev_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
         self.current_page = max(0, self.current_page - 1)
         await self.update_view(interaction)
 
-    @discord.ui.button(label="Page", style=discord.ButtonStyle.blurple, disabled=True)
-    async def page_indicator(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Page",
+                       style=discord.ButtonStyle.blurple,
+                       disabled=True)
+    async def page_indicator(self, interaction: discord.Interaction,
+                             button: discord.ui.Button):
         pass
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.green)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def next_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
         self.current_page = min(len(self.embeds) - 1, self.current_page + 1)
         await self.update_view(interaction)
 
     @discord.ui.button(label="Go To", style=discord.ButtonStyle.gray)
-    async def goto_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def goto_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
         modal = GoToModal(self)
         await interaction.response.send_modal(modal)
 
     @discord.ui.select(placeholder="Select a category")
-    async def category_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+    async def category_select(self, interaction: discord.Interaction,
+                              select: discord.ui.Select):
         self.category = select.values[0]
-        self.embeds = await self.cog.create_paginated_help_embeds(self.cog.prefix, self.category)
+        self.embeds = await self.cog.create_paginated_help_embeds(
+            self.cog.prefix, self.category)
         self.current_page = 0
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.current_page], view=self)
+
+    async def on_timeout(self) -> None:
+        if self.message:
+            await self.message.edit(view=None)
+
 
 class GoToModal(discord.ui.Modal, title="Go To Page"):
-    page_number = discord.ui.TextInput(label="Page Number", placeholder="Enter the page number")
+    page_number = discord.ui.TextInput(label="Page Number",
+                                       placeholder="Enter the page number")
 
     def __init__(self, view: HelpView):
         super().__init__()
@@ -80,13 +104,20 @@ class GoToModal(discord.ui.Modal, title="Go To Page"):
             if 0 <= page < len(self.view.embeds):
                 self.view.current_page = page
                 self.view.update_buttons()
-                await interaction.response.edit_message(embed=self.view.embeds[self.view.current_page], view=self.view)
+                await interaction.response.edit_message(
+                    embed=self.view.embeds[self.view.current_page],
+                    view=self.view)
             else:
-                await interaction.response.send_message(f"Invalid page number. Please enter a number between 1 and {len(self.view.embeds)}.", ephemeral=True)
+                await interaction.response.send_message(
+                    f"Invalid page number. Please enter a number between 1 and {len(self.view.embeds)}.",
+                    ephemeral=True)
         except ValueError:
-            await interaction.response.send_message("Please enter a valid number.", ephemeral=True)
+            await interaction.response.send_message(
+                "Please enter a valid number.", ephemeral=True)
+
 
 class HelpCog(commands.Cog):
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._original_help_command = bot.help_command
@@ -98,7 +129,9 @@ class HelpCog(commands.Cog):
         self.bot.help_command = self._original_help_command
 
     @staticmethod
-    def generate_usage(command: Union[commands.Command[Any, Any, Any], app_commands.Command], prefix: str) -> str:
+    def generate_usage(command: Union[commands.Command[Any, Any, Any],
+                                      app_commands.Command],
+                       prefix: str) -> str:
         if isinstance(command, app_commands.Command):
             usage = f"/{command.qualified_name}"
         elif isinstance(command, commands.HybridCommand):
@@ -109,7 +142,12 @@ class HelpCog(commands.Cog):
         if hasattr(command, 'usage') and command.usage:
             return f"{usage} {command.usage}"
 
-        parameters: Dict[str, inspect.Parameter] = command.clean_params if isinstance(command, commands.Command) else {param.name: param for param in command.parameters}
+        parameters: Dict[
+            str, inspect.Parameter] = command.clean_params if isinstance(
+                command, commands.Command) else {
+                    param.name: param
+                    for param in command.parameters
+                }
 
         for param_name, param in parameters.items():
             if param_name in ["ctx", "self"]:
@@ -122,9 +160,12 @@ class HelpCog(commands.Cog):
 
         return usage
 
-    @commands.hybrid_command(name="help", description="Shows help for bot commands")
+    @commands.hybrid_command(name="help",
+                             description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
-    async def help_command(self, ctx: commands.Context, command: Optional[str] = None) -> None:
+    async def help_command(self,
+                           ctx: commands.Context,
+                           command: Optional[str] = None) -> None:
         self.context = ctx
         self.prefix = await self.bot.get_prefix(ctx.message)
         if isinstance(self.prefix, list):
@@ -132,17 +173,25 @@ class HelpCog(commands.Cog):
         await self.send_help_embed(ctx, command)
 
     @help_command.autocomplete("command")
-    async def command_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    async def command_autocomplete(
+            self, interaction: discord.Interaction,
+            current: str) -> List[app_commands.Choice[str]]:
         choices: List[app_commands.Choice[str]] = []
         for cmd in self.bot.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
-                choices.append(app_commands.Choice(name=f"{cmd.qualified_name}", value=cmd.qualified_name))
+                choices.append(
+                    app_commands.Choice(name=f"{cmd.qualified_name}",
+                                        value=cmd.qualified_name))
         for cmd in self.bot.tree.walk_commands():
             if current.lower() in cmd.qualified_name.lower():
-                choices.append(app_commands.Choice(name=f"{cmd.qualified_name}", value=f"{cmd.qualified_name}"))
+                choices.append(
+                    app_commands.Choice(name=f"{cmd.qualified_name}",
+                                        value=f"{cmd.qualified_name}"))
         return choices[:25]
 
-    async def send_help_embed(self, ctx: Union[commands.Context, discord.Interaction], command_name: Optional[str]) -> None:
+    async def send_help_embed(self, ctx: Union[commands.Context,
+                                               discord.Interaction],
+                              command_name: Optional[str]) -> None:
         if command_name:
             embed = await self.create_command_embed(command_name)
             if isinstance(ctx, commands.Context):
@@ -152,12 +201,16 @@ class HelpCog(commands.Cog):
         else:
             embeds = await self.create_paginated_help_embeds(self.prefix)
             view = HelpView(self, embeds)
-            categories = ["All"] + list(set(cog.qualified_name for cog in self.bot.cogs.values()))
-            view.category_select.options = [discord.SelectOption(label=category) for category in categories]
+            categories = ["All"] + list(
+                set(cog.qualified_name for cog in self.bot.cogs.values()))
+            view.category_select.options = [
+                discord.SelectOption(label=category) for category in categories
+            ]
             if isinstance(ctx, commands.Context):
-                await ctx.send(embed=embeds[0], view=view)
+                view.message = await ctx.send(embed=embeds[0], view=view)
             else:
                 await ctx.response.send_message(embed=embeds[0], view=view)
+                view.message = await ctx.original_response()
 
     async def create_command_embed(self, command_name: str) -> discord.Embed:
         embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
@@ -173,14 +226,22 @@ class HelpCog(commands.Cog):
             embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
 
             if isinstance(command, commands.Command) and command.aliases:
-                embed.add_field(name="Aliases", value=", ".join(f"{self.prefix}{alias}" for alias in command.aliases), inline=False)
+                embed.add_field(name="Aliases",
+                                value=", ".join(f"{self.prefix}{alias}"
+                                                for alias in command.aliases),
+                                inline=False)
         else:
             embed.description = f"No command found named '{command_name}'."
 
-        embed.set_footer(text=f"Type {self.prefix}help <command> for more info on a command.")
+        embed.set_footer(
+            text=f"Type {self.prefix}help <command> for more info on a command."
+        )
         return embed
 
-    async def create_paginated_help_embeds(self, prefix: str, category: str = "All") -> List[discord.Embed]:
+    async def create_paginated_help_embeds(self,
+                                           prefix: str,
+                                           category: str = "All"
+                                           ) -> List[discord.Embed]:
         cog_commands: Dict[str, List[str]] = {}
 
         for command in self.bot.commands:
@@ -189,9 +250,11 @@ class HelpCog(commands.Cog):
                     if command.cog.qualified_name not in cog_commands:
                         cog_commands[command.cog.qualified_name] = []
                     if isinstance(command, commands.HybridCommand):
-                        cog_commands[command.cog.qualified_name].append(f"`/{command.name}`")
+                        cog_commands[command.cog.qualified_name].append(
+                            f"`/{command.name}`")
                     else:
-                        cog_commands[command.cog.qualified_name].append(f"`{prefix}{command.name}`")
+                        cog_commands[command.cog.qualified_name].append(
+                            f"`{prefix}{command.name}`")
 
         for command in self.bot.tree.walk_commands():
             if isinstance(command, app_commands.Command):
@@ -203,32 +266,53 @@ class HelpCog(commands.Cog):
 
         embeds = []
         if category == "All":
-            embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
-            embed.description = "Here are all available commands:"
-            for cog_name, commands_list in cog_commands.items():
-                embed.add_field(name=cog_name, value=", ".join(commands_list), inline=False)
-            embeds.append(embed)
+            categories = list(cog_commands.keys())
+            categories_per_page = 4
+            pages = math.ceil(len(categories) / categories_per_page)
+
+            for i in range(pages):
+                embed = discord.Embed(title="Bot Help",
+                                      color=discord.Color.blue())
+                embed.description = "Here are all available commands:"
+                start = i * categories_per_page
+                end = min((i + 1) * categories_per_page, len(categories))
+
+                for cog_name in categories[start:end]:
+                    commands_list = cog_commands[cog_name]
+                    embed.add_field(name=cog_name,
+                                    value=", ".join(commands_list),
+                                    inline=False)
+
+                embeds.append(embed)
         else:
-            current_embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
+            current_embed = discord.Embed(title="Bot Help",
+                                          color=discord.Color.blue())
             current_embed.description = f"Here are all available commands for category: {category}"
             field_count = 0
 
             for cog_name, commands_list in cog_commands.items():
-                if field_count >= 4:
+                if field_count >= 25:  # Discord's limit is 25 fields per embed
                     embeds.append(current_embed)
-                    current_embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
+                    current_embed = discord.Embed(title="Bot Help",
+                                                  color=discord.Color.blue())
                     field_count = 0
 
-                current_embed.add_field(name=cog_name, value=", ".join(commands_list), inline=False)
+                current_embed.add_field(name=cog_name,
+                                        value=", ".join(commands_list),
+                                        inline=False)
                 field_count += 1
 
             if field_count > 0:
                 embeds.append(current_embed)
 
         for i, embed in enumerate(embeds):
-            embed.set_footer(text=f"Page {i+1}/{len(embeds)} | Type {prefix}help <command> for more info on a command.")
+            embed.set_footer(
+                text=
+                f"Page {i+1}/{len(embeds)} | Type {prefix}help <command> for more info on a command."
+            )
 
         return embeds
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))
