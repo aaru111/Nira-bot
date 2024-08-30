@@ -37,14 +37,14 @@ class HelpView(discord.ui.View):
 
     def update_buttons(self):
         self.clear_items()
-        if len(self.embeds) > 1 and self.category != "Home":
+        if len(self.embeds) > 1:
             self.add_item(self.prev_button)
             self.add_item(self.page_indicator)
             self.add_item(self.next_button)
             self.add_item(self.goto_button)
         self.add_item(self.category_select)
 
-        if len(self.embeds) > 1 and self.category != "Home":
+        if len(self.embeds) > 1:
             self.prev_button.disabled = self.current_page == 0
             self.next_button.disabled = self.current_page == len(
                 self.embeds) - 1
@@ -255,27 +255,31 @@ class HelpCog(commands.Cog):
                                            ) -> List[discord.Embed]:
         cog_commands: Dict[str, List[str]] = {}
 
+        # Helper function to add a command to cog_commands
+        def add_command(cog_name: str, command_name: str):
+            if cog_name not in cog_commands:
+                cog_commands[cog_name] = []
+            if command_name not in cog_commands[cog_name]:
+                cog_commands[cog_name].append(command_name)
+
+        # Process regular and hybrid commands
         for command in self.bot.commands:
             if command.cog and command.cog.qualified_name.lower(
             ) not in EXCLUDED_COGS:
                 cog_name = command.cog.qualified_name
                 if category in ["Home", "All"] or cog_name == category:
-                    if cog_name not in cog_commands:
-                        cog_commands[cog_name] = []
-                    if isinstance(command, commands.HybridCommand):
-                        cog_commands[cog_name].append(f"/{command.name}")
-                    else:
-                        cog_commands[cog_name].append(
-                            f"{prefix}{command.name}")
+                    command_name = f"/{command.name}" if isinstance(
+                        command,
+                        commands.HybridCommand) else f"{prefix}{command.name}"
+                    add_command(cog_name, command_name)
 
+        # Process app commands
         for command in self.bot.tree.walk_commands():
             if isinstance(command, app_commands.Command):
                 cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
                 if cog_name.lower() not in EXCLUDED_COGS:
                     if category in ["Home", "All"] or cog_name == category:
-                        if cog_name not in cog_commands:
-                            cog_commands[cog_name] = []
-                        cog_commands[cog_name].append(f"/{command.name}")
+                        add_command(cog_name, f"/{command.name}")
 
         embeds = []
         if category == "Home":
@@ -296,11 +300,9 @@ class HelpCog(commands.Cog):
 
             for chunk in chunks:
                 embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
-                embed.description = f"**Commands in {'all categories' if category == 'All' else category} category:**"
-                for command in chunk:
-                    embed.add_field(name="\u200b",
-                                    value=f"`{command}`",
-                                    inline=True)
+                embed.description = f"**Commands in {'all categories' if category == 'All' else category} category:**\n\n"
+                embed.description += "\n".join(f"`{command}`"
+                                               for command in chunk)
                 embeds.append(embed)
 
         for embed in embeds:
