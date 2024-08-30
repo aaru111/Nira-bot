@@ -596,6 +596,36 @@ class Moderation(commands.Cog):
         await self._set_server_permissions(ctx.guild, view_channel=False)
         await ctx.send("Server has been locked.")
 
+
+    @commands.hybrid_command(name="userinfo", aliases=["user", "stats"], description="Displays user information.")
+    async def userinfo(self, ctx, member: discord.Member = None):
+        # If member is not provided, use the author of the context
+        if member is None:
+            member = ctx.author
+
+        # Create an embed with the user's information
+        embed = discord.Embed(
+            title=f"{member.display_name}'s User Information",
+            description="All info about the user",
+            color=discord.Color.blue()  # You can set the color to a specific color code or a predefined color
+        )
+        embed.set_author(name="User Info", icon_url=ctx.author.display_avatar.url)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(name="Name", value=member.name, inline=False)
+        embed.add_field(name="Nick Name", value=member.display_name, inline=False)
+        embed.add_field(name="ID", value=member.id, inline=False)
+        embed.add_field(name="Top Role", value=member.top_role.mention, inline=False)
+        embed.add_field(name="Status", value=str(member.status).title(), inline=False)
+        embed.add_field(name="Bot User", value="Yes" if member.bot else "No", inline=False)
+        embed.add_field(
+            name="ID Creation",
+            value=member.created_at.strftime("%A, %d. %B %Y at %H:%M:%S"),
+            inline=False
+        )
+
+        # Send the embed in the context channel
+        await ctx.send(embed=embed)
+
     @commands.hybrid_command()
     @commands.has_permissions(administrator=True)
     async def unlock_server(self, ctx: commands.Context):
@@ -623,34 +653,7 @@ class Moderation(commands.Cog):
                                           overwrite=overwrite)
 
 
-@commands.hybrid_command(name="userinfo", aliases=["user", "stats"], description="Displays user information.")
-async def userinfo(self, ctx, member: discord.Member = None):
-    # If member is not provided, use the author of the context
-    if member is None:
-        member = ctx.author
 
-    # Create an embed with the user's information
-    embed = discord.Embed(
-        title=f"{member.display_name}'s User Information",
-        description="All info about the user",
-        color=discord.Color.blue()  # You can set the color to a specific color code or a predefined color
-    )
-    embed.set_author(name="User Info", icon_url=ctx.author.display_avatar.url)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Name", value=member.name, inline=False)
-    embed.add_field(name="Nick Name", value=member.display_name, inline=False)
-    embed.add_field(name="ID", value=member.id, inline=False)
-    embed.add_field(name="Top Role", value=member.top_role.mention, inline=False)
-    embed.add_field(name="Status", value=str(member.status).title(), inline=False)
-    embed.add_field(name="Bot User", value="Yes" if member.bot else "No", inline=False)
-    embed.add_field(
-        name="ID Creation",
-        value=member.created_at.strftime("%A, %d. %B %Y at %H:%M:%S"),
-        inline=False
-    )
-
-    # Send the embed in the context channel
-    await ctx.send(embed=embed)
 
 
 
