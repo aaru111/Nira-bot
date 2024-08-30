@@ -11,6 +11,7 @@ DEFAULT_PLAYER_X = "❌"
 DEFAULT_PLAYER_O = "⭕"
 EMPTY = "‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎‎"  # A zero-width space to make buttons appear empty
 COOLDOWN_TIME = 1.0  # Cooldown time in seconds
+REMATCH_TIMEOUT = 30.0  # Rematch button timeout in seconds
 
 
 class TicTacToeButton(discord.ui.Button):
@@ -82,6 +83,7 @@ class RematchButton(discord.ui.Button):
                          label="Rematch",
                          row=3)
         self.game = game
+        self.timeout_task = None
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.user not in [self.game.player1, self.game.player2]:
@@ -89,11 +91,18 @@ class RematchButton(discord.ui.Button):
                 "You are not part of this game!", ephemeral=True)
             return
 
+        if self.timeout_task:
+            self.timeout_task.cancel()
+
         # Create a new game with the same players
         new_game = TicTacToeGame(self.game.player1, self.game.player2,
                                  self.game.ctx, self.game.player_x.name,
                                  self.game.player_o.name)
         new_game.message = self.game.message
+
+        # Disable the rematch button for the old game
+        self.disabled = True
+        await self.game.message.edit(view=self.game.board_view)
 
         # Update the message with the new game board
         await interaction.response.edit_message(
@@ -101,6 +110,12 @@ class RematchButton(discord.ui.Button):
             if not new_game.vs_bot else None,
             view=new_game.board_view)
         new_game.reset_timeout_task()
+
+    async def start_timeout(self):
+        await asyncio.sleep(REMATCH_TIMEOUT)
+        if not self.disabled:
+            self.disabled = True
+            await self.game.message.edit(view=self.game.board_view)
 
 
 class TicTacToeGame:
@@ -234,7 +249,12 @@ class TicTacToeGame:
             self.board_view.add_item(lose_button)
 
         # Add the rematch button
-        self.board_view.add_item(RematchButton(self))
+        rematch_button = RematchButton(self)
+        self.board_view.add_item(rematch_button)
+
+        # Start the rematch button timeout
+        rematch_button.timeout_task = asyncio.create_task(
+            rematch_button.start_timeout())
 
     async def bot_move(self, interaction: discord.Interaction):
         best_score = -float('inf')
@@ -350,7 +370,7 @@ class AcceptDeclineButtons(View):
             view=None)
 
     async def on_timeout(self):
-        # Handle the scenario where the opponent doesn't respond in time
+
         await self.game.ctx.edit_original_response(
             content=
             f"{self.opponent.mention} did not respond to the game invitation in time.",
@@ -363,6 +383,7 @@ class TicTacToe(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.active_games = {}  # Store active games
 
     async def cog_unload(self):
         """Clean up resources when the cog is unloaded."""
@@ -396,8 +417,18 @@ class TicTacToe(commands.Cog):
                 ephemeral=True)
             return
 
+        # Disable rematch button for any existing game involving the same players
+        player_key = frozenset([interaction.user.id, opponent.id])
+        if player_key in self.active_games:
+            old_game = self.active_games[player_key]
+            for item in old_game.board_view.children:
+                if isinstance(item, RematchButton):
+                    item.disabled = True
+            await old_game.message.edit(view=old_game.board_view)
+
         game = TicTacToeGame(interaction.user, opponent, interaction, player_x,
                              player_o)
+        self.active_games[player_key] = game
 
         if opponent == interaction.guild.me:
             await interaction.response.send_message(
