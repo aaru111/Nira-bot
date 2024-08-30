@@ -67,18 +67,18 @@ class HelpCog(commands.Cog):
                     if value)
         return permissions
 
-    @app_commands.command(name="help",
-                          description="Shows help for bot commands")
+    @commands.hybrid_command(name="help",
+                             description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
-    async def help_slash(self,
-                         interaction: discord.Interaction,
-                         command: Optional[str] = None) -> None:
-        prefix = await self.bot.get_prefix(interaction)
+    async def help_command(self,
+                           ctx: commands.Context,
+                           command: Optional[str] = None) -> None:
+        prefix = await self.bot.get_prefix(ctx.message)
         if isinstance(prefix, list):
             prefix = prefix[0]
-        await self.send_help_embed(interaction, command, prefix)
+        await self.send_help_embed(ctx, command, prefix)
 
-    @help_slash.autocomplete("command")
+    @help_command.autocomplete("command")
     async def command_autocomplete(
             self, interaction: discord.Interaction,
             current: str) -> List[app_commands.Choice[str]]:
@@ -105,7 +105,8 @@ class HelpCog(commands.Cog):
                                         value=f"{cmd.qualified_name}"))
         return choices[:25]
 
-    async def send_help_embed(self, interaction: discord.Interaction,
+    async def send_help_embed(self, ctx: Union[commands.Context,
+                                               discord.Interaction],
                               command_name: Optional[str],
                               prefix: str) -> None:
         embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
@@ -166,7 +167,11 @@ class HelpCog(commands.Cog):
 
         embed.set_footer(
             text=f"Type {prefix}help <command> for more info on a command.")
-        await interaction.response.send_message(embed=embed)
+
+        if isinstance(ctx, commands.Context):
+            await ctx.send(embed=embed)
+        else:
+            await ctx.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
