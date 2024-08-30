@@ -3,8 +3,14 @@ from discord.ext import commands
 from discord import app_commands
 from typing import List, Optional, Union, Any, Dict
 import inspect
-import asyncio
-import math
+
+# Global variables
+EMBED_COLOR = discord.Color.red()
+THUMBNAIL_URL = None
+COMMANDS_PER_PAGE = 8
+FOOTER_TEXT = "[] -> Optional arguments | <> -> Required arguments"
+EXCLUDED_COGS = ["jishaku", "sync",
+                 "error"]  # Add cogs you want to exclude from help command
 
 
 class HelpView(discord.ui.View):
@@ -17,7 +23,7 @@ class HelpView(discord.ui.View):
         self.cog = cog
         self.embeds = embeds
         self.current_page = 0
-        self.category = "All"
+        self.category = "Home"
         self.message = None
         self.update_buttons()
 
@@ -31,14 +37,14 @@ class HelpView(discord.ui.View):
 
     def update_buttons(self):
         self.clear_items()
-        if len(self.embeds) > 1:
+        if len(self.embeds) > 1 and self.category != "Home":
             self.add_item(self.prev_button)
             self.add_item(self.page_indicator)
             self.add_item(self.next_button)
             self.add_item(self.goto_button)
         self.add_item(self.category_select)
 
-        if len(self.embeds) > 1:
+        if len(self.embeds) > 1 and self.category != "Home":
             self.prev_button.disabled = self.current_page == 0
             self.next_button.disabled = self.current_page == len(
                 self.embeds) - 1
@@ -192,6 +198,9 @@ class HelpCog(commands.Cog):
     async def send_help_embed(self, ctx: Union[commands.Context,
                                                discord.Interaction],
                               command_name: Optional[str]) -> None:
+        global THUMBNAIL_URL
+        THUMBNAIL_URL = self.bot.user.avatar.url
+
         if command_name:
             embed = await self.create_command_embed(command_name)
             if isinstance(ctx, commands.Context):
@@ -199,10 +208,13 @@ class HelpCog(commands.Cog):
             else:
                 await ctx.response.send_message(embed=embed)
         else:
-            embeds = await self.create_paginated_help_embeds(self.prefix)
+            embeds = await self.create_paginated_help_embeds(
+                self.prefix, "Home")
             view = HelpView(self, embeds)
-            categories = ["All"] + list(
-                set(cog.qualified_name for cog in self.bot.cogs.values()))
+            categories = ["Home", "All"] + [
+                cog.qualified_name for cog in self.bot.cogs.values()
+                if cog.qualified_name.lower() not in EXCLUDED_COGS
+            ]
             view.category_select.options = [
                 discord.SelectOption(label=category) for category in categories
             ]
@@ -213,7 +225,7 @@ class HelpCog(commands.Cog):
                 view.message = await ctx.original_response()
 
     async def create_command_embed(self, command_name: str) -> discord.Embed:
-        embed = discord.Embed(title="Bot Help", color=discord.Color.blue())
+        embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
         command = self.bot.get_command(command_name.lstrip('/'))
         if not command:
             command = self.bot.tree.get_command(command_name.lstrip('/'))
@@ -223,93 +235,77 @@ class HelpCog(commands.Cog):
             embed.description = command.description or "No description available."
 
             usage = self.generate_usage(command, self.prefix)
-            embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+            embed.add_field(name="Usage", value=f"```{usage}```", inline=False)
 
             if isinstance(command, commands.Command) and command.aliases:
                 embed.add_field(name="Aliases",
-                                value=", ".join(f"{self.prefix}{alias}"
+                                value=", ".join(f"`{self.prefix}{alias}`"
                                                 for alias in command.aliases),
                                 inline=False)
         else:
             embed.description = f"No command found named '{command_name}'."
 
-        embed.set_footer(
-            text=f"Type {self.prefix}help <command> for more info on a command."
-        )
+        embed.set_footer(text=FOOTER_TEXT)
+        embed.set_thumbnail(url=THUMBNAIL_URL)
         return embed
 
     async def create_paginated_help_embeds(self,
                                            prefix: str,
-                                           category: str = "All"
+                                           category: str = "Home"
                                            ) -> List[discord.Embed]:
         cog_commands: Dict[str, List[str]] = {}
 
         for command in self.bot.commands:
-            if command.cog:
-                if category == "All" or command.cog.qualified_name == category:
-                    if command.cog.qualified_name not in cog_commands:
-                        cog_commands[command.cog.qualified_name] = []
+            if command.cog and command.cog.qualified_name.lower(
+            ) not in EXCLUDED_COGS:
+                cog_name = command.cog.qualified_name
+                if category in ["Home", "All"] or cog_name == category:
+                    if cog_name not in cog_commands:
+                        cog_commands[cog_name] = []
                     if isinstance(command, commands.HybridCommand):
-                        cog_commands[command.cog.qualified_name].append(
-                            f"`/{command.name}`")
+                        cog_commands[cog_name].append(f"/{command.name}")
                     else:
-                        cog_commands[command.cog.qualified_name].append(
-                            f"`{prefix}{command.name}`")
+                        cog_commands[cog_name].append(
+                            f"{prefix}{command.name}")
 
         for command in self.bot.tree.walk_commands():
             if isinstance(command, app_commands.Command):
                 cog_name = command.binding.__class__.__name__ if command.binding else "No Category"
-                if category == "All" or cog_name == category:
-                    if cog_name not in cog_commands:
-                        cog_commands[cog_name] = []
-                    cog_commands[cog_name].append(f"`/{command.name}`")
+                if cog_name.lower() not in EXCLUDED_COGS:
+                    if category in ["Home", "All"] or cog_name == category:
+                        if cog_name not in cog_commands:
+                            cog_commands[cog_name] = []
+                        cog_commands[cog_name].append(f"/{command.name}")
 
         embeds = []
-        if category == "All":
-            categories = list(cog_commands.keys())
-            categories_per_page = 4
-            pages = math.ceil(len(categories) / categories_per_page)
-
-            for i in range(pages):
-                embed = discord.Embed(title="Bot Help",
-                                      color=discord.Color.blue())
-                embed.description = "Here are all available commands:"
-                start = i * categories_per_page
-                end = min((i + 1) * categories_per_page, len(categories))
-
-                for cog_name in categories[start:end]:
-                    commands_list = cog_commands[cog_name]
-                    embed.add_field(name=cog_name,
-                                    value=", ".join(commands_list),
-                                    inline=False)
-
-                embeds.append(embed)
+        if category == "Home":
+            embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
+            embed.description = "**Welcome to the Help Menu!**\n\nSelect a category from the dropdown menu below to view commands in that category."
+            for cog_name in cog_commands.keys():
+                embed.add_field(name=cog_name, value="\u200b", inline=True)
+            embeds.append(embed)
         else:
-            current_embed = discord.Embed(title="Bot Help",
-                                          color=discord.Color.blue())
-            current_embed.description = f"Here are all available commands for category: {category}"
-            field_count = 0
+            all_commands = []
+            for commands_list in cog_commands.values():
+                all_commands.extend(commands_list)
 
-            for cog_name, commands_list in cog_commands.items():
-                if field_count >= 25:  # Discord's limit is 25 fields per embed
-                    embeds.append(current_embed)
-                    current_embed = discord.Embed(title="Bot Help",
-                                                  color=discord.Color.blue())
-                    field_count = 0
+            chunks = [
+                all_commands[i:i + COMMANDS_PER_PAGE]
+                for i in range(0, len(all_commands), COMMANDS_PER_PAGE)
+            ]
 
-                current_embed.add_field(name=cog_name,
-                                        value=", ".join(commands_list),
-                                        inline=False)
-                field_count += 1
+            for chunk in chunks:
+                embed = discord.Embed(title="Bot Help", color=EMBED_COLOR)
+                embed.description = f"**Commands in {'all categories' if category == 'All' else category} category:**"
+                for command in chunk:
+                    embed.add_field(name="\u200b",
+                                    value=f"`{command}`",
+                                    inline=True)
+                embeds.append(embed)
 
-            if field_count > 0:
-                embeds.append(current_embed)
-
-        for i, embed in enumerate(embeds):
-            embed.set_footer(
-                text=
-                f"Page {i+1}/{len(embeds)} | Type {prefix}help <command> for more info on a command."
-            )
+        for embed in embeds:
+            embed.set_footer(text=FOOTER_TEXT)
+            embed.set_thumbnail(url=THUMBNAIL_URL)
 
         return embeds
 
