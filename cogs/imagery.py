@@ -59,7 +59,11 @@ class GoToPageModal(discord.ui.Modal, title="Go to Page"):
             page_number = int(self.page_number.value) - 1
             if 0 <= page_number < len(self.paginator.pages):
                 self.paginator.current_page = page_number
-                await self.paginator.update_embed(interaction)
+                embed = discord.Embed(
+                    title="Image Text Recognition",
+                    color=discord.Color.blue())  # Create a new embed
+                await self.paginator.update_embed(interaction,
+                                                  embed)  # Pass the embed
             else:
                 await interaction.response.send_message("Invalid page number.",
                                                         ephemeral=True)
@@ -84,11 +88,20 @@ class BasePaginator(discord.ui.View):
                            interaction: discord.Interaction,
                            embed: discord.Embed,
                            initial: bool = False):
+        # embed.set_thumbnail(url=self.image_url)
+        embed.add_field(
+            name=
+            f"Detected Text (Page {self.current_page + 1}/{len(self.pages)})",
+            value=self.pages[self.current_page],
+            inline=False)
         if initial:
             self.message = await interaction.followup.send(embed=embed,
                                                            view=self)
-        else:
+        elif self.message:  # Check if self.message is set
             await self.message.edit(embed=embed, view=self)
+        else:
+            self.message = await interaction.followup.send(embed=embed,
+                                                           view=self)
 
 
 # Paginator for navigating through pages of text results
@@ -103,9 +116,8 @@ class Paginator(BasePaginator):
 
     async def update_embed(self,
                            interaction: discord.Interaction,
+                           embed: discord.Embed,
                            initial: bool = False):
-        embed = discord.Embed(title="Image Text Recognition",
-                              color=discord.Color.blue())
         embed.set_thumbnail(url=self.image_url)
         embed.add_field(
             name=
@@ -115,28 +127,32 @@ class Paginator(BasePaginator):
         await super().update_embed(interaction, embed, initial)
 
     @discord.ui.button(label="Prev", style=discord.ButtonStyle.primary)
-    async def prev_page(self, button: discord.ui.Button,
-                        interaction: discord.Interaction):
+    async def prev_page(self, interaction: discord.Interaction,
+                        button: discord.ui.Button):
         if self.current_page > 0:
             self.current_page -= 1
-            await self.update_embed(interaction)
+            embed = discord.Embed(title="Image Text Recognition",
+                                  color=discord.Color.blue())
+            await self.update_embed(interaction, embed)
         else:
             await interaction.response.send_message(
                 "You're already on the first page.", ephemeral=True)
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
-    async def next_page(self, button: discord.ui.Button,
-                        interaction: discord.Interaction):
+    async def next_page(self, interaction: discord.Interaction,
+                        button: discord.ui.Button):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
-            await self.update_embed(interaction)
+            embed = discord.Embed(title="Image Text Recognition",
+                                  color=discord.Color.blue())
+            await self.update_embed(interaction, embed)
         else:
             await interaction.response.send_message(
                 "You're already on the last page.", ephemeral=True)
 
     @discord.ui.button(label="Go to", style=discord.ButtonStyle.secondary)
-    async def go_to_page(self, button: discord.ui.Button,
-                         interaction: discord.Interaction):
+    async def go_to_page(self, interaction: discord.Interaction,
+                         button: discord.ui.Button):
         await interaction.response.send_modal(GoToPageModal(self))
 
 

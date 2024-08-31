@@ -140,7 +140,7 @@ class Errors(commands.Cog):
     def get_error_title_and_description(self, ctx: commands.Context,
                                         error: commands.CommandError,
                                         command_name: str,
-                                        command_signature: str) -> (str, str):
+                                        command_signature: str) -> tuple[str, str]:
         """
         Get the title and description for the error embed based on the error type.
 

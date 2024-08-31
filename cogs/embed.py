@@ -61,21 +61,51 @@ class EmbedCreator(commands.Cog):
         value = interaction.data["values"][0] if isinstance(
             interaction.data, dict) and "values" in interaction.data else None
         if value == "author":
+            if self.embed_object is None:
+                self.embed_object = discord.Embed(
+                    description="",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
             await interaction.response.send_modal(
                 AuthorModal(self.embed_object, self.bot, is_edit=True))
         elif value == "body":
+            if self.embed_object is None:
+                self.embed_object = discord.Embed(
+                    description="",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
             await interaction.response.send_modal(
                 BodyModal(self.embed_object, self.bot, is_edit=True))
         elif value == "images":
+            if self.embed_object is None:
+                self.embed_object = discord.Embed(
+                    description="",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
             await interaction.response.send_modal(
                 ImagesModal(self.embed_object, self.bot, is_edit=True))
         elif value == "footer":
+            if self.embed_object is None:
+                self.embed_object = discord.Embed(
+                    description="",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
             await interaction.response.send_modal(
                 FooterModal(self.embed_object, self.bot, is_edit=True))
         elif value == "schedule":
-            await interaction.response.send_modal(
-                ScheduleModal(self.embed_object, self.bot,
-                              interaction.channel))
+            if self.embed_object is None:
+                self.embed_object = discord.Embed(
+                    description="",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
+            if isinstance(interaction.channel, discord.TextChannel):
+                await interaction.response.send_modal(
+                    ScheduleModal(self.embed_object, self.bot,
+                                  interaction.channel))
+            else:
+                await interaction.response.send_message(
+                    "This command can only be used in a text channel.",
+                    ephemeral=True)
 
     def is_valid_url(self, url: str) -> bool:
         """Validate if a given string is a properly formatted URL."""
