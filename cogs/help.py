@@ -7,13 +7,13 @@ import math
 import asyncio
 
 # Global variables for easy modification
-DEFAULT_EMBED_COLOR = discord.Color.blue()
+DEFAULT_EMBED_COLOR = discord.Color.brand_red()
 DEFAULT_EMBED_TITLE = "<:nira_ai2:1267876148201914560> N.I.R.A™ HelpDesk"
 DEFAULT_EMBED_FOOTER = "Type {prefix}help <command> for more info on a command."
 DEFAULT_OWNER_ONLY_MESSAGE = "This command does not exist or you don't have permission to view its details."
 DEFAULT_NO_CATEGORY_NAME = "No Category"
 COMMANDS_PER_PAGE = 6
-VIEW_TIMEOUT = 40 
+VIEW_TIMEOUT = 40
 
 CommandType = Union[commands.Command[Any, Any, Any], app_commands.Command]
 ContextType = Union[commands.Context, discord.Interaction]
@@ -36,7 +36,8 @@ class HelpView(discord.ui.View):
             item.disabled = True
         await self.message.edit(view=self)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
         if interaction.user != self.get_user():
             await interaction.response.send_message(
                 "This menu is not for you.", ephemeral=True)
@@ -366,13 +367,14 @@ class HelpCog(commands.Cog):
     async def check_view_timeout(self, view: HelpView):
         while not view.is_finished():
             await asyncio.sleep(1)
-            if asyncio.get_event_loop().time() - view.last_interaction_time > VIEW_TIMEOUT:
+            if asyncio.get_event_loop().time(
+            ) - view.last_interaction_time > VIEW_TIMEOUT:
                 for item in view.children:
                     item.disabled = True
                 await view.message.edit(view=view)
                 view.stop()
                 break
-    
+
     async def send_owner_only_message(self, ctx: ContextType) -> None:
         embed = discord.Embed(title=self.embed_title,
                               description=self.owner_only_message,
