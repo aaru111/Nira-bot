@@ -33,7 +33,9 @@ class HelpView(discord.ui.View):
 
     async def on_timeout(self) -> None:
         for item in self.children:
-            item.disabled = True
+            if isinstance(item, (discord.ui.Button, discord.ui.Select
+                                 )):  # Check if the item is a button or select
+                item.disabled = True
         await self.message.edit(view=self)
 
     async def interaction_check(self,
@@ -167,8 +169,9 @@ class HelpCog(commands.Cog):
         self.owner_only_message: str = DEFAULT_OWNER_ONLY_MESSAGE
         self.no_category_name: str = DEFAULT_NO_CATEGORY_NAME
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         self.bot.help_command = self._original_help_command
+        return None
 
     @staticmethod
     def generate_usage(command: Union[commands.Command[Any, Any, Any],
@@ -203,6 +206,8 @@ class HelpCog(commands.Cog):
                                   "-")
             flags: dict[str, commands.Flag] = flag_converter.get_flags()
         else:
+            # Initialize flag_prefix here to avoid it being undefined
+            flag_prefix = "-"  # Or any default value you prefer
             flags = {}
 
         for param_name, param in parameters.items():
@@ -220,17 +225,19 @@ class HelpCog(commands.Cog):
         return usage
 
     def is_owner_only(self, command: CommandType) -> bool:
-        return command.checks and any(
-            check.__qualname__.startswith('is_owner')
-            for check in command.checks)
+        if isinstance(command.checks, list):
+            return any(
+                check.__qualname__.startswith('is_owner')
+                for check in command.checks)
+        return command.checks
 
     def is_jishaku_command(self, command: CommandType) -> bool:
         if isinstance(command, commands.Command):
             return command.cog and command.cog.qualified_name.lower(
             ) == "jishaku"
         elif isinstance(command, app_commands.Command):
-            return command.module and "jishaku" in command.module.lower()
-        return False
+            return command.module is not None and "jishaku" in command.module.lower(
+            )
 
     async def is_owner(self, user: Union[discord.User,
                                          discord.Member]) -> bool:
@@ -258,8 +265,11 @@ class HelpCog(commands.Cog):
         seen_commands = set()
 
         for cmd in self.bot.walk_commands():
-            if current.lower() in cmd.qualified_name.lower() and (
-                    not self.is_owner_only(cmd) or is_owner):
+            if isinstance(
+                    cmd,
+                (commands.Command, app_commands.Command
+                 )) and current.lower() in cmd.qualified_name.lower() and (
+                     not self.is_owner_only(cmd) or is_owner):
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -267,8 +277,11 @@ class HelpCog(commands.Cog):
                     seen_commands.add(cmd.qualified_name)
 
         for cmd in self.bot.tree.walk_commands():
-            if current.lower() in cmd.qualified_name.lower() and (
-                    not self.is_owner_only(cmd) or is_owner):
+            if isinstance(
+                    cmd,
+                (commands.Command, app_commands.Command
+                 )) and current.lower() in cmd.qualified_name.lower() and (
+                     not self.is_owner_only(cmd) or is_owner):
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -285,7 +298,7 @@ class HelpCog(commands.Cog):
 
         command = self.bot.get_command(
             command_name) or self.bot.tree.get_command(command_name)
-        if command:
+        if isinstance(command, (commands.Command, app_commands.Command)):
             if (self.is_owner_only(command)
                     or self.is_jishaku_command(command)) and not is_owner:
                 await self.send_owner_only_message(ctx)
@@ -356,10 +369,10 @@ class HelpCog(commands.Cog):
         if isinstance(ctx, commands.Context):
             message = await ctx.send(embed=initial_embed, view=view)
         else:
-            await ctx.response.send_message(embed=initial_embed, view=view)
-            message = await ctx.original_response()
-
-        view.message = message
+            message = await ctx.response.send_message(embed=initial_embed,
+                                                      view=view)
+            if message is not None:
+                view.message = message
 
         # Start a background task to check for timeout
         self.bot.loop.create_task(self.check_view_timeout(view))
@@ -370,7 +383,11 @@ class HelpCog(commands.Cog):
             if asyncio.get_event_loop().time(
             ) - view.last_interaction_time > VIEW_TIMEOUT:
                 for item in view.children:
-                    item.disabled = True
+                    if isinstance(
+                            item,
+                        (discord.ui.Button, discord.ui.Select
+                         )):  # Check if the item is a button or select
+                        item.disabled = True
                 await view.message.edit(view=view)
                 view.stop()
                 break
