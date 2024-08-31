@@ -1,15 +1,10 @@
 import discord
 from discord.ext import commands
 import random
-from discord import Member
 from io import BytesIO
 from PIL import Image
-from typing import Union
-from scripts.emojify import emojify_image
 from jokeapi import Jokes
 import aiohttp
-import requests
-from scripts.asciify import asciify
 import os
 from scripts.collatz import is_collatz_conjecture
 import aiofiles
@@ -138,31 +133,6 @@ class Fun(commands.Cog):
                         value=f'```py\n{random.choice(pp_list)}```')
         embed.set_footer(text=f"Requested By: {user}", icon_url=footer_pfp)
         await ctx.send(embed=embed)
-
-    @commands.command()
-    async def emojify(self, ctx, url: Union[discord.Member, str], size: int):
-        await ctx.defer()
-        if isinstance(url, discord.Member):
-            url = url.display_avatar.url
-
-        def get_emojified_image():
-            r = requests.get(url, stream=True)
-            image = Image.open(r.raw).convert("RGB")
-            res = emojify_image(image, size)
-            if size > size:
-                res = f"```{res}```"
-            return res
-
-        result = await self.bot.loop.run_in_executor(None, get_emojified_image)
-        await ctx.send(f"```py\n{result}```")
-
-    @commands.command()
-    async def asciify(self,
-                      ctx: commands.Context,
-                      link: Union[Member, str],
-                      new_width: int = 100):
-        await ctx.defer()
-        await asciify(ctx, link, new_width)
 
     @commands.command()
     async def rng(self, ctx):

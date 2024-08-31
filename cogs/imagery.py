@@ -10,6 +10,11 @@ from discord.app_commands import Choice
 from typing import Optional, List, Dict
 from collections import defaultdict
 import time
+import requests
+from scripts.asciify import asciify
+from typing import Union
+from scripts.emojify import emojify_image
+from discord import Member
 
 
 # OCR Service for text recognition
@@ -405,6 +410,31 @@ class Imagery(commands.Cog):
         if current_chunk.strip():
             formatted_chunks.append(f"```\n{current_chunk.strip()}```")
         return formatted_chunks
+
+    @commands.command()
+    async def emojify(self, ctx, url: Union[discord.Member, str], size: int):
+        await ctx.defer()
+        if isinstance(url, discord.Member):
+            url = url.display_avatar.url
+
+        def get_emojified_image():
+            r = requests.get(url, stream=True)
+            image = Image.open(r.raw).convert("RGB")
+            res = emojify_image(image, size)
+            if size > size:
+                res = f"```{res}```"
+            return res
+
+        result = await self.bot.loop.run_in_executor(None, get_emojified_image)
+        await ctx.send(f"```py\n{result}```")
+
+    @commands.command()
+    async def asciify(self,
+                      ctx: commands.Context,
+                      link: Union[Member, str],
+                      new_width: int = 100):
+        await ctx.defer()
+        await asciify(ctx, link, new_width)
 
 
 async def setup(bot: commands.Bot) -> None:
