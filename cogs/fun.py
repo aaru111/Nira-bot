@@ -1,5 +1,3 @@
-# fun.py
-
 import discord
 from discord.ext import commands
 import random
@@ -11,33 +9,21 @@ import os
 from scripts.collatz import is_collatz_conjecture
 import aiofiles
 
-# Import necessary classes and functions from urbanmod and triviamod
-from modules.urbanmod import (
-    UrbanDictionaryModal,
-    UrbanDictionaryView,
-    fetch_urban_definitions,
-    create_definition_embeds
-)
-from modules.triviamod import (
-    TriviaView,
-    PlayAgainView,
-    send_trivia,
-    fetch_trivia_question
-)
-from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
-
 
 class Fun(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-        self.searcher = WikipediaSearcher()
-        self.embed_creator = WikiEmbedCreator()
 
     async def cog_unload(self):
         """Clean up resources when the cog is unloaded."""
         await self.session.close()
+
+    class Fun(commands.Cog):
+
+        def __init__(self, bot):
+            self.bot = bot
 
     @commands.command()
     async def wanted(self,
@@ -222,65 +208,6 @@ class Fun(commands.Cog):
                          icon_url=ctx.author.display_avatar.url)
         embed.set_image(url=random.choice(li))
         await ctx.send(embed=embed)
-
-    @commands.command()
-    async def wiki(self, ctx: commands.Context, *, query: str):
-        await ctx.defer()
-
-        try:
-            page_title = await self.searcher.search(query)
-            if not page_title:
-                await ctx.send(
-                    "No results found for your query. Please try a different search term.",
-                    ephemeral=True)
-                return
-
-            page_info = await self.searcher.get_page_info(page_title)
-            base_embed = self.embed_creator.create_base_embed(
-                page_info['title'], page_info['url'], page_info['image_url'])
-            content_chunks = self.embed_creator.split_content(
-                page_info['summary'])
-
-            initial_embed = base_embed.copy()
-            initial_embed.description = content_chunks[0]
-
-            if len(content_chunks) == 1:
-                # If there's only one page, don't use the WikiView
-                initial_embed.set_footer(text="Source: Wikipedia")
-                await ctx.send(embed=initial_embed)
-            else:
-                # If there are multiple pages, use the WikiView
-                view = WikiView(base_embed, content_chunks)
-                initial_embed.set_footer(
-                    text=f"Page 1/{len(content_chunks)} | Source: Wikipedia")
-                message = await ctx.send(embed=initial_embed, view=view)
-                view.message = message
-                view.reset_timer()
-        except Exception as e:
-            await ctx.send(
-                f"An error occurred while processing your request: {str(e)}",
-                ephemeral=True)
-
-    @commands.command(name="urban")
-    async def urban(self, ctx, *, word: str):
-        await ctx.defer()
-        definitions = await fetch_urban_definitions(word)
-        if definitions is None:
-            await ctx.send("An error occurred while fetching the definition.")
-            return
-
-        if not definitions:
-            await ctx.send(f"No definitions found for '{word}'.")
-            return
-
-        encoded_word = quote(word)
-        pages = create_definition_embeds(word, encoded_word, definitions[:10])
-        view = UrbanDictionaryView(pages)
-        await view.start(ctx)
-
-    @commands.command()
-    async def trivia(self, ctx):
-        await send_trivia(ctx, ctx.author.id, 0, self)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -1,6 +1,5 @@
-# modules/urbanmod.py
-
 import discord
+from discord.ext import commands
 from discord import ui
 import aiohttp
 from urllib.parse import quote
@@ -97,60 +96,83 @@ class UrbanDictionaryView(ui.View):
         self.message = await ctx.send(embed=self.pages[0], view=self)
 
 
-async def fetch_urban_definitions(word: str):
-    """Fetches definitions from Urban Dictionary."""
-    encoded_word = quote(word)
-    url = f"https://api.urbandictionary.com/v0/define?term={encoded_word}"
+class UrbanDictionary(commands.Cog):
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                definitions = data.get("list", [])
-                return definitions
-            else:
-                return None
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
 
-def format_definition(text: str) -> str:
-    """Formats the definition with clickable links."""
-    words = re.findall(r'\[([^\]]+)\]', text)
-    for word in words:
+    @staticmethod
+    def format_definition(text):
+        words = re.findall(r'\[([^\]]+)\]', text)
+        for word in words:
+            encoded_word = quote(word)
+            link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
+            text = text.replace(f"[{word}]", f"[{word}]({link})")
+        return text
+
+    @commands.command(name="urban")
+    async def urban(self, ctx, *, word: str):
         encoded_word = quote(word)
-        link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
-        text = text.replace(f"[{word}]", f"[{word}]({link})")
-    return text
+        url = f"https://api.urbandictionary.com/v0/define?term={encoded_word}"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    definitions = data.get("list", [])
+
+                    if not definitions:
+                        await ctx.send(f"No definitions found for '{word}'.")
+                        return
+
+                    pages = self.create_definition_embeds(
+                        word, encoded_word, definitions[:10])
+                    view = UrbanDictionaryView(pages)
+                    await view.start(ctx)
+                else:
+                    await ctx.send(
+                        "An error occurred while fetching the definition.")
+
+    def create_definition_embeds(self, word, encoded_word, definitions):
+        pages = []
+        for index, definition in enumerate(definitions, start=1):
+            embed = discord.Embed(
+                title=f"Urban Dictionary: {word}",
+                url=
+                f"https://www.urbandictionary.com/define.php?term={encoded_word}",
+                color=0x00ff00)
+            embed.set_author(name="Urban Dictionary",
+                             icon_url="https://i.imgur.com/vdoosDm.png")
+
+            formatted_definition = self.format_definition(
+                definition["definition"])
+            formatted_example = self.format_definition(definition["example"])
+
+            embed.add_field(name="📚 Definition",
+                            value=formatted_definition[:1000],
+                            inline=False)
+            embed.add_field(name="📝 Example",
+                            value=f"*{formatted_example[:1000]}*",
+                            inline=False)
+            embed.add_field(name="👍 Upvotes",
+                            value=definition["thumbs_up"],
+                            inline=True)
+            embed.add_field(name="👎 Downvotes",
+                            value=definition["thumbs_down"],
+                            inline=True)
+            embed.set_footer(
+                text=
+                f"Definition {index} of {len(definitions)} | Written by {definition['author']}"
+            )
+
+            pages.append(embed)
+        return pages
 
 
-def create_definition_embeds(word: str, encoded_word: str, definitions: list):
-    """Creates a list of embed objects for Urban Dictionary definitions."""
-    pages = []
-    for index, definition in enumerate(definitions, start=1):
-        embed = discord.Embed(
-            title=f"Urban Dictionary: {word}",
-            url=f"https://www.urbandictionary.com/define.php?term={encoded_word}",
-            color=0x00ff00)
-        embed.set_author(name="Urban Dictionary",
-                         icon_url="https://i.imgur.com/vdoosDm.png")
-
-        formatted_definition = format_definition(definition["definition"])
-        formatted_example = format_definition(definition["example"])
-
-        embed.add_field(name="📚 Definition",
-                        value=formatted_definition[:1000],
-                        inline=False)
-        embed.add_field(name="📝 Example",
-                        value=f"*{formatted_example[:1000]}*",
-                        inline=False)
-        embed.add_field(name="👍 Upvotes",
-                        value=definition["thumbs_up"],
-                        inline=True)
-        embed.add_field(name="👎 Downvotes",
-                        value=definition["thumbs_down"],
-                        inline=True)
-        embed.set_footer(
-            text=f"Definition {index} of {len(definitions)} | Written by {definition['author']}"
-        )
-
-        pages.append(embed)
-    return pages
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(UrbanDictionary(bot))

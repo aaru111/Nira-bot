@@ -1,6 +1,5 @@
-# modules/triviamod.py
-
 import discord
+from discord.ext import commands
 import aiohttp
 import random
 import html
@@ -139,72 +138,67 @@ class PlayAgainView(discord.ui.View):
         await self.cog._send_trivia(interaction, self.user_id, 0)
 
 
-async def fetch_trivia_question():
-    """Fetches a trivia question from the Open Trivia Database API."""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-                'https://opentdb.com/api.php?amount=1&type=multiple'
-        ) as response:
-            if response.status == 200:
+class Trivia(commands.Cog):
+
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Clean up resources when the cog is unloaded."""
+        await self.session.close()
+
+    @commands.command()
+    async def trivia(self, ctx):
+        await self._send_trivia(ctx, ctx.author.id, 0)
+
+    async def _send_trivia(self, ctx, user_id, score):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                    'https://opentdb.com/api.php?amount=1&type=multiple'
+            ) as response:
                 data = await response.json()
-                return data['results'][0]
-            return None
 
+        question_data = data['results'][0]
+        category = question_data['category']
+        difficulty = question_data['difficulty']
+        question = html.unescape(question_data['question'])
+        correct_answer = html.unescape(question_data['correct_answer'])
+        incorrect_answers = [
+            html.unescape(answer)
+            for answer in question_data['incorrect_answers']
+        ]
 
-def create_trivia_embed(question_data, correct_letter, score):
-    """Creates a Discord embed for a trivia question."""
-    category = question_data['category']
-    difficulty = question_data['difficulty']
-    question = html.unescape(question_data['question'])
-    correct_answer = html.unescape(question_data['correct_answer'])
-    incorrect_answers = [
-        html.unescape(answer) for answer in question_data['incorrect_answers']
-    ]
+        all_answers = incorrect_answers + [correct_answer]
+        random.shuffle(all_answers)
+        correct_letter = chr(65 + all_answers.index(correct_answer))
 
-    all_answers = incorrect_answers + [correct_answer]
-    random.shuffle(all_answers)
+        embed = discord.Embed(
+            title=
+            f"**Category:** {category} | **Difficulty:** {difficulty.capitalize()}",
+            description=f"**Question:**\n*{question}*\n\n" + "\n".join([
+                f"**{chr(65+i)}:** {answer}"
+                for i, answer in enumerate(all_answers)
+            ]),
+            color=discord.Color.blue())
+        embed.set_footer(
+            text=f"You have 30 seconds to answer! | Current score: {score}")
 
-    embed = discord.Embed(
-        title=
-        f"**Category:** {category} | **Difficulty:** {difficulty.capitalize()}",
-        description=f"**Question:**\n*{question}*\n\n" + "\n".join([
-            f"**{chr(65+i)}:** {answer}"
-            for i, answer in enumerate(all_answers)
-        ]),
-        color=discord.Color.blue())
-    embed.set_footer(
-        text=f"You have 30 seconds to answer! | Current score: {score}")
+        view = TriviaView(correct_letter, self, user_id, score)
 
-    return embed, correct_letter
-
-
-async def send_trivia(ctx, user_id, score, cog):
-    """Sends a trivia question to the user."""
-    question_data = await fetch_trivia_question()
-    if question_data is None:
-        await ctx.send("An error occurred while fetching the trivia question.")
-        return
-
-    correct_answer = html.unescape(question_data['correct_answer'])
-    incorrect_answers = [
-        html.unescape(answer) for answer in question_data['incorrect_answers']
-    ]
-    all_answers = incorrect_answers + [correct_answer]
-    random.shuffle(all_answers)
-    correct_letter = chr(65 + all_answers.index(correct_answer))
-
-    embed, correct_letter = create_trivia_embed(question_data, correct_letter,
-                                                score)
-
-    view = TriviaView(correct_letter, cog, user_id, score)
-
-    if isinstance(ctx, discord.Interaction):
-        if ctx.response.is_done():
-            message = await ctx.edit_original_response(embed=embed, view=view)
+        if isinstance(ctx, discord.Interaction):
+            if ctx.response.is_done():
+                message = await ctx.edit_original_response(embed=embed,
+                                                           view=view)
+            else:
+                message = await ctx.response.send_message(embed=embed,
+                                                          view=view)
         else:
-            message = await ctx.response.send_message(embed=embed, view=view)
-    else:
-        message = await ctx.send(embed=embed, view=view)
+            message = await ctx.send(embed=embed, view=view)
 
-    view.message = message
-    await view.start_timer(ctx.channel)
+        view.message = message
+        await view.start_timer(ctx.channel)
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(Trivia(bot))
