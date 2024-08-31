@@ -1,3 +1,4 @@
+from sys import prefix
 import discord
 from discord.ext import commands
 from typing import Optional, List
@@ -7,6 +8,8 @@ import io
 import time
 from discord import app_commands
 from discord.ext.commands import Context
+import platform
+
 
 # Utility Functions
 async def _get_channel_properties(channel: discord.TextChannel) -> dict:
@@ -503,9 +506,11 @@ class Moderation(commands.Cog):
         user="The user that should have a new nickname.",
         nickname="The new nickname that should be set.",
     )
-    async def nick(
-        self, context: Context, user: discord.User, *, nickname: str = None
-    ) -> None:
+    async def nick(self,
+                   context: Context,
+                   user: discord.User,
+                   *,
+                   nickname: str = None) -> None:
         """
         Change the nickname of a user on a server.
 
@@ -513,9 +518,8 @@ class Moderation(commands.Cog):
         :param user: The user that should have its nickname changed.
         :param nickname: The new nickname of the user. Default is None, which will reset the nickname.
         """
-        member = context.guild.get_member(user.id) or await context.guild.fetch_member(
-            user.id
-        )
+        member = context.guild.get_member(
+            user.id) or await context.guild.fetch_member(user.id)
         try:
             await member.edit(nick=nickname)
             embed = discord.Embed(
@@ -525,12 +529,11 @@ class Moderation(commands.Cog):
             await context.send(embed=embed)
         except:
             embed = discord.Embed(
-                description="An error occurred while trying to change the nickname of the user. Make sure my role is above the role of the user you want to change the nickname.",
+                description=
+                "An error occurred while trying to change the nickname of the user. Make sure my role is above the role of the user you want to change the nickname.",
                 color=0xE02B2B,
             )
             await context.send(embed=embed)
-
-    
 
     @commands.hybrid_command()
     async def ping(self, ctx: commands.Context):
@@ -636,8 +639,9 @@ class Moderation(commands.Cog):
         await self._set_server_permissions(ctx.guild, view_channel=False)
         await ctx.send("Server has been locked.")
 
-
-    @commands.hybrid_command(name="userinfo", aliases=["user", "stats"], description="Displays user information.")
+    @commands.hybrid_command(name="userinfo",
+                             aliases=["user", "stats"],
+                             description="Displays user information.")
     async def userinfo(self, ctx, member: discord.Member = None):
         # If member is not provided, use the author of the context
         if member is None:
@@ -647,24 +651,93 @@ class Moderation(commands.Cog):
         embed = discord.Embed(
             title=f"{member.display_name}'s User Information",
             description="All info about the user",
-            color=discord.Color.blue()  # You can set the color to a specific color code or a predefined color
+            color=discord.Color.blue(
+            )  # You can set the color to a specific color code or a predefined color
         )
-        embed.set_author(name="User Info", icon_url=ctx.author.display_avatar.url)
+        embed.set_author(name="User Info",
+                         icon_url=ctx.author.display_avatar.url)
         embed.set_thumbnail(url=member.display_avatar.url)
         embed.add_field(name="Name", value=member.name, inline=False)
-        embed.add_field(name="Nick Name", value=member.display_name, inline=False)
+        embed.add_field(name="Nick Name",
+                        value=member.display_name,
+                        inline=False)
         embed.add_field(name="ID", value=member.id, inline=False)
-        embed.add_field(name="Top Role", value=member.top_role.mention, inline=False)
-        embed.add_field(name="Status", value=str(member.status).title(), inline=False)
-        embed.add_field(name="Bot User", value="Yes" if member.bot else "No", inline=False)
+        embed.add_field(name="Top Role",
+                        value=member.top_role.mention,
+                        inline=False)
+        embed.add_field(name="Status",
+                        value=str(member.status).title(),
+                        inline=False)
+        embed.add_field(name="Bot User",
+                        value="Yes" if member.bot else "No",
+                        inline=False)
         embed.add_field(
             name="ID Creation",
             value=member.created_at.strftime("%A, %d. %B %Y at %H:%M:%S"),
-            inline=False
-        )
+            inline=False)
 
         # Send the embed in the context channel
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(
+        name="serverinfo",
+        description="Get some useful (or not) information about the server.",
+    )
+    async def serverinfo(self, context: Context) -> None:
+        """
+        Get some useful (or not) information about the server.
+
+        :param context: The hybrid command context.
+        """
+        roles = [role.name for role in context.guild.roles]
+        num_roles = len(roles)
+        if num_roles > 50:
+            roles = roles[:50]
+            roles.append(f">>>> Displaying [50/{num_roles}] Roles")
+        roles = ", ".join(roles)
+
+        embed = discord.Embed(title="**Server Name:**",
+                              description=f"{context.guild}",
+                              color=0xBEBEFE)
+        if context.guild.icon is not None:
+            embed.set_thumbnail(url=context.guild.icon.url)
+        embed.add_field(name="Server ID", value=context.guild.id)
+        embed.add_field(name="Member Count", value=context.guild.member_count)
+        embed.add_field(name="Text/Voice Channels",
+                        value=f"{len(context.guild.channels)}")
+        embed.add_field(name=f"Roles ({len(context.guild.roles)})",
+                        value=roles)
+        embed.set_footer(text=f"Created at: {context.guild.created_at}")
+        await context.send(embed=embed)
+
+    @commands.hybrid_command(
+        name="botinfo",
+        description="Get some useful (or not) information about the bot.",
+    )
+    async def botinfo(self, context: Context) -> None:
+        """
+        Get some useful (or not) information about the bot.
+
+        :param context: The hybrid command context.
+        """
+        embed = discord.Embed(
+            description="N.I.R.A -> NEURAL INTERACTIVE RESPONSIVE AGENT.",
+            color=0xBEBEFE,
+        )
+        embed.set_author(name="Bot Information")
+        embed.add_field(name="Owner:",
+                        value="<@754188594461147217>",
+                        inline=True)
+        embed.add_field(name="Python Version:",
+                        value=f"{platform.python_version()}",
+                        inline=True)
+        embed.add_field(
+            name="Prefix:",
+            value="/(Slash Commands) or .command for normal commands",
+            inline=False,
+        )
+        embed.set_footer(text=f"Requested by {context.author}")
+        await context.send(embed=embed)
 
     @commands.hybrid_command()
     @commands.has_permissions(administrator=True)
@@ -692,9 +765,26 @@ class Moderation(commands.Cog):
             await channel.set_permissions(guild.default_role,
                                           overwrite=overwrite)
 
+    @commands.hybrid_command(
+        name="invite",
+        description="Get the invite link of the bot to be able to invite it.",
+    )
+    async def invite(self, context: Context) -> None:
+        """
+        Get the invite link of the bot to be able to invite it.
 
-
-
+        :param context: The hybrid command context.
+        """
+        embed = discord.Embed(
+            description=
+            f"Invite me by clicking [here]({self.bot.config['invite_link']}).",
+            color=0xD75BF4,
+        )
+        try:
+            await context.author.send(embed=embed)
+            await context.send("I sent you a private message!")
+        except discord.Forbidden:
+            await context.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
