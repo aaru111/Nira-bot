@@ -6,7 +6,6 @@ import asyncio
 from aiohttp import ClientSession
 from typing import Any
 from webserver import keep_alive
-import aiohttp
 
 # -------------------------
 # Logging Configuration
@@ -70,7 +69,8 @@ class Bot(commands.Bot):
 
         prefix_cog = self.get_cog('PrefixCog')
         if prefix_cog:
-            return await prefix_cog.get_prefix(message)
+            # Call the get_prefix method of the PrefixCog instance
+            return await prefix_cog.get_prefix(message) 
         return self.default_prefix
 
 

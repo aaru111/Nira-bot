@@ -4,6 +4,7 @@ from discord import app_commands
 from typing import List, Optional, Union, Any, Dict
 import inspect
 import math
+import asyncio
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR = discord.Color.blue()
@@ -12,6 +13,7 @@ DEFAULT_EMBED_FOOTER = "Type {prefix}help <command> for more info on a command."
 DEFAULT_OWNER_ONLY_MESSAGE = "This command does not exist or you don't have permission to view its details."
 DEFAULT_NO_CATEGORY_NAME = "No Category"
 COMMANDS_PER_PAGE = 6
+VIEW_TIMEOUT = 40 
 
 CommandType = Union[commands.Command[Any, Any, Any], app_commands.Command]
 ContextType = Union[commands.Context, discord.Interaction]
@@ -21,12 +23,26 @@ class HelpView(discord.ui.View):
 
     def __init__(self, cog: 'HelpCog', ctx: ContextType,
                  categories: Dict[str, List[CommandType]]):
-        super().__init__(timeout=60)
+        super().__init__(timeout=VIEW_TIMEOUT)
         self.cog = cog
         self.ctx = ctx
         self.categories = categories
         self.current_category = None
         self.current_page = 0
+        self.last_interaction_time = asyncio.get_event_loop().time()
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user != self.get_user():
+            await interaction.response.send_message(
+                "This menu is not for you.", ephemeral=True)
+            return False
+        self.last_interaction_time = asyncio.get_event_loop().time()
+        return True
 
     @discord.ui.select(placeholder="Select a category",
                        min_values=1,
@@ -67,6 +83,7 @@ class HelpView(discord.ui.View):
             self.update_button_states()
 
         await interaction.response.edit_message(embed=embed, view=self)
+        self.message = await interaction.original_response()
 
     def update_button_states(self):
         if self.current_category and self.current_category != "Home":
@@ -128,14 +145,6 @@ class HelpView(discord.ui.View):
                 command, commands.Command) and command.parent is None):
             return f"/{command.name}"
         return f"{self.get_prefix()}{command.name}"
-
-    async def interaction_check(self,
-                                interaction: discord.Interaction) -> bool:
-        if interaction.user != self.get_user():
-            await interaction.response.send_message(
-                "This menu is not for you.", ephemeral=True)
-            return False
-        return True
 
     def get_user(self) -> Union[discord.User, discord.Member]:
         return self.ctx.author if isinstance(
@@ -349,9 +358,21 @@ class HelpCog(commands.Cog):
             await ctx.response.send_message(embed=initial_embed, view=view)
             message = await ctx.original_response()
 
-        await view.wait()
-        await message.edit(view=None)
+        view.message = message
 
+        # Start a background task to check for timeout
+        self.bot.loop.create_task(self.check_view_timeout(view))
+
+    async def check_view_timeout(self, view: HelpView):
+        while not view.is_finished():
+            await asyncio.sleep(1)
+            if asyncio.get_event_loop().time() - view.last_interaction_time > VIEW_TIMEOUT:
+                for item in view.children:
+                    item.disabled = True
+                await view.message.edit(view=view)
+                view.stop()
+                break
+    
     async def send_owner_only_message(self, ctx: ContextType) -> None:
         embed = discord.Embed(title=self.embed_title,
                               description=self.owner_only_message,
