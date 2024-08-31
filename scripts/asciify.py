@@ -4,7 +4,7 @@ from typing import Union
 from PIL import Image
 from io import BytesIO
 import aiohttp
-
+import re
 
 async def fetch_image(url: str) -> bytes:
     async with aiohttp.ClientSession() as session:
@@ -39,10 +39,13 @@ def create_ascii_art(image: Image.Image) -> str:
 async def asciify(ctx: commands.Context,
                   link: Union[Member, str],
                   new_width: int = 100) -> None:
-    if isinstance(link, Member):
+    if isinstance(link, Member) and not isinstance(link, str):
         url = link.display_avatar.url
-    else:
+    elif re.match(r"https?://(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)", link):
         url = link
+    else:
+        await ctx.send("Invalid URL or Discord member provided.")
+        return
 
     try:
         image_data = await fetch_image(url)

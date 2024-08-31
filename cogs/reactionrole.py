@@ -405,7 +405,7 @@ class ReactionRole(commands.Cog):
             if not self.reaction_roles[guild_id]:
                 del self.reaction_roles[guild_id]
         asyncio.create_task(self.save_reaction_roles())
-        self.tracked_messages.discard(int(message_id))
+        self.tracked_messages.discard(str(message_id))
         asyncio.create_task(self.save_tracked_messages())
 
     @commands.Cog.listener()
@@ -492,7 +492,7 @@ class ReactionRole(commands.Cog):
             await self.save_reaction_roles()
             await self.role_manager.add_buttons_to_message(
                 message, self.reaction_roles[guild_id][message_id])
-            self.tracked_messages.add(int(message_id))
+            self.tracked_messages.add(str(message_id))
             await self.save_tracked_messages()
             await interaction.followup.send(
                 "Reaction role added successfully!", ephemeral=True)
@@ -608,10 +608,10 @@ class ReactionRole(commands.Cog):
                         await channel.fetch_message(int(message_id))
                     except discord.NotFound:
                         to_delete.append((guild_id, message_id))
-                        self.tracked_messages.discard(int(message_id))
+                        self.tracked_messages.discard(str(message_id))
                 else:
                     to_delete.append((guild_id, message_id))
-                    self.tracked_messages.discard(int(message_id))
+                    self.tracked_messages.discard(str(message_id))
 
         for entry in to_delete:
             guild_id, message_id = entry

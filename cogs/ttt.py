@@ -437,7 +437,7 @@ class TicTacToe(commands.Cog):
             game.message = await interaction.original_response()
             game.reset_timeout_task(
             )  # Start the timeout task when the game starts
-            game.last_move_time = time.time()  # Set initial move time
+            game.last_move_time = int(time.time())  # Set initial move time
         elif opponent == interaction.user:
             await interaction.response.send_message(
                 "You cannot play against yourself!", ephemeral=True)
@@ -453,7 +453,8 @@ class TicTacToe(commands.Cog):
             # Try to create a PartialEmoji object
             discord.PartialEmoji.from_str(emoji)
             return True
-        except:
+        except discord.errors.NotFound:
+            # Return False if the emoji is not found
             return False
 
 

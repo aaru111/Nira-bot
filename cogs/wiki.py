@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import textwrap
 from abc import ABC, abstractmethod
 import asyncio
+from typing import Any
 
 
 class CustomWikipediaAPI:
@@ -63,7 +64,7 @@ class WikiSearcher(ABC):
     @staticmethod
     @abstractmethod
     async def get_page_info(title: str):
-        pass
+        return dict[str, Any]
 
 
 class WikipediaSearcher(WikiSearcher):
@@ -152,7 +153,7 @@ class WikiView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         if self.message:
-            await self.message.edit(view=self)
+            self.message.edit(view=self)
 
     def reset_timer(self):
         if self.timer_task:
@@ -169,13 +170,14 @@ class WikiView(discord.ui.View):
         return True
 
 
-class GotoModal(discord.ui.Modal, title="Go to Page"):
-    page_number = discord.ui.TextInput(label="Page Number",
-                                       placeholder="Enter a page number")
+class GotoModal(discord.ui.Modal):
 
     def __init__(self, view: WikiView):
-        super().__init__()
+        super().__init__(title="Go to Page")
         self.view = view
+        self.page_number = discord.ui.TextInput(
+            label="Page Number", placeholder="Enter a page number")
+        self.add_item(self.page_number)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:

@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from abc import ABC, abstractmethod
+from typing import Optional
 
 # Import the Database instance from database.py
 from database import db
@@ -63,7 +64,7 @@ class PrefixCog(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def change_prefix(self,
                             interaction: discord.Interaction,
-                            new_prefix: str = None):
+                            new_prefix: Optional[str] = None):
         if new_prefix is None:
             current_prefix = await self.db_manager.get_prefix(
                 interaction.guild.id)

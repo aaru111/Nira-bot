@@ -433,7 +433,7 @@ class Moderation(commands.Cog):
 
         confirmation_view = ConfirmationView(ctx, channel)
         confirmation_message = await ctx.send(
-            f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
+            f"Are you sure you want to nuke {channel.mention if channel else 'this channel'}? This action cannot be undone.",
             view=confirmation_view)
         timeout = await confirmation_view.wait()
 
@@ -490,7 +490,7 @@ class Moderation(commands.Cog):
                    context: Context,
                    user: discord.User,
                    *,
-                   nickname: str = None) -> None:
+                   nickname: Optional[str] = None) -> None:
         """Change the nickname of a user on a server.
         :param context: The hybrid command context.
         :param user: The user that should have its nickname changed.
