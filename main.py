@@ -8,6 +8,7 @@ from aiohttp import ClientSession
 from collections import Counter
 from webserver import keep_alive
 from abc import ABC, abstractmethod
+from glob import glob
 
 # Logging Configuration
 logging.basicConfig(
@@ -59,27 +60,22 @@ class Bot(commands.Bot, BotBase):
 
     async def setup_hook(self) -> None:
         """Sets up necessary extensions and cogs."""
-        await self._load_extension("jishaku")
+        await self.load_extension("jishaku")
         await self.load_all_cogs()
 
     async def load_all_cogs(self) -> None:
-        """Loads all cogs from the cogs directory."""
-        cog_dir = './cogs'
-        cog_files = self._get_cog_files(cog_dir)
-        results = await asyncio.gather(*(self._load_extension(f'cogs.{cog}')
-                                         for cog in cog_files),
-                                       return_exceptions=True)
+        """Loads all cogs from the cogs directory and its subdirectories."""
+        cog_path = os.path.join(os.path.dirname(__file__), 'cogs')
+        cog_files = glob(os.path.join(cog_path, '**', '[!_]*.py'), recursive=True)
+        extensions = [os.path.splitext(os.path.relpath(file, os.path.dirname(__file__)))[0].replace(os.path.sep, '.') 
+                      for file in cog_files]
 
-        self._log_cog_load_results(cog_files, results)
-
-    async def _load_extension(self, name: str) -> None:
-        """Loads a single extension by name."""
-        try:
-            await self.load_extension(name)
-            logger.info(f"Extension '{name}' loaded successfully.")
-        except Exception as e:
-            logger.error(f"Failed to load extension '{name}': {e}")
-            # Optionally continue without raising to keep loading other extensions
+        for extension in extensions:
+            try:
+                await self.load_extension(extension)
+                logger.info(f"Successfully loaded extension: {extension}")
+            except Exception as e:
+                logger.error(f"Failed to load extension {extension}: {e}")
 
     async def on_ready(self) -> None:
         """Triggered when the bot is ready."""
@@ -93,31 +89,9 @@ class Bot(commands.Bot, BotBase):
         """Handles errors raised in event methods."""
         logger.exception(f'Unhandled exception in {event_method}')
 
-    @staticmethod
-    def _get_cog_files(cog_dir: str) -> List[str]:
-        """Retrieves a list of cog files from the specified directory."""
-        with os.scandir(cog_dir) as entries:
-            return [
-                entry.name[:-3] for entry in entries
-                if entry.is_file() and entry.name.endswith('.py')
-            ]
-
-    @staticmethod
-    def _log_cog_load_results(cog_files: List[str],
-                              results: List[Any]) -> None:
-        """Logs the results of loading cogs."""
-        status = Counter(type(result).__name__ for result in results)
-        logger.info(
-            f"Cog loading complete. Success: {status.get('NoneType', 0)}, Failed: {sum(status.values()) - status.get('NoneType', 0)}"
-        )
-
-        for cog, result in zip(cog_files, results):
-            if isinstance(result, Exception):
-                logger.error(f"Failed to load cog 'cogs.{cog}': {result}")
-
 
 async def get_prefix(bot: Bot,
-                     message: discord.Message) -> Union[List[str], str, None]:
+                     message: discord.Message) -> Union[List[str], str]:
     """Determines the prefix for commands based on the message context."""
     if not message.guild:
         return bot.default_prefix
