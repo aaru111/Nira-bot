@@ -777,7 +777,7 @@ class Moderation(commands.Cog):
         """
         embed = discord.Embed(
             description=
-            f"Invite me by clicking [here]({self.bot.config['invite_link']}).",
+            "Invite me by clicking [here](https://discord.gg/T5jgMenbQ8).",
             color=0xD75BF4,
         )
         try:
