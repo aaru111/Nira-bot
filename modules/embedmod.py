@@ -44,13 +44,12 @@ class BaseView(discord.ui.View):
 
 class BaseButton(discord.ui.Button):
 
-    def __init__(
-            self,
-            label: str,
-            style: ButtonStyle,
-            emoji: str = "",
-            row: int = 0,  # Default row value
-            disabled: bool = False):
+    def __init__(self,
+                 label: str,
+                 style: ButtonStyle,
+                 emoji: str = None,
+                 row: int = None,
+                 disabled: bool = False):
         super().__init__(label=label,
                          style=style,
                          emoji=emoji,
