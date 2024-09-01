@@ -33,8 +33,7 @@ class HelpView(discord.ui.View):
 
     async def on_timeout(self) -> None:
         for item in self.children:
-            if isinstance(item, (discord.ui.Button, discord.ui.Select
-                                 )):  # Check if the item is a button or select
+            if isinstance(item, (discord.ui.Button, discord.ui.Select)):
                 item.disabled = True
         await self.message.edit(view=self)
 
@@ -139,15 +138,19 @@ class HelpView(discord.ui.View):
         return embed
 
     def get_prefix(self) -> str:
+        # Fetch the prefix from the context, or use default if not found
         if isinstance(self.ctx, commands.Context):
-            return self.ctx.prefix or '/'
-        return '/'
+            return self.ctx.prefix or '.'
+        return '.'
 
     def get_command_name(self, command: CommandType) -> str:
         if isinstance(command, app_commands.Command) or (isinstance(
                 command, commands.Command) and command.parent is None):
-            return f"/{command.name}"
-        return f"{self.get_prefix()}{command.name}"
+            if isinstance(command, app_commands.Command):
+                return f"/{command.name}"  # Slash command
+            else:
+                return f"{self.get_prefix()}{command.name}"  # Prefix command with dynamic prefix
+        return f"{self.get_prefix()}{command.name}"  # Subcommand with dynamic prefix
 
     def get_user(self) -> Union[discord.User, discord.Member]:
         return self.ctx.author if isinstance(
@@ -178,7 +181,7 @@ class HelpCog(commands.Cog):
                                       app_commands.Command],
                        flag_converter: Optional[type[
                            commands.FlagConverter]] = None,
-                       prefix: str = '/') -> str:
+                       prefix: str = '.') -> str:
         command_name = command.qualified_name
 
         # Add appropriate prefix based on command type
@@ -206,8 +209,7 @@ class HelpCog(commands.Cog):
                                   "-")
             flags: dict[str, commands.Flag] = flag_converter.get_flags()
         else:
-            # Initialize flag_prefix here to avoid it being undefined
-            flag_prefix = "-"  # Or any default value you prefer
+            flag_prefix = "-"  # Default flag prefix
             flags = {}
 
         for param_name, param in parameters.items():
