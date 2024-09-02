@@ -150,6 +150,7 @@ __pycache__/
 replit.nix
 poetry.lock
 pyproject.toml
+.prettierignore
 
 # log
 
