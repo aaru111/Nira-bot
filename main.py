@@ -9,12 +9,6 @@ from abc import ABC, abstractmethod
 from glob import glob
 from loguru import logger
 
-# Logging Configuration
-logger.remove()  # Remove default logger
-logger.add(lambda msg: print(msg, end=""),
-           format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
-           level="INFO")
-
 
 @runtime_checkable
 class PrefixCogProtocol(Protocol):
