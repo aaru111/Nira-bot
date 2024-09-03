@@ -7,6 +7,9 @@ import random
 from typing import List, Optional
 from hentai import Hentai, Format, Utils
 import DiscordUtils
+from rule34 import Rule34
+rule34 = Rule34()
+
 
 # Load secrets from Replit environment variables
 REDDIT_CLIENT_ID = os.environ['redditid']
