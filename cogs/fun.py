@@ -9,14 +9,14 @@ import aiohttp
 import os
 from scripts.collatz import is_collatz_conjecture
 import aiofiles
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 # Global variables for reuse
 DEFAULT_EMBED_COLOR: int = 0x2f3135
 WANTED_IMAGE_PATH: str = "images/wanted.jpg"
 PROFILE_IMAGE_PATH: str = "images/profile.jpg"
-QUOTE_API_URL: str = "https://zenquotes.io/api/random"  # Tokenless API URL for random quotes
-SLAP_GIF_API_URL: str = "https://g.tenor.com/v1/random?q=anime+slap&key=LIVDSRZULELA"  # Tenor API for random slap GIFs
+QUOTE_API_URL: str = "https://zenquotes.io/api/quotes/random"  # URL for random quotes
+TENOR_API_KEY: str = "LIVDSRZULELA"  # Tenor API key
 
 
 class Fun(commands.Cog):
@@ -30,24 +30,32 @@ class Fun(commands.Cog):
         await self.session.close()
 
     async def fetch_quote(self) -> str:
-        """Fetches a random quote from a tokenless API."""
+        """Fetches a random quote from the API."""
         try:
             async with self.session.get(QUOTE_API_URL) as response:
                 if response.status == 200:
-                    data: List[dict[str, str]] = await response.json()
+                    data: List[Dict[str, str]] = await response.json()
                     return data[0]['q'] + " — " + data[0][
                         'a']  # Quote with author
                 else:
-                    return "Could not retrieve a quote at this time."
+                    return "Could not retrieve a random quote at this time."
         except Exception as e:
             return f"Error fetching quote: {str(e)}"
 
-    async def fetch_slap_gif(self) -> str:
-        """Fetches a random slap GIF URL from Tenor API."""
+    async def fetch_slap_gif(self, style: str) -> str:
+        """Fetches a random slap GIF URL from Tenor API based on the selected style."""
+        slap_styles: Dict[str, str] = {
+            "anime": "anime slap",
+            "classic": "classic slap",
+            "meme": "meme slap"
+        }
+        query: str = slap_styles.get(style, "slap")
+        slap_gif_api_url: str = f"https://g.tenor.com/v1/random?q={query}&key={TENOR_API_KEY}"
+
         try:
-            async with self.session.get(SLAP_GIF_API_URL) as response:
+            async with self.session.get(slap_gif_api_url) as response:
                 if response.status == 200:
-                    data: dict = await response.json()
+                    data: Dict = await response.json()
                     gif_url: str = data['results'][0]['media'][0]['gif']['url']
                     return gif_url
                 else:
@@ -56,37 +64,24 @@ class Fun(commands.Cog):
             return "https://media.tenor.com/slap.gif"  # Fallback GIF
 
     @commands.hybrid_command(name="quote")
-    @app_commands.describe(choice="Choose a quote type or write your own")
-    @app_commands.choices(choice=[
-        app_commands.Choice(name="Quote of the Day", value="qotd"),
-        app_commands.Choice(name="Quote of the Month", value="qotm"),
-        app_commands.Choice(name="Quote of the Year", value="qoty"),
-        app_commands.Choice(name="Random Quote", value="random")
-    ])
+    @app_commands.describe(
+        quote="Enter your own quote or leave it empty for a random quote")
     async def quote(self,
                     ctx: commands.Context,
-                    choice: Optional[str] = None) -> None:
+                    *,
+                    quote: Optional[str] = None) -> None:
         """
-        Command to fetch a quote of the day, month, year, or a random quote.
-        Users can also provide their custom quote.
+        Command to fetch a random quote or display a user-provided quote.
         """
         await ctx.defer()
 
-        # Using match-case for handling quote types
-        match choice:
-            case "qotd":
-                quote: str = "This is the Quote of the Day!"
-            case "qotm":
-                quote = "This is the Quote of the Month!"
-            case "qoty":
-                quote = "This is the Quote of the Year!"
-            case "random":
-                quote = await self.fetch_quote()
-            case _:
-                quote = choice if choice else "No quote provided."
+        if quote:
+            display_quote = f"{quote} - {ctx.author.display_name}"
+        else:
+            display_quote = await self.fetch_quote()
 
         embed: discord.Embed = discord.Embed(title="Quote",
-                                             description=quote,
+                                             description=display_quote,
                                              color=DEFAULT_EMBED_COLOR)
         await ctx.send(embed=embed)
 
@@ -99,8 +94,7 @@ class Fun(commands.Cog):
         await ctx.defer()
 
         # If no member is mentioned, use the command issuer's profile picture
-        if member is None:
-            member = ctx.author
+        member = member or ctx.author
 
         # Check if the wanted image file exists
         if not os.path.exists(WANTED_IMAGE_PATH):
@@ -220,15 +214,17 @@ class Fun(commands.Cog):
             j: Jokes = await Jokes()
             joke: dict = await j.get_joke()
 
-            # Ensure joke is treated as a dictionary
-            joke = dict(joke)
+            joke = dict(joke)  # Ensure joke is treated as a dictionary
 
-            if joke["type"] == "single":
-                msg: str = joke["joke"]
-            else:
-                msg = joke["setup"]
-                if 'delivery' in joke:
-                    msg += f"||{joke['delivery']}||"
+            match joke["type"]:
+                case "single":
+                    msg: str = joke["joke"]
+                case "twopart":
+                    msg = joke["setup"]
+                    if 'delivery' in joke:
+                        msg += f" ||{joke['delivery']}||"
+                case _:
+                    msg = "No joke found."
 
             await ctx.send(msg)
         except Exception as e:
@@ -236,28 +232,33 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name="slap")
     @app_commands.describe(who="The member to slap",
-                           reason="Reason for slapping")
+                           reason="Reason for slapping",
+                           style="Style of slap GIF")
+    @app_commands.choices(style=[
+        app_commands.Choice(name="Anime", value="anime"),
+        app_commands.Choice(name="Classic", value="classic"),
+        app_commands.Choice(name="Meme", value="meme")
+    ])
     async def slap(self,
                    ctx: commands.Context,
                    who: discord.Member,
+                   style: Optional[str] = "anime",
                    reason: Optional[str] = None) -> None:
-        """Command to slap a user with a reason."""
+        """Command to slap a user with a reason and choose a style of slap GIF."""
         await ctx.defer()
-        gif_url: str = await self.fetch_slap_gif()
+        gif_url: str = await self.fetch_slap_gif(style)
 
         default_reason_list: List[str] = [
             "an eyesore", "a fool", "stupid", "a dumbass", "a moron",
             "a loser", "a noob", "a bot", "a fool"
         ]
 
-        if not reason:
-            reason = random.choice(default_reason_list)
+        reason = reason or random.choice(default_reason_list)
 
         embed: discord.Embed = discord.Embed(
             colour=discord.Color.random(),
             description=
-            f"# {ctx.author.mention} slaps {who.mention} for being {' '.join(reason)}"
-        )
+            f"# {ctx.author.mention} slaps {who.mention} for being {reason}")
         embed.set_author(name=ctx.author.display_name,
                          icon_url=ctx.author.display_avatar.url)
         embed.set_image(url=gif_url)
