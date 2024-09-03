@@ -12,13 +12,6 @@ import ipdb
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
 DEFAULT_EMBED_COLOR: int = 0x2f3131  # Default embed color
 
-logger.remove()
-logger.add(
-    sys.stderr,
-    format=
-    "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-)
-
 # Enable/disable interactive debugging
 DEBUG_MODE = False
 

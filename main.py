@@ -1,20 +1,19 @@
 import os
-import logging
 from typing import List, Union, Any, Callable, Protocol, runtime_checkable
 import asyncio
 import discord
 from discord.ext import commands
 from aiohttp import ClientSession
-from collections import Counter
 from webserver import keep_alive
 from abc import ABC, abstractmethod
 from glob import glob
+from loguru import logger
 
 # Logging Configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger.remove()  # Remove default logger
+logger.add(lambda msg: print(msg, end=""),
+           format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
+           level="INFO")
 
 
 @runtime_checkable
@@ -66,16 +65,29 @@ class Bot(commands.Bot, BotBase):
     async def load_all_cogs(self) -> None:
         """Loads all cogs from the cogs directory and its subdirectories."""
         cog_path = os.path.join(os.path.dirname(__file__), 'cogs')
-        cog_files = glob(os.path.join(cog_path, '**', '[!_]*.py'), recursive=True)
-        extensions = [os.path.splitext(os.path.relpath(file, os.path.dirname(__file__)))[0].replace(os.path.sep, '.') 
-                      for file in cog_files]
+        cog_files = glob(os.path.join(cog_path, '**', '[!_]*.py'),
+                         recursive=True)
+        extensions = [
+            os.path.splitext(os.path.relpath(
+                file, os.path.dirname(__file__)))[0].replace(os.path.sep, '.')
+            for file in cog_files
+        ]
+
+        loaded_count = 0
+        failed_count = 0
 
         for extension in extensions:
             try:
                 await self.load_extension(extension)
-                logger.info(f"Successfully loaded extension: {extension}")
+                logger.success(f"Successfully loaded extension: {extension}")
+                loaded_count += 1
             except Exception as e:
                 logger.error(f"Failed to load extension {extension}: {e}")
+                failed_count += 1
+
+        logger.info(
+            f"Cog loading completed: {loaded_count} loaded, {failed_count} failed."
+        )
 
     async def on_ready(self) -> None:
         """Triggered when the bot is ready."""
