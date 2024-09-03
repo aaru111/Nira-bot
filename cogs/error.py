@@ -125,20 +125,36 @@ class Errors(commands.Cog):
         """Handle errors that occur during command execution."""
         if isinstance(error,
                       discord.errors.HTTPException) and error.status == 429:
-            retry_after: int = int(error.response.headers.get(
-                "Retry-After", 5))
-            await ctx.send(
-                f"Rate limit hit! Retrying after {retry_after} seconds...",
-                delete_after=DELETE_AFTER)
-            await asyncio.sleep(retry_after)
+            retry_after: float = float(
+                error.response.headers.get("Retry-After", 5))
+            for attempt in range(MAX_RETRIES):
+                await ctx.send(
+                    f"Rate limit hit! Retrying after {retry_after:.2f} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})",
+                    delete_after=DELETE_AFTER)
+                await asyncio.sleep(retry_after)
 
-            try:
-                await ctx.reinvoke()
-            except discord.errors.HTTPException as e:
-                if e.status == 429:
-                    logger.warning("Hit rate limit again. Aborting retry.")
-                else:
-                    await self.on_command_error(ctx, e)
+                try:
+                    await ctx.reinvoke()
+                    return  # If successful, exit the method
+                except discord.errors.HTTPException as e:
+                    if e.status == 429:
+                        retry_after = float(
+                            e.response.headers.get("Retry-After",
+                                                   retry_after * 2))
+                        logger.warning(
+                            f"Hit rate limit again. Retrying in {retry_after:.2f} seconds."
+                        )
+                    else:
+                        await self.handle_error(ctx, e, str(e),
+                                                "HTTP Exception")
+                        return
+
+            logger.error(
+                f"Failed to execute command after {MAX_RETRIES} attempts due to rate limiting."
+            )
+            await ctx.send(
+                f"Command failed after {MAX_RETRIES} attempts due to rate limiting. Please try again later.",
+                delete_after=DELETE_AFTER)
             return
 
         command_name: str = ctx.command.qualified_name if ctx.command else "Unknown Command"

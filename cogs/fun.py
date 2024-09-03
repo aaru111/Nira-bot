@@ -18,7 +18,7 @@ PROFILE_IMAGE_PATH: str = "images/profile.jpg"
 QUOTE_API_URL: str = "https://zenquotes.io/api/quotes/random"
 TENOR_API_KEY: str = "LIVDSRZULELA"
 QUOTE_IMAGE_SIZE: Tuple[int, int] = (1250, 500)
-FONT_PATH: str = "images/font.ttf"  # Update this with your font path
+FONT_PATH: str = "fonts/ndot47.ttf"
 
 
 class Fun(commands.Cog):
