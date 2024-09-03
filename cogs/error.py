@@ -5,11 +5,31 @@ import aiohttp
 import asyncio
 from difflib import get_close_matches
 from typing import Optional, Tuple, Any, List
+from loguru import logger
+import sys
+import ipdb
+
 
 # Define the embed color
 EMBED_COLOR: int = 0x2f3131
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
 
+# Configure loguru
+logger.remove()
+logger.add(sys.stderr, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>")
+logger.add("bot_errors.log", rotation="500 MB")
+
+# Flag to enable/disable interactive debugging
+DEBUG_MODE = False  # Set this to True to enable interactive debugging
+
+def custom_excepthook(type, value, tb):
+    """Custom exception hook that starts ipdb when an exception occurs."""
+    traceback.print_exception(type, value, tb)
+    if DEBUG_MODE:
+        ipdb.post_mortem(tb)
+
+# Set the custom exception hook
+sys.excepthook = custom_excepthook
 
 class Errors(commands.Cog):
     """
@@ -42,30 +62,19 @@ class Errors(commands.Cog):
             description (str): The description of the embed.
             button_color (discord.ButtonStyle): The color of the help button.
         """
-        embed: discord.Embed = discord.Embed(
-            title=title,
-            description=f"```py\n{description}```",
-            color=EMBED_COLOR)
+        embed: discord.Embed = discord.Embed(title=title,
+                                             description=f"```py\n{description}```",
+                                             color=EMBED_COLOR)
         view: discord.ui.View = discord.ui.View()
         view.add_item(HelpButton(ctx, title, description, button_color))
 
         try:
-            message: discord.Message = await ctx.send(embed=embed,
-                                                      view=view,
-                                                      ephemeral=True)
-            await message.delete(
-                delay=DELETE_AFTER
-            )  # Attempt to delete the message after a delay
+            message: discord.Message = await ctx.send(embed=embed, view=view, ephemeral=True)
+            await message.delete(delay=DELETE_AFTER)  # Attempt to delete the message after a delay
         except discord.errors.NotFound:
-            # The message or channel was not found, possibly deleted or bot lacks permissions
-            print(
-                "Failed to send or delete an error embed because the message or channel was not found, or bot lacks permissions."
-            )
+            logger.warning("Failed to send or delete an error embed: message or channel not found.")
         except discord.errors.Forbidden:
-            # The bot does not have the necessary permissions to delete the message
-            print(
-                "Failed to delete the error embed because the bot lacks the necessary permissions."
-            )
+            logger.warning("Failed to delete the error embed: insufficient permissions.")
 
     async def handle_error(self, ctx: commands.Context,
                            error: commands.CommandError, description: str,
@@ -81,6 +90,14 @@ class Errors(commands.Cog):
         """
         button_color: discord.ButtonStyle = self.get_button_color(title)
         await self.send_error_embed(ctx, title, description, button_color)
+
+        # Log the error only if it's not a Discord-related error
+        if not isinstance(error, (commands.CommandNotFound, commands.UserInputError, commands.CheckFailure)):
+            logger.error(f"Error in command {ctx.command}: {error}\n{description}")
+
+        # If in debug mode, start interactive debugger
+        if DEBUG_MODE:
+            ipdb.set_trace()
 
     def get_button_color(self, title: str) -> discord.ButtonStyle:
         """
@@ -120,8 +137,7 @@ class Errors(commands.Cog):
                 return discord.ButtonStyle.secondary  # Grey
 
     @commands.Cog.listener()
-    async def on_command_error(self, ctx: commands.Context,
-                               error: commands.CommandError) -> None:
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         """
         Handle errors that occur during command execution.
 
@@ -130,13 +146,9 @@ class Errors(commands.Cog):
             error (commands.CommandError): The error that was raised.
         """
         # Handling rate limit errors (HTTP 429)
-        if isinstance(error,
-                      discord.errors.HTTPException) and error.status == 429:
-            retry_after: int = int(error.response.headers.get(
-                "Retry-After", 5))
-            await ctx.send(
-                f"Rate limit hit! Retrying after {retry_after} seconds...",
-                delete_after=DELETE_AFTER)
+        if isinstance(error, discord.errors.HTTPException) and error.status == 429:
+            retry_after: int = int(error.response.headers.get("Retry-After", 5))
+            await ctx.send(f"Rate limit hit! Retrying after {retry_after} seconds...", delete_after=DELETE_AFTER)
             await asyncio.sleep(retry_after)
 
             # Retry the command
@@ -144,23 +156,27 @@ class Errors(commands.Cog):
                 await ctx.reinvoke()
             except discord.errors.HTTPException as e:
                 if e.status == 429:
-                    print("Hit rate limit again. Aborting retry.")
+                    logger.warning("Hit rate limit again. Aborting retry.")
                 else:
                     await self.on_command_error(ctx, e)
             return
 
         # Handle other errors
         command_name: str = ctx.command.qualified_name if ctx.command else "Unknown Command"
-        command_signature: str = getattr(ctx.command, 'signature',
-                                         '') if ctx.command else ""
+        command_signature: str = getattr(ctx.command, 'signature', '') if ctx.command else ""
 
         title, description = self.get_error_title_and_description(
             ctx, error, command_name, command_signature)
         await self.handle_error(ctx, error, description, title)
 
-    def get_error_title_and_description(
-            self, ctx: commands.Context, error: commands.CommandError,
-            command_name: str, command_signature: str) -> Tuple[str, str]:
+        # If in debug mode, start interactive debugger
+        if DEBUG_MODE:
+            ipdb.set_trace()
+
+    def get_error_title_and_description(self, ctx: commands.Context,
+                                        error: commands.CommandError,
+                                        command_name: str,
+                                        command_signature: str) -> Tuple[str, str]:
         """
         Get the title and description for the error embed based on the error type.
 
@@ -180,22 +196,18 @@ class Errors(commands.Cog):
                     f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
                 )
             case commands.CommandNotFound():
-                # Get the attempted command name
-                attempted_command = ctx.message.content.split(
-                )[0][len(ctx.prefix):]
-
-                # Find similar commands
+                attempted_command = ctx.message.content.split()[0][len(ctx.prefix):]
                 similar_commands: List[str] = get_close_matches(
-                    attempted_command, [cmd.name for cmd in self.bot.commands],
+                    attempted_command,
+                    [cmd.name for cmd in self.bot.commands],
                     n=1,
-                    cutoff=0.6)
-
+                    cutoff=0.6
+                )
                 if similar_commands:
                     suggestion: str = similar_commands[0]
                     description: str = f"Command not found. Did you mean `{ctx.prefix}{suggestion}`?"
                 else:
                     description = "Command not found. Please check your command and try again."
-
                 return ("Command Not Found", description)
             case commands.MissingPermissions():
                 perms: str = ', '.join(error.missing_permissions)
@@ -215,8 +227,7 @@ class Errors(commands.Cog):
                     f"This command is on cooldown. Try again after {error.retry_after:.2f} seconds."
                 )
             case commands.NotOwner():
-                return ("Not Owner",
-                        "Only the bot owner can use this command.")
+                return ("Not Owner", "Only the bot owner can use this command.")
             case commands.NoPrivateMessage():
                 return (
                     "No Private Message",
@@ -225,11 +236,9 @@ class Errors(commands.Cog):
             case commands.BadArgument():
                 return ("Bad Argument", str(error))
             case commands.CheckFailure():
-                return ("Check Failure",
-                        "You do not have permission to execute this command.")
+                return ("Check Failure", "You do not have permission to execute this command.")
             case commands.DisabledCommand():
-                return ("Disabled Command",
-                        "This command is currently disabled.")
+                return ("Disabled Command", "This command is currently disabled.")
             case commands.UserInputError():
                 return ("User Input Error", str(error))
             case commands.InvalidEndOfQuotedStringError():
@@ -250,11 +259,10 @@ class Errors(commands.Cog):
             case discord.HTTPException():
                 return ("HTTP Exception", "An HTTP exception occurred.")
             case _:
-                # Log the error with traceback
-                traceback_str: str = ''.join(
-                    traceback.format_exception(type(error), error,
-                                               error.__traceback__))
-                return ("Unexpected Error", traceback_str)
+                # Use traceback to get a simplified error message
+                tb_str = traceback.format_exception(type(error), error, error.__traceback__)
+                simplified_tb = ''.join(tb_str[-3:])  # Get the last 3 lines of the traceback
+                return ("Unexpected Error", simplified_tb)
 
 
 class HelpButton(discord.ui.Button):
