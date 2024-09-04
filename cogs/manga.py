@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
 import aiohttp
 
+
 class MangaReaderCog(commands.Cog):
 
     def __init__(self, bot):
@@ -18,7 +19,6 @@ class MangaReaderCog(commands.Cog):
         manga_name = " ".join(args_list[:-1])
         specified_volume = None
 
-        # Check if the last argument is a volume number
         if args_list[-1].isdigit():
             specified_volume = int(args_list[-1])
             manga_name = " ".join(args_list[:-1])
@@ -26,7 +26,6 @@ class MangaReaderCog(commands.Cog):
             manga_name = args
 
         async with aiohttp.ClientSession() as session:
-            # Step 1: Search for the manga by name
             async with session.get('https://api.mangadex.org/manga',
                                    params={
                                        'title': manga_name,
@@ -48,15 +47,14 @@ class MangaReaderCog(commands.Cog):
 
             manga_id = manga_results[0]['id']
 
-            # Step 2: Fetch all chapters for the manga, grouped by volume
             async with session.get(
-                f'https://api.mangadex.org/manga/{manga_id}/feed',
-                params={
-                    'translatedLanguage[]': 'en',
-                    'limit': 500,
-                    'order[volume]': 'asc',
-                    'order[chapter]': 'asc'
-                }) as chapter_response:
+                    f'https://api.mangadex.org/manga/{manga_id}/feed',
+                    params={
+                        'translatedLanguage[]': 'en',
+                        'limit': 500,
+                        'order[volume]': 'asc',
+                        'order[chapter]': 'asc'
+                    }) as chapter_response:
                 if chapter_response.status != 200:
                     await ctx.send(
                         'Failed to fetch chapters. Please try again later.',
@@ -71,33 +69,28 @@ class MangaReaderCog(commands.Cog):
                                ephemeral=True)
                 return
 
-            # Group chapters by volume and ensure volumes are in correct order
             volumes = {}
             for chapter in chapters:
                 volume_number = chapter['attributes'].get('volume', 'Unknown')
                 if volume_number is None:
-                    continue  # Skip chapters with no volume number
+                    continue
                 if volume_number not in volumes:
                     volumes[volume_number] = []
                 volumes[volume_number].append(chapter)
 
-            # Filter out 'Unknown' volumes and sort by volume number correctly
             sorted_volumes = sorted(
                 [(vol_num, vol_chapters)
                  for vol_num, vol_chapters in volumes.items()
                  if vol_num != 'Unknown'],
                 key=lambda x: int(x[0]) if x[0].isdigit() else float('inf'))
 
-            # Ensure there are volumes to display
             if not sorted_volumes:
                 await ctx.send('No readable volumes found for this manga.',
                                ephemeral=True)
                 return
 
-            # Determine total number of volumes
             total_volumes = len(sorted_volumes)
 
-            # Determine starting volume index based on specified volume
             if specified_volume is not None:
                 specified_volume_index = next(
                     (i for i, v in enumerate(sorted_volumes)
@@ -111,7 +104,6 @@ class MangaReaderCog(commands.Cog):
                                           specified_volume_index,
                                           total_volumes)
             else:
-                # Start with the first volume
                 await self.display_volume(ctx, manga_results, sorted_volumes,
                                           0, total_volumes)
 
@@ -123,15 +115,11 @@ class MangaReaderCog(commands.Cog):
                              total_volumes,
                              message=None,
                              chapter_index=0):
-        """
-        Fetch and display pages of the specified volume and chapter.
-        """
         current_volume = volumes[volume_index][1]
         current_chapter = current_volume[chapter_index]
         chapter_id = current_chapter['id']
 
         async with aiohttp.ClientSession() as session:
-            # Fetch pages for the current chapter of the volume
             async with session.get(
                     f'https://api.mangadex.org/at-home/server/{chapter_id}'
             ) as pages_response:
@@ -159,7 +147,6 @@ class MangaReaderCog(commands.Cog):
         pages = [
             f"{base_url}/data/{chapter_hash}/{page}" for page in page_files
         ]
-
         current_page = 0
 
         async def update_message(page_number):
@@ -171,7 +158,6 @@ class MangaReaderCog(commands.Cog):
             embed.set_footer(text=f'Page {page_number + 1} of {len(pages)}')
             return embed
 
-        # Check if we need to send a new message or edit the existing one
         if message is None:
             message = await ctx.send(embed=await update_message(current_page),
                                      ephemeral=True)
@@ -181,7 +167,6 @@ class MangaReaderCog(commands.Cog):
         async def create_view():
             view = View(timeout=30)
 
-            # Dropdown for chapter selection
             options = []
             for idx, chapter in enumerate(current_volume):
                 if idx == chapter_index:
@@ -195,7 +180,7 @@ class MangaReaderCog(commands.Cog):
                         description=chapter_title,
                         value=str(idx)))
 
-            options = options[:25]  # Show up to 25 chapters, excluding the current one
+            options = options[:25]
 
             async def select_chapter(interaction):
                 selected_idx = int(interaction.data['values'][0])
@@ -203,6 +188,7 @@ class MangaReaderCog(commands.Cog):
                                           volume_index, total_volumes, message,
                                           selected_idx)
                 await interaction.response.defer()
+                await self.update_view(message)
 
             chapter_select = Select(placeholder="Select a Chapter",
                                     options=options)
@@ -212,25 +198,27 @@ class MangaReaderCog(commands.Cog):
                 nonlocal current_page
                 if current_page < len(pages) - 1:
                     current_page += 1
-                    await message.edit(embed=await update_message(current_page))
+                    await message.edit(embed=await update_message(current_page)
+                                       )
                 else:
                     await interaction.response.send_message(
                         'This is the last page of the chapter.',
                         ephemeral=True)
                 await interaction.response.defer()
-                await message.edit(view=await create_view())  # Reset timeout
+                await self.update_view(message)
 
             async def go_to_previous_page(interaction):
                 nonlocal current_page
                 if current_page > 0:
                     current_page -= 1
-                    await message.edit(embed=await update_message(current_page))
+                    await message.edit(embed=await update_message(current_page)
+                                       )
                 else:
                     await interaction.response.send_message(
                         'This is the first page of the chapter.',
                         ephemeral=True)
                 await interaction.response.defer()
-                await message.edit(view=await create_view())  # Reset timeout
+                await self.update_view(message)
 
             async def go_to_next_volume(interaction):
                 if volume_index < len(volumes) - 1:
@@ -241,6 +229,7 @@ class MangaReaderCog(commands.Cog):
                     await interaction.response.send_message(
                         'This is the last volume.', ephemeral=True)
                 await interaction.response.defer()
+                await self.update_view(message)
 
             async def go_to_previous_volume(interaction):
                 if volume_index > 0:
@@ -251,14 +240,14 @@ class MangaReaderCog(commands.Cog):
                     await interaction.response.send_message(
                         'This is the first volume.', ephemeral=True)
                 await interaction.response.defer()
+                await self.update_view(message)
 
             async def go_to_page(interaction):
                 modal = Modal(title="Go to Page")
                 page_input = TextInput(
                     label="Page Number",
                     placeholder=f"Enter a number between 1 and {len(pages)}",
-                    required=True
-                )
+                    required=True)
                 modal.add_item(page_input)
 
                 async def on_submit(modal_interaction):
@@ -267,19 +256,17 @@ class MangaReaderCog(commands.Cog):
                         page_number = int(page_input.value) - 1
                         if 0 <= page_number < len(pages):
                             current_page = page_number
-                            await message.edit(embed=await update_message(current_page))
+                            await message.edit(
+                                embed=await update_message(current_page))
                         else:
                             await modal_interaction.response.send_message(
                                 f"Invalid page number. Please enter a number between 1 and {len(pages)}.",
-                                ephemeral=True
-                            )
+                                ephemeral=True)
                     except ValueError:
                         await modal_interaction.response.send_message(
-                            "Please enter a valid number.",
-                            ephemeral=True
-                        )
+                            "Please enter a valid number.", ephemeral=True)
                     await modal_interaction.response.defer()
-                    await message.edit(view=await create_view())  # Reset timeout
+                    await self.update_view(message)
 
                 modal.on_submit = on_submit
                 await interaction.response.send_modal(modal)
@@ -304,7 +291,6 @@ class MangaReaderCog(commands.Cog):
                                   style=discord.ButtonStyle.grey)
             go_to_button.callback = go_to_page
 
-            # Add items to the view in the desired order
             view.add_item(prev_button)
             view.add_item(prev_volume_button)
             view.add_item(next_volume_button)
@@ -314,13 +300,12 @@ class MangaReaderCog(commands.Cog):
 
             return view
 
-        # Update the message with the initial view
-        await message.edit(view=await create_view())
+        async def update_view(message):
+            new_view = await create_view()
+            await message.edit(view=new_view)
 
-        # Wait for the view's timeout, then remove the buttons
         view = await create_view()
 
-        # When the view times out, disable all buttons
         async def on_timeout():
             for item in view.children:
                 item.disabled = True
@@ -328,8 +313,11 @@ class MangaReaderCog(commands.Cog):
 
         view.on_timeout = on_timeout
 
-        # Start the view with timeout management
         await message.edit(view=view)
+
+    async def update_view(self, message):
+        new_view = await self.create_view()
+        await message.edit(view=new_view)
 
 
 async def setup(bot):
