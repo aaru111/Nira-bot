@@ -155,3 +155,7 @@ pyproject.toml
 # log
 
 discord_errors.log
+
+# drafts
+
+drafts/
