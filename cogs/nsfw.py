@@ -21,14 +21,11 @@ reddit = asyncpraw.Reddit(
     client_secret=REDDIT_CLIENT_SECRET,
     username="aaru101",
     password=REDDIT_PASSWORD,
-    user_agent="python:nira:1.0 (by u/aaru101)"  
+    user_agent="nira"  
 )
 
 
 class NSFW(commands.Cog):
-    """
-    ConchBot has one of the best NSFW categories on Discord, while not even being its main focus.
-    """
 
     def __init__(self, client: Bot) -> None:
         self.client = client
