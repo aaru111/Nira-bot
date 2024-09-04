@@ -282,8 +282,7 @@ class HelpView(discord.ui.View):
         # This method will be called when the view times out
         if self.message:  # Check if message is set
             try:
-                await self.message.delete(
-                    view)  # Edit the message to remove the view
+                await self.message.delete()  
             except discord.errors.NotFound:
                 logger.warning("Message not found for timeout handling.")
 
