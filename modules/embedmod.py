@@ -940,13 +940,6 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view.add_item(select)
     view.add_item(FieldCountButton(embed))
     view.add_embed_buttons()
-
-    # Add a non-interactive button with brief instructions
-    instructions = discord.ui.Button(label="How to Edit",
-                                     style=discord.ButtonStyle.secondary,
-                                     disabled=True)
-    view.add_item(instructions)
-
     return view
 
 
