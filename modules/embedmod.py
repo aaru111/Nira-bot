@@ -652,11 +652,11 @@ class ResetButton(BaseButton):
         new_embed = discord.Embed(description="** **")
         new_embed.color = self.embed.color
         self.embed = new_embed
-        await interaction.response.edit_message(content="✅ Embed reset.",
-                                                embed=self.embed,
-                                                view=create_embed_view(
-                                                    self.embed,
-                                                    interaction.client))
+        await interaction.response.edit_message(
+            content=
+            "✅ Embed reset to default. You can start configuring it again.",
+            embed=self.embed,
+            view=create_embed_view(self.embed, interaction.client))
 
 
 class HelpButton(BaseButton):
@@ -934,12 +934,19 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
                              value="schedule",
                              emoji="🕒"),
     ]
-    select = Select(placeholder="Choose a part of the embed to configure...",
+    select = Select(placeholder="Choose a part of the embed to edit...",
                     options=select_options)
     select.callback = bot.get_cog("EmbedCreator").dropdown_callback
     view.add_item(select)
     view.add_item(FieldCountButton(embed))
     view.add_embed_buttons()
+
+    # Add a non-interactive button with brief instructions
+    instructions = discord.ui.Button(label="How to Edit",
+                                     style=discord.ButtonStyle.secondary,
+                                     disabled=True)
+    view.add_item(instructions)
+
     return view
 
 

@@ -10,6 +10,7 @@ from utils.custom_colors import custom_colors
 # Import all classes and methods from embedmod.py
 from modules.embedmod import (AuthorModal, BodyModal, ImagesModal, FooterModal,
                               ScheduleModal, create_embed_view)
+from modules.embedtemp import get_template, templates
 
 
 class EmbedCreator(commands.Cog):
@@ -26,35 +27,35 @@ class EmbedCreator(commands.Cog):
     @app_commands.command(
         name="embed",
         description="Create a custom embed message interactively.")
-    async def embed(self, interaction: discord.Interaction) -> None:
-        self.embed_object = discord.Embed(
-            description="",
-            color=discord.Color.from_rgb(
-                *random.choice(list(custom_colors.values()))))
-        view = create_embed_view(self.embed_object, self.bot)
-        preview_embed = discord.Embed(
-            title="🛠️ Embed Configuration Preview.",
-            description=
-            ("```yaml\n"
-             "Please select an option from the dropdown below to begin configuring your embed.\n\n"
-             "Current Options:\n"
-             "- Author: Set the author of the embed.\n"
-             "- Body: Edit the main content of the embed.\n"
-             "- Images: Add an image or thumbnail.\n"
-             "- Footer: Configure the footer of the embed.\n"
-             "- Schedule Embed: Set a time to automatically send the embed.\n\n"
-             "Once you're satisfied, use the buttons below to send or reset the embed.\n"
-             "```"),
-            color=discord.Color.from_rgb(
-                *random.choice(list(custom_colors.values()))),
-            timestamp=discord.utils.utcnow())
-        preview_embed.set_footer(
-            text=f"Command initiated by {interaction.user.name}",
-            icon_url=interaction.user.avatar.url
-            if interaction.user.avatar else None)
-        await interaction.response.send_message(embed=preview_embed,
-                                                view=view,
-                                                ephemeral=True)
+    @app_commands.choices(template=[
+        app_commands.Choice(name=name.capitalize(), value=name)
+        for name in templates.keys()
+    ])
+    async def embed(self,
+                    interaction: discord.Interaction,
+                    template: str = None) -> None:
+        try:
+            if template:
+                self.embed_object = get_template(template)
+                content = f"Here's your {template.capitalize()} template. You can now edit it using the options below."
+            else:
+                self.embed_object = discord.Embed(
+                    description="Welcome to the Embed Creator!",
+                    color=discord.Color.from_rgb(
+                        *random.choice(list(custom_colors.values()))))
+                content = "Welcome to the Embed Creator. Please use the options below to configure your embed."
+
+            view = create_embed_view(self.embed_object, self.bot)
+
+            await interaction.response.send_message(content=content,
+                                                    embed=self.embed_object,
+                                                    view=view,
+                                                    ephemeral=True)
+        except Exception as e:
+            logging.error(f"Error in embed command: {str(e)}")
+            await interaction.response.send_message(
+                "An error occurred while creating the embed. Please try again.",
+                ephemeral=True)
 
     async def dropdown_callback(self,
                                 interaction: discord.Interaction) -> None:
