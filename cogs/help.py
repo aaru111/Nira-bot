@@ -30,12 +30,18 @@ class HelpView(discord.ui.View):
         self.current_category = None
         self.current_page = 0
         self.last_interaction_time = asyncio.get_event_loop().time()
+        self.message = None
 
     async def on_timeout(self) -> None:
         for item in self.children:
             if isinstance(item, (discord.ui.Button, discord.ui.Select)):
                 item.disabled = True
-        await self.message.edit(view=self)
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.errors.NotFound:
+                # Message might have been deleted
+                pass
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
@@ -385,12 +391,14 @@ class HelpCog(commands.Cog):
             if asyncio.get_event_loop().time(
             ) - view.last_interaction_time > VIEW_TIMEOUT:
                 for item in view.children:
-                    if isinstance(
-                            item,
-                        (discord.ui.Button, discord.ui.Select
-                         )):  # Check if the item is a button or select
+                    if isinstance(item,
+                                  (discord.ui.Button, discord.ui.Select)):
                         item.disabled = True
-                await view.message.edit(view=view)
+                if view.message:
+                    try:
+                        await view.message.edit(view=view)
+                    except discord.errors.NotFound:
+                        pass
                 view.stop()
                 break
 
