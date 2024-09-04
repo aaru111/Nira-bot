@@ -40,9 +40,25 @@ class EmbedCreator(commands.Cog):
                 content = f"Here's your {template.capitalize()} template. You can now edit it using the options below."
             else:
                 self.embed_object = discord.Embed(
-                    description="Welcome to the Embed Creator!",
+                    title="🛠️ Embed Configuration Preview",
+                    description=
+                    ("```yaml\n"
+                     "Please select an option from the dropdown below to begin configuring your embed.\n\n"
+                     "Current Options:\n"
+                     "- Author: Set the author of the embed.\n"
+                     "- Body: Edit the main content of the embed.\n"
+                     "- Images: Add an image or thumbnail.\n"
+                     "- Footer: Configure the footer of the embed.\n"
+                     "- Schedule Embed: Set a time to automatically send the embed.\n\n"
+                     "Once you're satisfied, use the buttons below to send or reset the embed.\n"
+                     "```"),
                     color=discord.Color.from_rgb(
-                        *random.choice(list(custom_colors.values()))))
+                        *random.choice(list(custom_colors.values()))),
+                    timestamp=discord.utils.utcnow())
+                self.embed_object.set_footer(
+                    text=f"Command initiated by {interaction.user.name}",
+                    icon_url=interaction.user.avatar.url
+                    if interaction.user.avatar else None)
                 content = "Welcome to the Embed Creator. Please use the options below to configure your embed."
 
             view = create_embed_view(self.embed_object, self.bot)
