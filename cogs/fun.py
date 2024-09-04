@@ -292,21 +292,56 @@ class Fun(commands.Cog):
         embed.add_field(name="Number:", value=f"```py\n{rand_int}```")
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="joke")
-    async def joke(self, ctx: commands.Context) -> None:
-        """Fetches a random joke from an API."""
-        await ctx.defer()
-        try:
-            joke = await self.get_joke()
-            msg = self.format_joke(joke)
-            await ctx.send(msg)
-        except Exception as e:
-            await ctx.send(f"Error: {str(e)}")
+    @app_commands.command(name="joke")
+    @app_commands.describe(category="Choose a joke category")
+    @app_commands.choices(category=[
+        app_commands.Choice(name="Any", value="Any"),
+        app_commands.Choice(name="Programming", value="Programming"),
+        app_commands.Choice(name="Misc", value="Misc"),
+        app_commands.Choice(name="Dark", value="Dark"),
+        app_commands.Choice(name="Pun", value="Pun"),
+        app_commands.Choice(name="Spooky", value="Spooky"),
+        app_commands.Choice(name="Christmas", value="Christmas"),
+        app_commands.Choice(name="NSFW", value="NSFW")
+    ])
+    async def joke(self,
+                   interaction: discord.Interaction,
+                   category: str = "Any") -> None:
+        """Fetches a random joke from the selected category."""
+        await interaction.response.defer()
 
-    async def get_joke(self) -> Dict[str, Union[str, Dict[str, str]]]:
+        is_nsfw_channel = isinstance(
+            interaction.channel,
+            discord.TextChannel) and interaction.channel.is_nsfw()
+
+        if (category in ["NSFW"] and not is_nsfw_channel):
+            await interaction.followup.send(
+                "This joke category can only be used in NSFW channels.")
+            return
+
+        try:
+            joke = await self.get_joke(category, is_nsfw_channel)
+            msg = self.format_joke(joke)
+            await interaction.followup.send(msg)
+        except Exception as e:
+            await interaction.followup.send(f"Error: {str(e)}")
+
+    async def get_joke(
+            self, category: str,
+            allow_nsfw: bool) -> Dict[str, Union[str, Dict[str, str]]]:
+        params = {}
+        if not allow_nsfw:
+            params[
+                "blacklistFlags"] = "nsfw,religious,political,racist,sexist,explicit"
+
+        if category == "NSFW":
+            url = "https://v2.jokeapi.dev/joke/Any"
+            params["blacklistFlags"] = "religious,political,racist,sexist"
+        else:
+            url = f"https://v2.jokeapi.dev/joke/{category}"
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                    "https://v2.jokeapi.dev/joke/Any?safe-mode") as response:
+            async with session.get(url, params=params) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
