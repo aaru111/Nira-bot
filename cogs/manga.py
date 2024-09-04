@@ -69,7 +69,7 @@ class MangaReaderCog(commands.Cog):
             # Start with the first volume
             await self.display_volume(ctx, manga_results, sorted_volumes, 0)
 
-    async def display_volume(self, ctx, manga_results, volumes, volume_index):
+    async def display_volume(self, ctx, manga_results, volumes, volume_index, message=None):
         """
         Fetch and display pages of the specified volume.
         """
@@ -111,8 +111,11 @@ class MangaReaderCog(commands.Cog):
                 text=f'Page {page_number + 1} of {len(pages)}')
             return embed
 
-        # Send the initial embed message
-        message = await ctx.send(embed=await update_message(current_page))
+        # Check if we need to send a new message or edit the existing one
+        if message is None:
+            message = await ctx.send(embed=await update_message(current_page))
+        else:
+            await message.edit(embed=await update_message(current_page))
 
         # Adding navigation buttons
         view = View()
@@ -122,20 +125,24 @@ class MangaReaderCog(commands.Cog):
             if current_page < len(pages) - 1:
                 current_page += 1
                 await message.edit(embed=await update_message(current_page))
+            await interaction.response.defer()
 
         async def go_to_previous_page(interaction):
             nonlocal current_page
             if current_page > 0:
                 current_page -= 1
                 await message.edit(embed=await update_message(current_page))
+            await interaction.response.defer()
 
         async def go_to_next_volume(interaction):
             if volume_index < len(volumes) - 1:
-                await self.display_volume(ctx, manga_results, volumes, volume_index + 1)
+                await self.display_volume(ctx, manga_results, volumes, volume_index + 1, message)
+            await interaction.response.defer()
 
         async def go_to_previous_volume(interaction):
             if volume_index > 0:
-                await self.display_volume(ctx, manga_results, volumes, volume_index - 1)
+                await self.display_volume(ctx, manga_results, volumes, volume_index - 1, message)
+            await interaction.response.defer()
 
         prev_button = Button(label='Previous Page', style=discord.ButtonStyle.red)
         prev_button.callback = go_to_previous_page
@@ -155,6 +162,7 @@ class MangaReaderCog(commands.Cog):
         view.add_item(next_volume_button)
         view.add_item(next_button)
 
+        # Update the message with the view containing navigation buttons
         await message.edit(view=view)
 
 
