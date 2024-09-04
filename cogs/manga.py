@@ -56,7 +56,7 @@ class MangaReaderCog(commands.Cog):
                 await ctx.send('No readable chapters found for this manga.')
                 return
 
-            # Group chapters by volume
+            # Group chapters by volume and ensure volumes are in correct order
             volumes = {}
             for chapter in chapters:
                 volume_number = chapter['attributes'].get('volume', 'Unknown')
@@ -64,7 +64,11 @@ class MangaReaderCog(commands.Cog):
                     volumes[volume_number] = []
                 volumes[volume_number].append(chapter)
 
-            sorted_volumes = sorted(volumes.items(), key=lambda x: x[0] if x[0] != 'Unknown' else float('inf'))
+            # Filter out 'Unknown' volumes and sort by volume number correctly
+            sorted_volumes = sorted(
+                [(vol_num, vol_chapters) for vol_num, vol_chapters in volumes.items() if vol_num != 'Unknown'],
+                key=lambda x: (int(x[0]) if x[0].isdigit() else float('inf'))
+            )
 
             # Start with the first volume
             await self.display_volume(ctx, manga_results, sorted_volumes, 0)
@@ -118,7 +122,7 @@ class MangaReaderCog(commands.Cog):
             await message.edit(embed=await update_message(current_page))
 
         # Adding navigation buttons
-        view = View()
+        view = View(timeout=30)
 
         async def go_to_next_page(interaction):
             nonlocal current_page
@@ -164,6 +168,9 @@ class MangaReaderCog(commands.Cog):
 
         # Update the message with the view containing navigation buttons
         await message.edit(view=view)
+
+        # Reset the timeout each time a button is pressed
+        view.on_timeout = lambda: message.edit(view=None)
 
 
 async def setup(bot):
