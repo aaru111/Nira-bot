@@ -583,34 +583,6 @@ class Moderation(commands.Cog):
         view = RoleInfoView(role)
         await ctx.send(embed=embed, view=view)
 
-    @commands.hybrid_command()
-    @commands.has_permissions(administrator=True)
-    async def lock(self,
-                   ctx: commands.Context,
-                   *,
-                   reason: Optional[str] = "No reason provided"):
-        """Lock a channel by preventing the default role from sending messages."""
-        await self._set_channel_permission(ctx.channel, send_messages=False)
-        embed = discord.Embed(title="🔒 Locked",
-                              description=f"Reason: {reason}",
-                              color=discord.Color.red())
-        await ctx.send(embed=embed)
-
-    @commands.hybrid_command()
-    @commands.has_permissions(administrator=True)
-    async def unlock(self, ctx: commands.Context):
-        """Unlock a channel by allowing the default role to send messages."""
-        await self._set_channel_permission(ctx.channel, send_messages=True)
-        embed = discord.Embed(title="🔓 Unlocked", color=discord.Color.green())
-        await ctx.send(embed=embed)
-
-    @commands.hybrid_command()
-    @commands.has_permissions(administrator=True)
-    async def lock_server(self, ctx: commands.Context):
-        """Lock the server by preventing the default role from viewing all text channels."""
-        await self._set_server_permissions(ctx.guild, view_channel=False)
-        await ctx.send("Server has been locked.")
-
     @commands.hybrid_command(name="userinfo",
                              aliases=["user", "stats"],
                              description="Displays user information.")
@@ -716,32 +688,6 @@ class Moderation(commands.Cog):
             inline=False)
         embed.set_footer(text=f"Requested by {context.author}")
         await context.send(embed=embed)
-
-    @commands.hybrid_command()
-    @commands.has_permissions(administrator=True)
-    async def unlock_server(self, ctx: commands.Context):
-        """Unlock the server by allowing the default role to view all text channels."""
-        await self._set_server_permissions(ctx.guild, view_channel=True)
-        await ctx.send("Server has been unlocked.")
-
-    async def _set_channel_permission(self,
-                                      channel: discord.TextChannel,
-                                      send_messages: Optional[bool] = None):
-        """Set send_messages permission for default role in a channel."""
-        overwrite = channel.overwrites_for(channel.guild.default_role)
-        overwrite.send_messages = send_messages
-        await channel.set_permissions(channel.guild.default_role,
-                                      overwrite=overwrite)
-
-    async def _set_server_permissions(self,
-                                      guild: discord.Guild,
-                                      view_channel: Optional[bool] = None):
-        """Set view_channel permission for default role in all text channels in the server."""
-        for channel in guild.text_channels:
-            overwrite = channel.overwrites_for(guild.default_role)
-            overwrite.view_channel = view_channel
-            await channel.set_permissions(guild.default_role,
-                                          overwrite=overwrite)
 
     @commands.hybrid_command(
         name="invite",
