@@ -8,9 +8,11 @@ from typing import List
 from loguru import logger
 import sys
 import ipdb
+from discord.ext.commands import CommandInvokeError
 
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
 DEFAULT_EMBED_COLOR: int = 0x2f3131  # Default embed color
+MAX_RETRIES: int = 3  # Number of retries for rate limit handling
 
 logger.remove()
 logger.add(
@@ -53,13 +55,14 @@ class Errors(commands.Cog):
             title=title,
             description=f"```py\n{description}```",
             color=embed_color)
-        view: discord.ui.View = discord.ui.View()
+        view: HelpView = HelpView()  # Create an instance of HelpView
         view.add_item(HelpButton(ctx, title, description, button_color))
 
         try:
             message: discord.Message = await ctx.send(embed=embed,
                                                       view=view,
                                                       ephemeral=True)
+            view.message = message  # Assign the message to the view object
             await message.delete(delay=DELETE_AFTER)
         except discord.errors.NotFound:
             logger.warning(
@@ -243,11 +246,46 @@ class Errors(commands.Cog):
                 return ("Not Found", "The requested resource was not found.")
             case discord.HTTPException():
                 return ("HTTP Exception", "An HTTP exception occurred.")
+            case CommandInvokeError() as invoke_error:
+                # Extract the original exception if available
+                original = invoke_error.original
+                if isinstance(original,
+                              TypeError) and 'NoneType' in str(original):
+                    # Handle the specific TypeError with 'NoneType' being iterable
+                    return (
+                        "Unexpected Error",
+                        "A command raised an exception: 'NoneType' object is not iterable. Please check your input and try again."
+                    )
+                else:
+                    # For other invoke errors, log detailed information
+                    tb_str = traceback.format_exception(
+                        type(original), original, original.__traceback__)
+                    simplified_tb = ''.join(tb_str[-3:])
+                    logger.error(
+                        f"Error in command {ctx.command}: {simplified_tb}")
+                    return ("Command Error",
+                            f"An error occurred: {simplified_tb}")
             case _:
                 tb_str = traceback.format_exception(type(error), error,
                                                     error.__traceback__)
                 simplified_tb = ''.join(tb_str[-3:])
                 return ("Unexpected Error", simplified_tb)
+
+
+class HelpView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=60)  # Set your desired timeout
+        self.message = None  # Initialize the message attribute
+
+    async def on_timeout(self):
+        # This method will be called when the view times out
+        if self.message:  # Check if message is set
+            try:
+                await self.message.delete(
+                    view)  # Edit the message to remove the view
+            except discord.errors.NotFound:
+                logger.warning("Message not found for timeout handling.")
 
 
 class HelpButton(discord.ui.Button):
