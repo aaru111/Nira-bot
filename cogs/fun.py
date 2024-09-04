@@ -4,7 +4,6 @@ from discord import app_commands
 import random
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from jokeapi import Jokes
 import aiohttp
 import os
 from scripts.collatz import is_collatz_conjecture
@@ -298,17 +297,25 @@ class Fun(commands.Cog):
         """Fetches a random joke from an API."""
         await ctx.defer()
         try:
-            j: Jokes = await Jokes()
-            joke: Dict[str, Union[str, Dict[str, str]]] = await j.get_joke()
-
-            msg: str = self.format_joke(joke)
+            joke = await self.get_joke()
+            msg = self.format_joke(joke)
             await ctx.send(msg)
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
 
+    async def get_joke(self) -> Dict[str, Union[str, Dict[str, str]]]:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                    "https://v2.jokeapi.dev/joke/Any?safe-mode") as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    raise Exception(
+                        f"Failed to fetch joke: HTTP {response.status}")
+
     def format_joke(self, joke: Dict[str, Union[str, Dict[str, str]]]) -> str:
         if joke["type"] == "single":
-            return str(joke["joke"])
+            return joke["joke"]
         elif joke["type"] == "twopart":
             return f"{joke['setup']} ||{joke['delivery']}||"
         else:
