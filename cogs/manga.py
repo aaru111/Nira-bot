@@ -1,8 +1,7 @@
 import discord
 from discord.ext import commands
-from discord.ui import Button, View, Select
+from discord.ui import Button, View, Select, Modal, TextInput
 import aiohttp
-
 
 class MangaReaderCog(commands.Cog):
 
@@ -196,8 +195,7 @@ class MangaReaderCog(commands.Cog):
                         description=chapter_title,
                         value=str(idx)))
 
-            options = options[:
-                              25]  # Show up to 25 chapters, excluding the current one
+            options = options[:25]  # Show up to 25 chapters, excluding the current one
 
             async def select_chapter(interaction):
                 selected_idx = int(interaction.data['values'][0])
@@ -214,8 +212,7 @@ class MangaReaderCog(commands.Cog):
                 nonlocal current_page
                 if current_page < len(pages) - 1:
                     current_page += 1
-                    await message.edit(embed=await update_message(current_page)
-                                       )
+                    await message.edit(embed=await update_message(current_page))
                 else:
                     await interaction.response.send_message(
                         'This is the last page of the chapter.',
@@ -227,8 +224,7 @@ class MangaReaderCog(commands.Cog):
                 nonlocal current_page
                 if current_page > 0:
                     current_page -= 1
-                    await message.edit(embed=await update_message(current_page)
-                                       )
+                    await message.edit(embed=await update_message(current_page))
                 else:
                     await interaction.response.send_message(
                         'This is the first page of the chapter.',
@@ -256,6 +252,38 @@ class MangaReaderCog(commands.Cog):
                         'This is the first volume.', ephemeral=True)
                 await interaction.response.defer()
 
+            async def go_to_page(interaction):
+                modal = Modal(title="Go to Page")
+                page_input = TextInput(
+                    label="Page Number",
+                    placeholder=f"Enter a number between 1 and {len(pages)}",
+                    required=True
+                )
+                modal.add_item(page_input)
+
+                async def on_submit(modal_interaction):
+                    nonlocal current_page
+                    try:
+                        page_number = int(page_input.value) - 1
+                        if 0 <= page_number < len(pages):
+                            current_page = page_number
+                            await message.edit(embed=await update_message(current_page))
+                        else:
+                            await modal_interaction.response.send_message(
+                                f"Invalid page number. Please enter a number between 1 and {len(pages)}.",
+                                ephemeral=True
+                            )
+                    except ValueError:
+                        await modal_interaction.response.send_message(
+                            "Please enter a valid number.",
+                            ephemeral=True
+                        )
+                    await modal_interaction.response.defer()
+                    await message.edit(view=await create_view())  # Reset timeout
+
+                modal.on_submit = on_submit
+                await interaction.response.send_modal(modal)
+
             prev_button = Button(label='Previous Page',
                                  style=discord.ButtonStyle.red)
             prev_button.callback = go_to_previous_page
@@ -272,11 +300,16 @@ class MangaReaderCog(commands.Cog):
                                         style=discord.ButtonStyle.blurple)
             next_volume_button.callback = go_to_next_volume
 
+            go_to_button = Button(label='Go to Page',
+                                  style=discord.ButtonStyle.grey)
+            go_to_button.callback = go_to_page
+
             # Add items to the view in the desired order
             view.add_item(prev_button)
             view.add_item(prev_volume_button)
             view.add_item(next_volume_button)
             view.add_item(next_button)
+            view.add_item(go_to_button)
             view.add_item(chapter_select)
 
             return view
