@@ -186,7 +186,7 @@ class MangaReaderCog(commands.Cog):
         current_volume = volumes[volume_index][1]
         current_chapter = current_volume[chapter_index]
         chapter_id = current_chapter['id']
-        external_url = current_chapter['attributes'].get('externalUrl')
+        external_url = current_chapter['attributes'].get('externalUrl', None)
         manga_name = current_chapter['attributes'].get('title')
         if external_url:
             await ctx.send(
