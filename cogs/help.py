@@ -5,6 +5,7 @@ from typing import List, Optional, Union, Any, Dict
 import inspect
 import math
 import asyncio
+from loguru import logger
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR = discord.Color.brand_red()
@@ -30,17 +31,20 @@ class HelpView(discord.ui.View):
         self.current_category = None
         self.current_page = 0
         self.last_interaction_time = asyncio.get_event_loop().time()
-        self.message = None
+        self.message: Optional[discord.Message] = None
 
     async def on_timeout(self) -> None:
         for item in self.children:
             if isinstance(item, (discord.ui.Button, discord.ui.Select)):
                 item.disabled = True
-        if self.message:
+        if self.message is not None:
             try:
                 await self.message.edit(view=self)
-            except discord.errors.NotFound:
-                # Message might have been deleted
+            except discord.NotFound:
+                # Message was deleted, there is nothing we can do [napolean(song plays)]
+                pass
+            except discord.HTTPException:
+                # Any other error, we'll just ignore it
                 pass
 
     async def interaction_check(self,
