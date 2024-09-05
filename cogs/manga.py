@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
 import aiohttp
+import re
 
 
 class MangaReaderCog(commands.Cog):
@@ -10,27 +11,80 @@ class MangaReaderCog(commands.Cog):
         self.bot = bot
 
     @commands.hybrid_command(name='manga')
-    async def manga(self, ctx, *, args: str):
+    async def manga(self, ctx, *, query: str):
         """
         Command to search and read a manga using the MangaDex API.
-        Syntax: /manga <manga_name> [volume_number]
+        Syntax: /manga <manga_id_or_name> [volume_number]
         """
-        args_list = args.split()
-        manga_name = " ".join(args_list[:-1])
+        query_parts = query.split()
         specified_volume = None
 
-        if args_list[-1].isdigit():
-            specified_volume = int(args_list[-1])
-            manga_name = " ".join(args_list[:-1])
-        else:
-            manga_name = args
+        if query_parts[-1].isdigit():
+            specified_volume = int(query_parts[-1])
+            query = " ".join(query_parts[:-1])
 
+        # Check if the query is a MangaDex ID
+        if re.match(
+                r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$',
+                query):
+            manga_id = query
+            await self.display_manga(ctx, manga_id, specified_volume)
+        else:
+            # If not an ID, search for the manga by name
+            await self.search_manga(ctx, query, specified_volume)
+
+    async def search_manga(self, ctx, manga_name, specified_volume):
         async with aiohttp.ClientSession() as session:
             async with session.get('https://api.mangadex.org/manga',
                                    params={
                                        'title': manga_name,
-                                       'limit': 1
+                                       'limit': 5,
+                                       'order[relevance]': 'desc'
                                    }) as response:
+                if response.status != 200:
+                    await ctx.send(
+                        'Failed to search for manga. Please try again later.',
+                        ephemeral=True)
+                    return None
+
+                manga_data = await response.json()
+                manga_results = manga_data.get('data', [])
+
+        if not manga_results:
+            await ctx.send(f'No results found for "{manga_name}".',
+                           ephemeral=True)
+            return None
+
+        if len(manga_results) == 1:
+            await self.display_manga(ctx, manga_results[0]['id'],
+                                     specified_volume)
+            return
+
+        # If multiple results, let the user choose
+        options = []
+        for manga in manga_results:
+            title = manga['attributes']['title'].get('en') or next(
+                iter(manga['attributes']['title'].values()))
+            options.append(
+                discord.SelectOption(label=title[:100], value=manga['id']))
+
+        select = Select(placeholder="Choose a manga", options=options)
+
+        async def select_callback(interaction):
+            await interaction.response.defer()
+            await self.display_manga(ctx, select.values[0], specified_volume)
+
+        select.callback = select_callback
+        view = View()
+        view.add_item(select)
+        await ctx.send("Multiple manga found. Please select one:",
+                       view=view,
+                       ephemeral=True)
+
+    async def display_manga(self, ctx, manga_id, specified_volume=None):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                    f'https://api.mangadex.org/manga/{manga_id}') as response:
                 if response.status != 200:
                     await ctx.send(
                         'Failed to fetch manga data. Please try again later.',
@@ -38,19 +92,17 @@ class MangaReaderCog(commands.Cog):
                     return
 
                 manga_data = await response.json()
-                manga_results = manga_data.get('data', [])
+                manga_result = manga_data.get('data')
 
-            if not manga_results:
-                await ctx.send(f'No results found for "{manga_name}".',
+            if not manga_result:
+                await ctx.send('No manga found with the provided ID.',
                                ephemeral=True)
                 return
-
-            manga_id = manga_results[0]['id']
 
             async with session.get(
                     f'https://api.mangadex.org/manga/{manga_id}/feed',
                     params={
-                        'translatedLanguage[]': 'en',
+                        'translatedLanguage[]': ['en'],
                         'limit': 500,
                         'order[volume]': 'asc',
                         'order[chapter]': 'asc'
@@ -64,52 +116,54 @@ class MangaReaderCog(commands.Cog):
                 chapter_data = await chapter_response.json()
                 chapters = chapter_data.get('data', [])
 
-            if not chapters:
-                await ctx.send('No readable chapters found for this manga.',
-                               ephemeral=True)
+        if not chapters:
+            await ctx.send('No readable chapters found for this manga.',
+                           ephemeral=True)
+            return
+
+        volumes = {}
+        for chapter in chapters:
+            volume_number = chapter['attributes'].get('volume') or 'Unknown'
+            if volume_number not in volumes:
+                volumes[volume_number] = []
+            volumes[volume_number].append(chapter)
+
+        sorted_volumes = sorted(
+            [(vol_num, vol_chapters)
+             for vol_num, vol_chapters in volumes.items()
+             if vol_num != 'Unknown'],
+            key=lambda x: float(x[0])
+            if x[0].replace('.', '', 1).isdigit() else float('inf'))
+
+        if 'Unknown' in volumes:
+            sorted_volumes.append(('Unknown', volumes['Unknown']))
+
+        if not sorted_volumes:
+            await ctx.send('No readable volumes found for this manga.',
+                           ephemeral=True)
+            return
+
+        total_volumes = len(sorted_volumes)
+
+        if specified_volume is not None:
+            specified_volume_index = next(
+                (i for i, v in enumerate(sorted_volumes)
+                 if v[0] != 'Unknown' and float(v[0]) == specified_volume),
+                None)
+            if specified_volume_index is None:
+                await ctx.send(
+                    f'Volume {specified_volume} not found. This manga has {total_volumes} volumes.',
+                    ephemeral=True)
                 return
-
-            volumes = {}
-            for chapter in chapters:
-                volume_number = chapter['attributes'].get('volume', 'Unknown')
-                if volume_number is None:
-                    continue
-                if volume_number not in volumes:
-                    volumes[volume_number] = []
-                volumes[volume_number].append(chapter)
-
-            sorted_volumes = sorted(
-                [(vol_num, vol_chapters)
-                 for vol_num, vol_chapters in volumes.items()
-                 if vol_num != 'Unknown'],
-                key=lambda x: int(x[0]) if x[0].isdigit() else float('inf'))
-
-            if not sorted_volumes:
-                await ctx.send('No readable volumes found for this manga.',
-                               ephemeral=True)
-                return
-
-            total_volumes = len(sorted_volumes)
-
-            if specified_volume is not None:
-                specified_volume_index = next(
-                    (i for i, v in enumerate(sorted_volumes)
-                     if int(v[0]) == specified_volume), None)
-                if specified_volume_index is None:
-                    await ctx.send(
-                        f'Volume {specified_volume} not found. This manga has {total_volumes} volumes.',
-                        ephemeral=True)
-                    return
-                await self.display_volume(ctx, manga_results, sorted_volumes,
-                                          specified_volume_index,
-                                          total_volumes)
-            else:
-                await self.display_volume(ctx, manga_results, sorted_volumes,
-                                          0, total_volumes)
+            await self.display_volume(ctx, manga_result, sorted_volumes,
+                                      specified_volume_index, total_volumes)
+        else:
+            await self.display_volume(ctx, manga_result, sorted_volumes, 0,
+                                      total_volumes)
 
     async def display_volume(self,
                              ctx,
-                             manga_results,
+                             manga_result,
                              volumes,
                              volume_index,
                              total_volumes,
@@ -149,175 +203,171 @@ class MangaReaderCog(commands.Cog):
         ]
         current_page = 0
 
-        async def update_message(page_number):
-            embed = discord.Embed(
-                title=
-                f"{manga_results[0]['attributes']['title']['en']} - Volume {volumes[volume_index][0]} - Chapter {current_chapter['attributes']['chapter']} - Page {page_number + 1}",
-                color=discord.Color.blue())
-            embed.set_image(url=pages[page_number])
-            embed.set_footer(text=f'Page {page_number + 1} of {len(pages)}')
-            return embed
+        embed = await self.create_embed(manga_result, volumes, volume_index,
+                                        total_volumes, current_chapter, pages,
+                                        current_page)
 
         if message is None:
-            message = await ctx.send(embed=await update_message(current_page),
-                                     ephemeral=True)
+            message = await ctx.send(embed=embed)
         else:
-            await message.edit(embed=await update_message(current_page))
+            await message.edit(embed=embed)
 
-        async def create_view():
-            view = View(timeout=30)
-
-            options = []
-            for idx, chapter in enumerate(current_volume):
-                if idx == chapter_index:
-                    continue
-                chapter_title = chapter['attributes']['title']
-                if isinstance(chapter_title, dict):
-                    chapter_title = chapter_title.get('en', '')
-                options.append(
-                    discord.SelectOption(
-                        label=f"Chapter {chapter['attributes']['chapter']}",
-                        description=chapter_title,
-                        value=str(idx)))
-
-            options = options[:25]
-
-            async def select_chapter(interaction):
-                selected_idx = int(interaction.data['values'][0])
-                await self.display_volume(ctx, manga_results, volumes,
-                                          volume_index, total_volumes, message,
-                                          selected_idx)
-                await interaction.response.defer()
-                await self.update_view(message)
-
-            chapter_select = Select(placeholder="Select a Chapter",
-                                    options=options)
-            chapter_select.callback = select_chapter
-
-            async def go_to_next_page(interaction):
-                nonlocal current_page
-                if current_page < len(pages) - 1:
-                    current_page += 1
-                    await message.edit(embed=await update_message(current_page)
-                                       )
-                else:
-                    await interaction.response.send_message(
-                        'This is the last page of the chapter.',
-                        ephemeral=True)
-                await interaction.response.defer()
-                await self.update_view(message)
-
-            async def go_to_previous_page(interaction):
-                nonlocal current_page
-                if current_page > 0:
-                    current_page -= 1
-                    await message.edit(embed=await update_message(current_page)
-                                       )
-                else:
-                    await interaction.response.send_message(
-                        'This is the first page of the chapter.',
-                        ephemeral=True)
-                await interaction.response.defer()
-                await self.update_view(message)
-
-            async def go_to_next_volume(interaction):
-                if volume_index < len(volumes) - 1:
-                    await self.display_volume(ctx, manga_results, volumes,
-                                              volume_index + 1, total_volumes,
-                                              message)
-                else:
-                    await interaction.response.send_message(
-                        'This is the last volume.', ephemeral=True)
-                await interaction.response.defer()
-                await self.update_view(message)
-
-            async def go_to_previous_volume(interaction):
-                if volume_index > 0:
-                    await self.display_volume(ctx, manga_results, volumes,
-                                              volume_index - 1, total_volumes,
-                                              message)
-                else:
-                    await interaction.response.send_message(
-                        'This is the first volume.', ephemeral=True)
-                await interaction.response.defer()
-                await self.update_view(message)
-
-            async def go_to_page(interaction):
-                modal = Modal(title="Go to Page")
-                page_input = TextInput(
-                    label="Page Number",
-                    placeholder=f"Enter a number between 1 and {len(pages)}",
-                    required=True)
-                modal.add_item(page_input)
-
-                async def on_submit(modal_interaction):
-                    nonlocal current_page
-                    try:
-                        page_number = int(page_input.value) - 1
-                        if 0 <= page_number < len(pages):
-                            current_page = page_number
-                            await message.edit(
-                                embed=await update_message(current_page))
-                        else:
-                            await modal_interaction.response.send_message(
-                                f"Invalid page number. Please enter a number between 1 and {len(pages)}.",
-                                ephemeral=True)
-                    except ValueError:
-                        await modal_interaction.response.send_message(
-                            "Please enter a valid number.", ephemeral=True)
-                    await modal_interaction.response.defer()
-                    await self.update_view(message)
-
-                modal.on_submit = on_submit
-                await interaction.response.send_modal(modal)
-
-            prev_button = Button(label='Previous Page',
-                                 style=discord.ButtonStyle.red)
-            prev_button.callback = go_to_previous_page
-
-            next_button = Button(label='Next Page',
-                                 style=discord.ButtonStyle.green)
-            next_button.callback = go_to_next_page
-
-            prev_volume_button = Button(label='Previous Volume',
-                                        style=discord.ButtonStyle.blurple)
-            prev_volume_button.callback = go_to_previous_volume
-
-            next_volume_button = Button(label='Next Volume',
-                                        style=discord.ButtonStyle.blurple)
-            next_volume_button.callback = go_to_next_volume
-
-            go_to_button = Button(label='Go to Page',
-                                  style=discord.ButtonStyle.grey)
-            go_to_button.callback = go_to_page
-
-            view.add_item(prev_button)
-            view.add_item(prev_volume_button)
-            view.add_item(next_volume_button)
-            view.add_item(next_button)
-            view.add_item(go_to_button)
-            view.add_item(chapter_select)
-
-            return view
-
-        async def update_view(message):
-            new_view = await create_view()
-            await message.edit(view=new_view)
-
-        view = await create_view()
-
-        async def on_timeout():
-            for item in view.children:
-                item.disabled = True
-            await message.edit(view=view)
-
-        view.on_timeout = on_timeout
-
+        view = await self.create_view(ctx, manga_result, volumes, volume_index,
+                                      total_volumes, message, current_volume,
+                                      chapter_index, pages, current_page)
         await message.edit(view=view)
 
-    async def update_view(self, message):
-        new_view = await self.create_view()
-        await message.edit(view=new_view)
+    async def create_embed(self, manga_result, volumes, volume_index,
+                           total_volumes, current_chapter, pages, page_number):
+        manga_title = manga_result['attributes']['title'].get('en') or next(
+            iter(manga_result['attributes']['title'].values()))
+        current_volume_number = volumes[volume_index][0]
+        embed = discord.Embed(
+            title=
+            f"{manga_title} - Volume {current_volume_number} - Chapter {current_chapter['attributes']['chapter']}",
+            color=discord.Color.blue())
+        embed.set_image(url=pages[page_number])
+        embed.set_footer(
+            text=
+            f'Volume {current_volume_number}/{total_volumes} | Page {page_number + 1} of {len(pages)}'
+        )
+        return embed
+
+    async def create_view(self, ctx, manga_result, volumes, volume_index,
+                          total_volumes, message, current_volume,
+                          chapter_index, pages, current_page):
+        view = View(timeout=300)  # 5 minutes timeout
+
+        options = []
+        for idx, chapter in enumerate(current_volume):
+            chapter_title = chapter['attributes'].get(
+                'title') or f"Chapter {chapter['attributes']['chapter']}"
+            options.append(
+                discord.SelectOption(
+                    label=f"Chapter {chapter['attributes']['chapter']}",
+                    description=chapter_title[:100],
+                    value=str(idx)))
+
+        options = options[:25]  # Discord limit
+
+        async def select_chapter(interaction):
+            await interaction.response.defer()
+            selected_idx = int(interaction.data['values'][0])
+            await self.display_volume(ctx, manga_result, volumes, volume_index,
+                                      total_volumes, message, selected_idx)
+
+        chapter_select = Select(placeholder="Select a Chapter",
+                                options=options)
+        chapter_select.callback = select_chapter
+
+        async def update_page(new_page):
+            nonlocal current_page
+            current_page = new_page
+            embed = await self.create_embed(manga_result, volumes,
+                                            volume_index, total_volumes,
+                                            current_volume[chapter_index],
+                                            pages, current_page)
+            await message.edit(embed=embed)
+
+        async def go_to_next_page(interaction):
+            await interaction.response.defer()
+            if current_page < len(pages) - 1:
+                await update_page(current_page + 1)
+            else:
+                await interaction.followup.send(
+                    'This is the last page of the chapter.', ephemeral=True)
+
+        async def go_to_previous_page(interaction):
+            await interaction.response.defer()
+            if current_page > 0:
+                await update_page(current_page - 1)
+            else:
+                await interaction.followup.send(
+                    'This is the first page of the chapter.', ephemeral=True)
+
+        async def go_to_next_volume(interaction):
+            await interaction.response.defer()
+            if volume_index < len(volumes) - 1:
+                await self.display_volume(ctx, manga_result, volumes,
+                                          volume_index + 1, total_volumes,
+                                          message)
+            else:
+                await interaction.followup.send('This is the last volume.',
+                                                ephemeral=True)
+
+        async def go_to_previous_volume(interaction):
+            await interaction.response.defer()
+            if volume_index > 0:
+                await self.display_volume(ctx, manga_result, volumes,
+                                          volume_index - 1, total_volumes,
+                                          message)
+            else:
+                await interaction.followup.send('This is the first volume.',
+                                                ephemeral=True)
+
+        async def go_to_page(interaction):
+            modal = Modal(title="Go to Page")
+            page_input = TextInput(
+                label="Page Number",
+                placeholder=f"Enter a number between 1 and {len(pages)}",
+                required=True)
+            modal.add_item(page_input)
+
+            async def on_submit(modal_interaction):
+                await modal_interaction.response.defer()
+                try:
+                    page_number = int(page_input.value) - 1
+                    if 0 <= page_number < len(pages):
+                        await update_page(page_number)
+                    else:
+                        await modal_interaction.followup.send(
+                            f"Invalid page number. Please enter a number between 1 and {len(pages)}.",
+                            ephemeral=True)
+                except ValueError:
+                    await modal_interaction.followup.send(
+                        "Please enter a valid number.", ephemeral=True)
+
+            modal.on_submit = on_submit
+            await interaction.response.send_modal(modal)
+
+        view.add_item(
+            Button(label='Previous Page',
+                   style=discord.ButtonStyle.red,
+                   custom_id='prev_page'))
+        view.add_item(
+            Button(label='Previous Volume',
+                   style=discord.ButtonStyle.blurple,
+                   custom_id='prev_volume'))
+        view.add_item(
+            Button(label='Next Volume',
+                   style=discord.ButtonStyle.blurple,
+                   custom_id='next_volume'))
+        view.add_item(
+            Button(label='Next Page',
+                   style=discord.ButtonStyle.green,
+                   custom_id='next_page'))
+        view.add_item(
+            Button(label='Go to Page',
+                   style=discord.ButtonStyle.grey,
+                   custom_id='go_to_page'))
+        view.add_item(chapter_select)
+
+        view.on_timeout = lambda: message.edit(view=None)
+
+        for item in view.children:
+            if isinstance(item, Button):
+                if item.custom_id == 'prev_page':
+                    item.callback = go_to_previous_page
+                elif item.custom_id == 'next_page':
+                    item.callback = go_to_next_page
+                elif item.custom_id == 'prev_volume':
+                    item.callback = go_to_previous_volume
+                elif item.custom_id == 'next_volume':
+                    item.callback = go_to_next_volume
+                elif item.custom_id == 'go_to_page':
+                    item.callback = go_to_page
+
+        return view
 
 
 async def setup(bot):
