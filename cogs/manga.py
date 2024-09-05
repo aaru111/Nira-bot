@@ -51,7 +51,7 @@ class MangaReaderCog(commands.Cog):
 
         if not manga_results:
             await ctx.send(
-                f'No results found for "{manga_name}".\nYou can try searching manually at: https://mangadex.org/search?q={manga_name}',
+                f'No results found for "{manga_name}".\nYou can try searching manually at: [Mangadex](https://mangadex.org/search?q={manga_name})',
                 ephemeral=True)
             return None
 
@@ -97,7 +97,7 @@ class MangaReaderCog(commands.Cog):
                     f'https://api.mangadex.org/manga/{manga_id}') as response:
                 if response.status != 200:
                     await ctx.send(
-                        f'Failed to fetch manga data. Please try again later.\nYou can try accessing the manga directly at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                        f'Failed to fetch manga data. Please try again later.\nYou can try accessing the manga directly at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                         ephemeral=True)
                     return False
 
@@ -106,7 +106,7 @@ class MangaReaderCog(commands.Cog):
 
             if not manga_result:
                 await ctx.send(
-                    f'No manga found with the provided ID.\nYou can try accessing the manga directly at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                    f'No manga found with the provided ID.\nYou can try accessing the manga directly at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                     ephemeral=True)
                 return False
 
@@ -129,7 +129,7 @@ class MangaReaderCog(commands.Cog):
 
         if not chapters:
             await ctx.send(
-                f'No readable chapters found for this manga.\nYou can check the manga page at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                f'No readable chapters found for this manga.\nYou can check the manga page at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                 ephemeral=True)
             return False
 
@@ -152,7 +152,7 @@ class MangaReaderCog(commands.Cog):
 
         if not sorted_volumes:
             await ctx.send(
-                f'No readable volumes found for this manga.\nYou can check the manga page at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                f'No readable volumes found for this manga.\nYou can check the manga page at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                 ephemeral=True)
             return False
 
@@ -165,7 +165,7 @@ class MangaReaderCog(commands.Cog):
                 None)
             if specified_volume_index is None:
                 await ctx.send(
-                    f'Volume {specified_volume} not found. This manga has {total_volumes} volumes.\nYou can check the manga page at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                    f'Volume {specified_volume} not found. This manga has {total_volumes} volumes.\nYou can check the manga page at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                     ephemeral=True)
                 return False
             await self.display_volume(ctx, manga_result, sorted_volumes,
@@ -186,6 +186,14 @@ class MangaReaderCog(commands.Cog):
         current_volume = volumes[volume_index][1]
         current_chapter = current_volume[chapter_index]
         chapter_id = current_chapter['id']
+        external_url = current_chapter['attributes'].get('externalUrl')
+        manga_name = current_chapter['attributes'].get('title')
+        if external_url:
+            await ctx.send(
+                f"This chapter is hosted externally and cannot be displayed here. "
+                f"You can read it at: [{manga_name}]({external_url})",
+                ephemeral=True)
+            return False
 
         async with aiohttp.ClientSession() as session:
             async with session.get(
