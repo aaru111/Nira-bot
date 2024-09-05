@@ -130,36 +130,41 @@ class Errors(commands.Cog):
                       discord.errors.HTTPException) and error.status == 429:
             retry_after: float = float(
                 error.response.headers.get("Retry-After", 5))
-            for attempt in range(MAX_RETRIES):
+            max_retries = MAX_RETRIES  # Use the configurable MAX_RETRIES constant
+            base_retry_time = retry_after
+
+            for attempt in range(max_retries):
                 await ctx.send(
-                    f"Rate limit hit! Retrying after {retry_after:.2f} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})",
+                    f"Rate limit hit! Retrying after {retry_after:.2f} seconds... (Attempt {attempt + 1}/{max_retries})",
                     delete_after=DELETE_AFTER)
                 await asyncio.sleep(retry_after)
 
                 try:
-                    await ctx.reinvoke()
-                    return  # If successful, exit the method
+                    await ctx.reinvoke(
+                    )  # Try re-running the command after the delay
+                    return  # Exit the method if successful
                 except discord.errors.HTTPException as e:
                     if e.status == 429:
                         retry_after = float(
                             e.response.headers.get("Retry-After",
                                                    retry_after * 2))
                         logger.warning(
-                            f"Hit rate limit again. Retrying in {retry_after:.2f} seconds."
+                            f"Rate limit hit again. Retrying in {retry_after:.2f} seconds."
                         )
                     else:
                         await self.handle_error(ctx, e, str(e),
                                                 "HTTP Exception")
-                        return
+                        return  # Exit if a non-429 error occurs
 
             logger.error(
-                f"Failed to execute command after {MAX_RETRIES} attempts due to rate limiting."
+                f"Command failed after {max_retries} attempts due to rate limiting."
             )
             await ctx.send(
-                f"Command failed after {MAX_RETRIES} attempts due to rate limiting. Please try again later.",
+                f"Command failed after {max_retries} attempts due to rate limiting. Please try again later.",
                 delete_after=DELETE_AFTER)
             return
 
+        # Fallback for other errors
         command_name: str = ctx.command.qualified_name if ctx.command else "Unknown Command"
         command_signature: str = getattr(ctx.command, 'signature',
                                          '') if ctx.command else ""
