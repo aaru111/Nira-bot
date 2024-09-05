@@ -69,7 +69,7 @@ class MangaReaderCog(commands.Cog):
                  for rel in manga['relationships'] if rel['type'] == 'author'),
                 'Unknown')
             year = manga['attributes'].get('year') or 'Unknown'
-            option_description = f"Author: {author} | Year: {year}"
+            option_description = f"Mangaka: {author} | Year: {year}"
             options.append(
                 discord.SelectOption(label=title[:100],
                                      description=option_description[:100],
