@@ -120,7 +120,7 @@ class MangaReaderCog(commands.Cog):
                     }) as chapter_response:
                 if chapter_response.status != 200:
                     await ctx.send(
-                        f'Failed to fetch chapters. Please try again later.\nYou can try accessing the manga directly at: https://mangadex.org/title/{manga_id}\nManga ID: {manga_id}',
+                        f'Failed to fetch chapters. Please try again later.\nYou can try accessing the manga directly at: [MangaDex](https://mangadex.org/title/{manga_id})\nManga ID: {manga_id}',
                         ephemeral=True)
                     return False
 
