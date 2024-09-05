@@ -17,6 +17,10 @@ class MemoryGameButton(discord.ui.Button):
         self.revealed = False
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.view.ctx.author.id:
+            await interaction.response.send_message(
+                "This game is not for you.", ephemeral=True)
+            return
         await self.view.process_button(self, interaction)
 
 
@@ -40,6 +44,7 @@ class MemoryGameView(discord.ui.View):
         self.game_started = False
         self.hints_remaining = 2
         self.hints_used = 0
+        self.hint_cooldown = 0
 
     def setup_board(self):
         guild_emojis = self.ctx.guild.emojis
@@ -104,7 +109,8 @@ class MemoryGameView(discord.ui.View):
         remaining_time = self.time_limit - (datetime.now() -
                                             self.start_time).total_seconds()
         minutes, seconds = divmod(int(remaining_time), 60)
-        return f"Memory Game (5x5): Match the pairs!\nTime remaining: {minutes:02d}:{seconds:02d}\nHints remaining: {self.hints_remaining}"
+        hint_status = f"Hint cooldown: {self.hint_cooldown}s" if self.hint_cooldown > 0 else f"Hints remaining: {self.hints_remaining}"
+        return f"Memory Game (5x5): Match the pairs!\nTime remaining: {minutes:02d}:{seconds:02d}\n{hint_status}"
 
     async def reveal_all_emojis(self):
         for button in self.board:
@@ -121,6 +127,10 @@ class MemoryGameView(discord.ui.View):
 
     async def process_button(self, button: MemoryGameButton,
                              interaction: discord.Interaction):
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message(
+                "This game is not for you.", ephemeral=True)
+            return
         self.last_interaction_time = datetime.now()
         if not button.revealed:
             button.revealed = True
@@ -232,14 +242,19 @@ class MemoryGameView(discord.ui.View):
         embed.set_footer(text="Thanks for playing!")
 
         rematch_view = RematchView(self.ctx, self.message, self.cog)
-        await interaction.message.edit(content=None,
-                                       embed=embed,
-                                       view=rematch_view)
+        try:
+            await interaction.message.edit(content=None,
+                                           embed=embed,
+                                           view=rematch_view)
+        except discord.errors.NotFound:
+            pass
+            await self.ctx.send(embed=embed, view=rematch_view)
+
         self.game_started = False
         self.cog.end_game(self.ctx.author.id)
 
     async def show_hint(self):
-        if self.hints_remaining > 0:
+        if self.hints_remaining > 0 and self.hint_cooldown == 0:
             unrevealed_buttons = [
                 btn for btn in self.board
                 if not btn.revealed and not btn.disabled
@@ -250,13 +265,34 @@ class MemoryGameView(discord.ui.View):
                 hint_button.style = discord.ButtonStyle.primary
                 self.hints_remaining -= 1
                 self.hints_used += 1
-                await self.message.edit(content=self.get_game_status(),
-                                        view=self)
-                await asyncio.sleep(2)
-                if not hint_button.revealed:
-                    hint_button.emoji = "❓"
-                    hint_button.style = discord.ButtonStyle.secondary
-                    await self.message.edit(view=self)
+                self.hint_cooldown = 10  # Set a 10-second cooldown
+
+                try:
+                    await self.message.edit(content=self.get_game_status(),
+                                            view=self)
+                    await asyncio.sleep(2)
+                    if not hint_button.revealed:
+                        hint_button.emoji = "❓"
+                        hint_button.style = discord.ButtonStyle.secondary
+                        await self.message.edit(view=self)
+
+                    # Start cooldown countdown
+                    for i in range(10, 0, -1):
+                        self.hint_cooldown = i
+                        await asyncio.sleep(1)
+                    self.hint_cooldown = 0
+                except discord.errors.NotFound:
+                    pass
+            else:
+                await self.ctx.send(
+                    "No more hints available. All pairs are either revealed or found.",
+                    ephemeral=True)
+        elif self.hint_cooldown > 0:
+            await self.ctx.send(
+                f"Hint is on cooldown. Please wait {self.hint_cooldown} seconds.",
+                ephemeral=True)
+        else:
+            await self.ctx.send("No more hints remaining.", ephemeral=True)
 
 
 class RematchView(discord.ui.View):
@@ -270,16 +306,17 @@ class RematchView(discord.ui.View):
     @discord.ui.button(label="Rematch", style=discord.ButtonStyle.primary)
     async def rematch(self, interaction: discord.Interaction,
                       button: ui.Button):
-        if interaction.user == self.ctx.author:
-            await interaction.response.defer()
-            new_game = MemoryGameView(
-                self.ctx, 5, self.cog)  # Default to 5 minutes for rematch
-            self.cog.start_game(self.ctx.author.id, new_game)
-            await new_game.start_game(self.message)
-        else:
+        if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message(
                 "Only the original player can start a rematch.",
                 ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        new_game = MemoryGameView(self.ctx, 5,
+                                  self.cog)  # Default to 5 minutes for rematch
+        self.cog.start_game(self.ctx.author.id, new_game)
+        await new_game.start_game(self.message)
 
     async def on_timeout(self):
         for child in self.children:
@@ -332,9 +369,14 @@ class MemoryGame(commands.Cog):
 
         if reaction.emoji == "💡":
             game = self.ongoing_games.get(user.id)
-            if game and game.hints_remaining > 0:
-                await reaction.remove(user)
-                await game.show_hint()
+            if game:
+                if user.id != game.ctx.author.id:
+                    await reaction.message.channel.send(
+                        f"{user.mention}, only the player who started the game can use hints.",
+                        delete_after=5)
+                else:
+                    await reaction.remove(user)
+                    await game.show_hint()
 
 
 async def setup(bot: commands.Bot) -> None:
