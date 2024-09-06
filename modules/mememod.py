@@ -1,10 +1,5 @@
-# modules/mememod.py
-
 import discord
-from discord import Interaction
-from discord.ui import Modal, View, TextInput, Button
 from discord.ext import commands
-from discord.errors import HTTPException, NotFound, InteractionResponded
 from typing import Dict, List, Optional
 import random
 import aiohttp
@@ -20,36 +15,27 @@ class MemeModule:
                 "AdviceAnimals", "MemeEconomy", "ComedyCemetery",
                 "terriblefacebookmemes"
             ],
-            "anime": [
-                "Animemes", "anime_irl", "animenocontext", "wholesomeanimemes",
-                "GoodAnimeMemes", "MemeAnime", "animeshitposting"
-            ],
+            "anime":
+            ["Animemes", "anime_irl", "animenocontext", "wholesomeanimemes"],
             "gaming": [
-                "gaming", "gamingmemes", "pcmasterrace", "gamephysics",
-                "gamememes", "truegaming", "leagueofmemes"
+                "gaming", "pcmasterrace", "gamephysics", "gamingmemes",
+                "truegaming", "leagueofmemes"
             ],
-            "programming": [
-                "ProgrammerHumor", "programmerreactions", "softwaregore",
-                "codinghumor", "linuxmemes", "techhumor"
-            ],
+            "programming": ["ProgrammerHumor", "softwaregore", "linuxmemes"],
             "science": [
                 "sciencememes", "chemistrymemes", "physicsmemes",
-                "BiologyMemes", "mathmemes", "SpaceMemes"
+                "BiologyMemes", "mathmemes"
             ],
-            "history": [
-                "historymemes", "trippinthroughtime", "HistoryAnimemes",
-                "badlinguistics"
-            ],
-            "nsfw": ["NSFWMemes", "porn", "NSFW_IndianMemes", "BrainrotSluts"],
+            "history": ["historymemes", "trippinthroughtime"],
+            "nsfw": ["NSFWMemes", "BrainrotSluts"],
             "shitposting": [
                 "shitposting", "okbuddyretard", "surrealmemes",
-                "DeepFriedMemes", "nukedmemes", "bonehurtingjuice",
-                "comedyheaven"
+                "DeepFriedMemes", "bonehurtingjuice", "comedyheaven"
             ]
         }
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.last_request_time: float = 0
-        self.request_cooldown: int = 2  # 2 seconds between requests
+        self.request_cooldown: int = 1
 
     async def close(self) -> None:
         """Close the aiohttp session."""
@@ -78,49 +64,47 @@ class MemeModule:
             return None
 
 
-class MemeTopicModal(Modal, title="Change Meme Topic"):
+class TopicSelect(discord.ui.Select):
 
-    def __init__(self, meme_cog, view):
-        super().__init__()
-        self.meme_cog = meme_cog
-        self.view = view
-        self.topic = TextInput(
-            label="Enter a new topic",
-            placeholder="e.g., general, anime, gaming, shitposting",
-            max_length=20)
-        self.add_item(self.topic)
+    def __init__(self, meme_view):
+        self.meme_view = meme_view
+        options = [
+            discord.SelectOption(label="General", value="general"),
+            discord.SelectOption(label="Anime", value="anime"),
+            discord.SelectOption(label="Gaming", value="gaming"),
+            discord.SelectOption(label="Programming", value="programming"),
+            discord.SelectOption(label="Science", value="science"),
+            discord.SelectOption(label="History", value="history"),
+            discord.SelectOption(label="NSFW", value="nsfw"),
+            discord.SelectOption(label="Shitposting", value="shitposting")
+        ]
+        super().__init__(placeholder="Select a topic", options=options)
 
-    async def on_submit(self, interaction: Interaction):
-        if interaction.user != self.view.interaction.user:
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.meme_view.interaction.user:
             await interaction.response.send_message(
                 "You cannot interact with this command.", ephemeral=True)
             return
 
-        new_topic = self.topic.value.strip().lower()
-        if new_topic not in self.meme_cog.meme_module.meme_topics:
+        new_topic = self.values[0]
+        if new_topic == "nsfw" and not interaction.channel.is_nsfw():
             await interaction.response.send_message(
-                f"Topic '{new_topic}' is not recognized. Please choose a valid topic.",
+                "NSFW memes can only be sent in age-restricted channels.",
                 ephemeral=True)
             return
 
-        self.view.topic = new_topic
-        self.view.meme_history = []
-        self.view.current_index = -1
+        self.meme_view.topic = new_topic
+        self.meme_view.meme_history = []
+        self.meme_view.current_index = -1
 
         # Fetch a new meme for the changed topic
-        await self.view.change_meme(interaction, direction=1)
-        try:
-            await interaction.followup.send(
-                f"Topic changed to '{new_topic}'. Here's a meme from this topic:",
-                ephemeral=True)
-        except NotFound:
-            pass  # Ignore if the interaction is no longer valid
+        await self.meme_view.change_meme(interaction, direction=1)
 
 
-class MemeView(View):
+class MemeView(discord.ui.View):
 
-    def __init__(self, bot: commands.Bot, interaction: Interaction, meme_cog,
-                 topic: str):
+    def __init__(self, bot: commands.Bot, interaction: discord.Interaction,
+                 meme_cog, topic: str):
         super().__init__(timeout=60)
         self.bot = bot
         self.interaction = interaction
@@ -129,46 +113,46 @@ class MemeView(View):
         self.meme_history: list = []
         self.current_index: int = -1
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.gray)
-    async def previous_button(self, interaction: Interaction, button: Button):
-        if interaction.user != self.interaction.user:
-            await interaction.response.send_message(
-                "You cannot interact with this command.", ephemeral=True)
-            return
+        # Add the TopicSelect first
+        self.add_item(TopicSelect(self))
+
+        # Then add the buttons
+        self.previous_button = discord.ui.Button(
+            label="Previous", style=discord.ButtonStyle.gray)
+        self.previous_button.callback = self.previous_button_callback
+        self.add_item(self.previous_button)
+
+        self.next_button = discord.ui.Button(label="Next",
+                                             style=discord.ButtonStyle.gray)
+        self.next_button.callback = self.next_button_callback
+        self.add_item(self.next_button)
+
+        self.delete_button = discord.ui.Button(emoji="🗑️",
+                                               style=discord.ButtonStyle.red)
+        self.delete_button.callback = self.delete_button_callback
+        self.add_item(self.delete_button)
+
+        self.save_to_dm_button = discord.ui.Button(
+            emoji="💾", style=discord.ButtonStyle.gray)
+        self.save_to_dm_button.callback = self.save_to_dm_button_callback
+        self.add_item(self.save_to_dm_button)
+
+    async def previous_button_callback(self, interaction: discord.Interaction):
         await self.change_meme(interaction, -1)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.gray)
-    async def next_button(self, interaction: Interaction, button: Button):
-        if interaction.user != self.interaction.user:
-            await interaction.response.send_message(
-                "You cannot interact with this command.", ephemeral=True)
-            return
+    async def next_button_callback(self, interaction: discord.Interaction):
         await self.change_meme(interaction, 1)
 
-    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.red)
-    async def delete_button(self, interaction: Interaction, button: Button):
+    async def delete_button_callback(self, interaction: discord.Interaction):
         if interaction.user != self.interaction.user:
             await interaction.response.send_message(
                 "You cannot interact with this command.", ephemeral=True)
             return
-        await interaction.response.edit_message(view=None)
+        await interaction.message.delete()
         self.stop()
 
-    @discord.ui.button(label="Change Topic",
-                       style=discord.ButtonStyle.blurple,
-                       row=2)
-    async def change_topic_button(self, interaction: Interaction,
-                                  button: Button):
-        if interaction.user != self.interaction.user:
-            await interaction.response.send_message(
-                "You cannot interact with this command.", ephemeral=True)
-            return
-        modal = MemeTopicModal(self.meme_cog, self)
-        await interaction.response.send_modal(modal)
-
-    @discord.ui.button(emoji="💾", style=discord.ButtonStyle.gray, row=2)
-    async def save_to_dm_button(self, interaction: Interaction,
-                                button: Button):
+    async def save_to_dm_button_callback(self,
+                                         interaction: discord.Interaction):
         if interaction.user != self.interaction.user:
             await interaction.response.send_message(
                 "You cannot interact with this command.", ephemeral=True)
@@ -189,14 +173,15 @@ class MemeView(View):
             await interaction.response.send_message("No meme to save.",
                                                     ephemeral=True)
 
-    async def change_meme(self, interaction: Interaction, direction: int):
+    async def change_meme(self, interaction: discord.Interaction,
+                          direction: int):
         if interaction.user != self.interaction.user:
             await interaction.response.send_message(
                 "You cannot interact with this command.", ephemeral=True)
             return
 
         try:
-            meme: Optional[Dict] = None
+            meme = None
             if direction == 1:  # Next button
                 meme = await self.meme_cog.meme_module.fetch_single_meme(
                     self.topic)
@@ -217,47 +202,24 @@ class MemeView(View):
             if meme:
                 embed = self.create_meme_embed(meme)
                 self.update_button_states()
-                try:
-                    await interaction.response.edit_message(embed=embed,
-                                                            view=self)
-                except InteractionResponded:
-                    await interaction.followup.edit_message(
-                        embed=embed,
-                        view=self,
-                        message_id=interaction.message.id)
+                await interaction.response.edit_message(embed=embed, view=self)
             else:
                 await interaction.response.send_message(
                     "Failed to fetch a new meme. Please try again.",
                     ephemeral=True)
 
-        except HTTPException as e:
-            if e.status == 429:  # Too Many Requests
-                retry_after = e.retry_after if hasattr(e, 'retry_after') else 5
-                await asyncio.sleep(retry_after)
-                await self.change_meme(interaction, direction)
-            else:
-                await self.handle_error(
-                    interaction, "An error occurred. Please try again later.")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            await self.handle_error(
-                interaction,
-                "An unexpected error occurred. Please try again later.")
-
-    async def handle_error(self, interaction: Interaction, message: str):
-        try:
-            await interaction.response.send_message(message, ephemeral=True)
-        except InteractionResponded:
-            await interaction.followup.send(message, ephemeral=True)
-        except NotFound:
-            pass  # Ignore if the interaction is no longer valid
+            await interaction.response.send_message(
+                "An unexpected error occurred. Please try again later.",
+                ephemeral=True)
 
     def update_button_states(self):
         self.previous_button.disabled = self.current_index == 0
         self.next_button.disabled = False
         self.save_to_dm_button.disabled = self.current_index < 0
 
-    def create_meme_embed(self, meme: Dict) -> discord.Embed:
+    def create_meme_embed(self, meme: dict) -> discord.Embed:
         embed = discord.Embed(
             title=meme['title'],
             description=f"[View on r/{meme['subreddit']}]({meme['postLink']})",

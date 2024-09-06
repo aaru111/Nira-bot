@@ -32,14 +32,12 @@ class MemeCog(commands.Cog):
                 "NSFW memes can only be sent in age-restricted channels. Please use this command in an appropriate channel.",
                 ephemeral=True)
             return
-
         meme = await self.meme_module.fetch_single_meme(topic.value)
         if not meme:
             await interaction.response.send_message(
                 "Sorry, I couldn't fetch a meme at the moment. Please try again later.",
                 ephemeral=True)
             return
-
         view = MemeView(self.bot, interaction, self, topic.value)
         view.meme_history.append(meme)
         view.current_index = 0
