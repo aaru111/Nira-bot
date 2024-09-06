@@ -4,6 +4,7 @@ import textwrap
 from abc import ABC, abstractmethod
 import discord
 from typing import Any
+import asyncio  # Added import for asyncio
 
 
 class CustomWikipediaAPI:
@@ -93,13 +94,12 @@ class WikiEmbedCreator:
 class WikiView(discord.ui.View):
 
     def __init__(self, base_embed: discord.Embed, content_chunks: list):
-        super().__init__(timeout=30)
+        super().__init__(timeout=300)  # Increased timeout to 5 minutes
         self.base_embed = base_embed
         self.content_chunks = content_chunks
         self.current_page = 0
         self.update_buttons()
         self.message = None
-        self.timer_task = None
 
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.gray, row=0)
     async def prev_button(self, interaction: discord.Interaction,
@@ -138,7 +138,6 @@ class WikiView(discord.ui.View):
             f"Page {self.current_page + 1}/{len(self.content_chunks)} | Source: Wikipedia"
         )
         await interaction.response.edit_message(embed=embed, view=self)
-        self.reset_timer()
 
     def update_buttons(self):
         self.prev_button.disabled = self.current_page == 0
@@ -147,30 +146,20 @@ class WikiView(discord.ui.View):
         self.page_counter.label = f"{self.current_page + 1}/{len(self.content_chunks)}"
 
     async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
         if self.message:
-            self.message.edit(view=self)
-
-    def reset_timer(self):
-        if self.timer_task:
-            self.timer_task.cancel()
-        self.timer_task = asyncio.create_task(self.start_timer())
-
-    async def start_timer(self):
-        await asyncio.sleep(30)
-        await self.on_timeout()
+            for item in self.children:
+                item.disabled = True
+            await self.message.edit(view=self)
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
-        self.reset_timer()
         return True
 
 
-class GotoModal(discord.ui.Modal):
+class GotoModal(discord.ui.Modal, title="Go to Page"):
 
     def __init__(self, view: WikiView):
-        super().__init__(title="Go to Page")
+        super().__init__()
         self.view = view
         self.page_number = discord.ui.TextInput(
             label="Page Number", placeholder="Enter a page number")
@@ -185,7 +174,8 @@ class GotoModal(discord.ui.Modal):
             else:
                 await interaction.response.send_message(
                     f"Invalid page number. Please enter a number between 1 and {len(self.view.content_chunks)}.",
-                    ephemeral=True)
+
+                 ephemeral=True)
         except ValueError:
             await interaction.response.send_message(
                 "Please enter a valid number.", ephemeral=True)

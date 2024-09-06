@@ -64,7 +64,6 @@ class Utilities(commands.Cog):
                 message = await interaction.followup.send(embed=initial_embed,
                                                           view=view)
                 view.message = message
-                view.reset_timer()
         except Exception as e:
             await interaction.followup.send(
                 f"An error occurred while processing your request: {str(e)}",
