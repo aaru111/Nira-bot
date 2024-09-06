@@ -11,9 +11,9 @@ from typing import Optional, List, Dict
 from collections import defaultdict
 import time
 import requests
-from scripts.asciify import asciify
+from modules.asciify import asciify
 from typing import Union
-from scripts.emojify import emojify_image
+from modules.emojify import emojify_image
 from discord import Member
 
 

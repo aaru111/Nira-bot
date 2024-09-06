@@ -6,7 +6,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import os
-from scripts.collatz import is_collatz_conjecture
+from modules.collatz import is_collatz_conjecture
 import aiofiles
 from typing import Optional, List, Dict, Tuple, Any, Union
 from modules.mememod import MemeView, MemeModule
