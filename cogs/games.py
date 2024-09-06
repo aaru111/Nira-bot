@@ -12,7 +12,7 @@ import aiohttp
 import asyncio
 import time
 
-from typing import Optional, Dict, Set
+from typing import Optional, Dict
 
 # Importing modules used in the games
 from modules.tetrismod import TetrisGame
@@ -147,7 +147,7 @@ class Games(commands.Cog):
                           player_x: Optional[str] = None,
                           player_o: Optional[str] = None) -> None:
         if opponent is None:
-            opponent = interaction.guild.me
+            opponent = interaction.guild.me if interaction.guild else None
 
         if player_x and not self.is_valid_emoji(player_x):
             await interaction.response.send_message(
