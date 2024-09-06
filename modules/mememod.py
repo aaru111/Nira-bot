@@ -238,10 +238,6 @@ class MemeView(View):
             else:
                 await self.handle_error(
                     interaction, "An error occurred. Please try again later.")
-        except NotFound:
-            await self.handle_error(
-                interaction,
-                "This interaction is no longer valid. Please try again.")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             await self.handle_error(
