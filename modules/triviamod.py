@@ -1,4 +1,5 @@
 import discord
+from discord.ext import commands
 import aiohttp
 import random
 import html
@@ -17,7 +18,7 @@ class TriviaView(discord.ui.View):
         self.time_left = 30
         self.timer_message = None
         self.timer_task = None
-        self.message: discord.InteractionMessage | discord.Message | None = None
+        self.message = None
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
@@ -107,7 +108,6 @@ class TriviaView(discord.ui.View):
             return
         self.answered = True
 
-        # Reset the timeout
         self.stop()
         self.timeout = None
 
@@ -156,9 +156,8 @@ class TriviaView(discord.ui.View):
             'category': category,
             'difficulty': difficulty,
             'question': question,
-            'correct_answer': correct_answer,
-            'all_answers': all_answers,
-            'correct_letter': correct_letter
+            'correct_answer': correct_letter,
+            'all_answers': all_answers
         }
 
 
@@ -169,6 +168,7 @@ class PlayAgainView(discord.ui.View):
         self.cog = cog
         self.user_id = user_id
         self.score = score
+        self.message = None
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
@@ -187,9 +187,14 @@ class PlayAgainView(discord.ui.View):
     @discord.ui.button(label="Play Again", style=discord.ButtonStyle.green)
     async def play_again(self, interaction: discord.Interaction,
                          button: discord.ui.Button):
-        # Reset the timeout
         self.stop()
-        self.timeout = None
-
         await interaction.response.defer()
         await self.cog._send_trivia(interaction, self.user_id, 0)
+
+    @discord.ui.button(label="Quit", style=discord.ButtonStyle.red)
+    async def quit_game(self, interaction: discord.Interaction,
+                        button: discord.ui.Button):
+        self.stop()
+        await interaction.response.edit_message(
+            content=f"Thanks for playing! Your final score was: {self.score}",
+            view=None)
