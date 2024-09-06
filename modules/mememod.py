@@ -118,12 +118,12 @@ class MemeView(discord.ui.View):
 
         # Then add the buttons
         self.previous_button = discord.ui.Button(
-            label="Previous", style=discord.ButtonStyle.gray)
+            label="Previous", style=discord.ButtonStyle.primary)
         self.previous_button.callback = self.previous_button_callback
         self.add_item(self.previous_button)
 
         self.next_button = discord.ui.Button(label="Next",
-                                             style=discord.ButtonStyle.gray)
+                                             style=discord.ButtonStyle.success)
         self.next_button.callback = self.next_button_callback
         self.add_item(self.next_button)
 

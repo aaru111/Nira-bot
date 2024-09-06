@@ -9,6 +9,7 @@ import os
 from scripts.collatz import is_collatz_conjecture
 import aiofiles
 from typing import Optional, List, Dict, Tuple, Any, Union
+from modules.mememod import MemeView, MemeModule
 
 # Global variables for reuse
 DEFAULT_EMBED_COLOR: int = 0x2f3136
@@ -23,13 +24,48 @@ FONT_PATH: str = "fonts/ndot47.ttf"
 class Fun(commands.Cog):
     bot: commands.Bot
     session: aiohttp.ClientSession
+    meme_module: MemeModule
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session = aiohttp.ClientSession()
+        self.meme_module = MemeModule()
 
     async def cog_unload(self) -> None:
         await self.session.close()
+        await self.meme_module.close()
+
+    @app_commands.command(name="meme", description="Get a random meme")
+    @app_commands.choices(topic=[
+        app_commands.Choice(name="General", value="general"),
+        app_commands.Choice(name="Anime", value="anime"),
+        app_commands.Choice(name="Gaming", value="gaming"),
+        app_commands.Choice(name="Programming", value="programming"),
+        app_commands.Choice(name="Science", value="science"),
+        app_commands.Choice(name="History", value="history"),
+        app_commands.Choice(name="NSFW", value="nsfw"),
+        app_commands.Choice(name="Shitposting", value="shitposting")
+    ])
+    async def meme(self, interaction: discord.Interaction,
+                   topic: app_commands.Choice[str]):
+        """Fetch a random meme from the specified topic."""
+        if topic.value == "nsfw" and not interaction.channel.is_nsfw():
+            await interaction.response.send_message(
+                "NSFW memes can only be sent in age-restricted channels. Please use this command in an appropriate channel.",
+                ephemeral=True)
+            return
+        meme = await self.meme_module.fetch_single_meme(topic.value)
+        if not meme:
+            await interaction.response.send_message(
+                "Sorry, I couldn't fetch a meme at the moment. Please try again later.",
+                ephemeral=True)
+            return
+        view = MemeView(self.bot, interaction, self, topic.value)
+        view.meme_history.append(meme)
+        view.current_index = 0
+        embed = view.create_meme_embed(meme)
+        view.update_button_states()
+        await interaction.response.send_message(embed=embed, view=view)
 
     async def fetch_quote(self) -> Tuple[str, str]:
         try:
