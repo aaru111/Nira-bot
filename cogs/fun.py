@@ -446,6 +446,34 @@ class Fun(commands.Cog):
         embed.set_image(url=gif_url)
         await ctx.send(embed=embed)
 
+    @commands.hybrid_command(name='neko',
+                             description="Send a neko image or gif")
+    @app_commands.describe(choice="Choose between a neko image or gif")
+    async def neko(self, ctx: commands.Context, choice: str = "image"):
+        """Send a neko image or gif based on the user's choice."""
+        url = "https://nekos.life/api/v2/img/neko" if choice == "image" else "https://nekos.life/api/v2/img/ngif"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as r:
+                if r.status == 200:
+                    js = await r.json()
+                    embed = discord.Embed(color=0x2f3131)
+                    embed.set_image(url=js['url'])
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send(
+                        "Couldn't retrieve the image or gif. Try again later.")
+
+    # Add the slash command choice
+    @neko.autocomplete('choice')
+    async def neko_autocomplete(self, interaction: discord.Interaction,
+                                current: str):
+        choices = ['image', 'gif']
+        return [
+            app_commands.Choice(name=choice, value=choice)
+            for choice in choices if current.lower() in choice.lower()
+        ]
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Fun(bot))
