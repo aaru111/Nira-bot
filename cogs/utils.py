@@ -39,7 +39,7 @@ class Utilities(commands.Cog):
     async def wiki(self, interaction: discord.Interaction, query: str):
         await interaction.response.defer()
         try:
-            page_title = await self.searcher.search(query)
+            page_title, page_url = await self.searcher.search(query)
             if not page_title:
                 await interaction.followup.send(
                     "No results found for your query. Please try a different search term.",
@@ -47,13 +47,13 @@ class Utilities(commands.Cog):
                 return
             page_info = await self.searcher.get_page_info(page_title)
             base_embed = self.embed_creator.create_base_embed(
-                page_info['title'], page_info['url'], page_info['image_url'])
+                page_info['title'], page_url or page_info['url'], page_info.get('image_url'))
             content_chunks = self.embed_creator.split_content(
                 page_info['summary'])
             initial_embed = base_embed.copy()
-            initial_embed.description = content_chunks[0]
-            if len(content_chunks) == 1:
-                # If there's only one page, don't use the WikiView
+            initial_embed.description = content_chunks[0] if content_chunks else f"No summary available for '{query}'. This is the closest match found."
+            if len(content_chunks) <= 1:
+                # If there's only one page or no content, don't use the WikiView
                 initial_embed.set_footer(text="Source: Wikipedia")
                 await interaction.followup.send(embed=initial_embed)
             else:
