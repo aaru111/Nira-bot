@@ -4,6 +4,7 @@ from discord import app_commands
 import aiohttp
 import os
 from urllib.parse import quote
+import asyncio
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from modules.weathermod import create_weather_embed
