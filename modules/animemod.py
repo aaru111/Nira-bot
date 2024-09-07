@@ -8,7 +8,7 @@ from aiohttp import ClientSession
 from database import db
 
 LOGOUT_BUTTON_TIMEOUT = 30
-ITEMS_PER_PAGE = 10  # Items per page for the paginator
+ITEMS_PER_PAGE = 6
 
 
 class AniListModule:
@@ -59,6 +59,73 @@ class AniListModule:
                     token_data: Dict[str, Any] = await response.json()
                     return token_data.get('access_token')
         return None
+
+    async def fetch_anilist_data_by_username(
+            self, username: str) -> Optional[Dict[str, Any]]:
+        query = '''
+        query ($username: String) {
+            User(name: $username) {
+                name
+                avatar {
+                    medium
+                }
+                bannerImage
+                siteUrl
+                about
+                options {
+                    profileColor
+                }
+                favourites {
+                    anime {
+                        nodes {
+                            title {
+                                romaji
+                            }
+                        }
+                    }
+                    manga {
+                        nodes {
+                            title {
+                                romaji
+                            }
+                        }
+                    }
+                }
+                statistics {
+                    anime {
+                        count
+                        episodesWatched
+                        minutesWatched
+                        meanScore
+                    }
+                    manga {
+                        count
+                        chaptersRead
+                        volumesRead
+                        meanScore
+                    }
+                }
+            }
+        }
+        '''
+
+        variables = {"username": username}
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': query,
+                                        'variables': variables
+                                    }) as response:
+                if response.status == 200:
+                    data: Dict[str, Any] = await response.json()
+                    if 'errors' in data:
+                        error_message = data['errors'][0]['message']
+                        raise Exception(f"AniList API Error: {error_message}")
+                    return data.get('data', {}).get('User')
+                else:
+                    raise Exception(
+                        f"AniList API returned status code {response.status}")
 
     async def fetch_user_list(self, access_token: str, list_type: str,
                               status: str) -> List[Dict[str, Any]]:
