@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Optional, Dict, Any, List
 import discord
 from discord import app_commands
@@ -8,6 +9,7 @@ import asyncpg
 
 # Import the Database class and instantiate it
 from database import Database, db
+
 
 class AniListCog(commands.Cog):
 
@@ -25,7 +27,10 @@ class AniListCog(commands.Cog):
     async def load_tokens(self) -> None:
         query = "SELECT user_id, access_token FROM anilist_tokens"
         results = await db.fetch(query)
-        self.user_tokens = {record['user_id']: record['access_token'] for record in results}
+        self.user_tokens = {
+            record['user_id']: record['access_token']
+            for record in results
+        }
 
     async def save_token(self, user_id: int, access_token: str) -> None:
         query = """
@@ -40,12 +45,14 @@ class AniListCog(commands.Cog):
         query = "DELETE FROM anilist_tokens WHERE user_id = $1"
         await db.execute(query, user_id)
 
-    @app_commands.command(name="anilist", description="Connect to AniList or view your stats")
+    @app_commands.command(name="anilist",
+                          description="Connect to AniList or view your stats")
     async def anilist(self, interaction: discord.Interaction) -> None:
         user_id = interaction.user.id
         if user_id in self.user_tokens:
             try:
-                stats = await self.fetch_anilist_data(self.user_tokens[user_id])
+                stats = await self.fetch_anilist_data(self.user_tokens[user_id]
+                                                      )
                 embed = self.create_stats_embed(stats)
                 await interaction.response.send_message(embed=embed)
             except Exception as e:
@@ -69,13 +76,15 @@ class AniListCog(commands.Cog):
         }
 
         async with ClientSession() as session:
-            async with session.post(self.anilist_token_url, data=data) as response:
+            async with session.post(self.anilist_token_url,
+                                    data=data) as response:
                 if response.status == 200:
                     token_data: Dict[str, Any] = await response.json()
                     return token_data.get('access_token')
         return None
 
-    async def fetch_anilist_data(self, access_token: str) -> Optional[Dict[str, Any]]:
+    async def fetch_anilist_data(
+            self, access_token: str) -> Optional[Dict[str, Any]]:
         query: str = '''
         query {
             Viewer {
@@ -83,17 +92,40 @@ class AniListCog(commands.Cog):
                 avatar {
                     medium
                 }
+                bannerImage
                 siteUrl
+                about
+                options {
+                    profileColor
+                }
+                favourites {
+                    anime {
+                        nodes {
+                            title {
+                                romaji
+                            }
+                        }
+                    }
+                    manga {
+                        nodes {
+                            title {
+                                romaji
+                            }
+                        }
+                    }
+                }
                 statistics {
                     anime {
                         count
                         episodesWatched
                         minutesWatched
+                        meanScore
                     }
                     manga {
                         count
                         chaptersRead
                         volumesRead
+                        meanScore
                     }
                 }
             }
@@ -120,26 +152,104 @@ class AniListCog(commands.Cog):
                     raise Exception(
                         f"AniList API returned status code {response.status}")
 
+    def clean_anilist_text(self, text: str) -> str:
+        # Remove URLs
+        text = re.sub(r'https?://\S+', '', text)
+
+        # Remove AniList-specific formatting
+        text = re.sub(r'(img|Img)(\d*%?)?\(+', '',
+                      text)  # Remove nested img tags
+        text = re.sub(r'\)+', '', text)  # Remove closing parentheses
+        text = re.sub(r'\(+', '', text)  # Remove opening parentheses
+        text = re.sub(r'~!.*?!~', '', text)  # Remove spoiler tags
+        text = re.sub(r'__(.*?)__', r'\1', text)  # Remove underline formatting
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Remove bold formatting
+        text = re.sub(r'_(.*?)_', r'\1', text)  # Remove italic formatting
+
+        # Remove any remaining special characters
+        text = re.sub(r'[~\[\]{}]', '', text)
+
+        # Remove extra whitespace
+        text = ' '.join(text.split())
+
+        return text.strip()
+
     def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
-        embed: discord.Embed = discord.Embed(
-            title=f"AniList Stats for {stats['name']}", color=0x02a9ff)
-        embed.set_thumbnail(url=stats['avatar']['medium'])
-        embed.add_field(name="Profile", value=f"[View Profile]({stats['siteUrl']})", inline=False)
+        # Convert profile color to integer
+        profile_color = stats['options']['profileColor']
+        color_map = {
+            'blue': 0x3DB4F2,
+            'purple': 0xC063FF,
+            'pink': 0xFC9DD6,
+            'orange': 0xFC9344,
+            'red': 0xE13333,
+            'green': 0x4CCA51,
+            'gray': 0x677B94
+        }
 
-        anime_stats: Dict[str, int] = stats['statistics']['anime']
-        manga_stats: Dict[str, int] = stats['statistics']['manga']
+        if profile_color:
+            if profile_color.startswith('#'):
+                embed_color = int(profile_color.lstrip('#'), 16)
+            else:
+                embed_color = color_map.get(profile_color.lower(
+                ), 0x02A9FF)  # Default to AniList blue if color name not found
+        else:
+            embed_color = 0x02A9FF  # Default AniList blue
 
-        embed.add_field(name="Anime",
-                        value=f"Count: {anime_stats['count']}\n"
-                        f"Episodes: {anime_stats['episodesWatched']}\n"
-                        f"Time: {anime_stats['minutesWatched'] // 1440} days",
-                        inline=False)
+        embed = discord.Embed(title=f"AniList Profile for {stats['name']}",
+                              url=stats['siteUrl'],
+                              color=embed_color)
 
-        embed.add_field(name="Manga",
-                        value=f"Count: {manga_stats['count']}\n"
-                        f"Chapters: {manga_stats['chaptersRead']}\n"
-                        f"Volumes: {manga_stats['volumesRead']}",
-                        inline=False)
+        # Set the thumbnail to the user's avatar
+        if stats['avatar']['medium']:
+            embed.set_thumbnail(url=stats['avatar']['medium'])
+
+        # Set the banner image if available
+        if stats['bannerImage']:
+            embed.set_image(url=stats['bannerImage'])
+
+        # Clean and include the about section
+        if stats['about']:
+            about_clean = self.clean_anilist_text(stats['about'])
+            if about_clean:
+                embed.add_field(name="About",
+                                value=about_clean[:1024],
+                                inline=False)
+
+        anime_stats: Dict[str, Any] = stats['statistics']['anime']
+        manga_stats: Dict[str, Any] = stats['statistics']['manga']
+
+        # Anime stats
+        anime_value = (f"Count: {anime_stats['count']}\n"
+                       f"Episodes: {anime_stats['episodesWatched']}\n"
+                       f"Time: {anime_stats['minutesWatched'] // 1440} days\n"
+                       f"Mean Score: {anime_stats['meanScore']:.1f}")
+        embed.add_field(name="Anime Stats", value=anime_value, inline=True)
+
+        # Manga stats
+        manga_value = (f"Count: {manga_stats['count']}\n"
+                       f"Chapters: {manga_stats['chaptersRead']}\n"
+                       f"Volumes: {manga_stats['volumesRead']}\n"
+                       f"Mean Score: {manga_stats['meanScore']:.1f}")
+        embed.add_field(name="Manga Stats", value=manga_value, inline=True)
+
+        # Favorites
+        fav_anime = stats['favourites']['anime']['nodes'][:5]
+        fav_manga = stats['favourites']['manga']['nodes'][:5]
+
+        if fav_anime:
+            fav_anime_list = "\n".join(
+                [f"• {anime['title']['romaji']}" for anime in fav_anime])
+            embed.add_field(name="Favorite Anime",
+                            value=fav_anime_list,
+                            inline=False)
+
+        if fav_manga:
+            fav_manga_list = "\n".join(
+                [f"• {manga['title']['romaji']}" for manga in fav_manga])
+            embed.add_field(name="Favorite Manga",
+                            value=fav_manga_list,
+                            inline=False)
 
         return embed
 
@@ -150,8 +260,10 @@ class AniListView(discord.ui.View):
         super().__init__()
         self.cog: AniListCog = cog
 
-    @discord.ui.button(label="Get Auth Code", style=discord.ButtonStyle.primary)
-    async def get_auth_code(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    @discord.ui.button(label="Get Auth Code",
+                       style=discord.ButtonStyle.primary)
+    async def get_auth_code(self, interaction: discord.Interaction,
+                            button: discord.ui.Button) -> None:
         instructions: str = (
             f"Please follow these steps to get your authorization code:\n\n"
             f"1. Click this link: [**Authenticate here**]({self.cog.anilist_auth_url})\n"
@@ -162,8 +274,10 @@ class AniListView(discord.ui.View):
             f"If you have any issues, please let me know!")
         await interaction.response.send_message(instructions, ephemeral=True)
 
-    @discord.ui.button(label="Enter Auth Code", style=discord.ButtonStyle.green)
-    async def enter_auth_code(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    @discord.ui.button(label="Enter Auth Code",
+                       style=discord.ButtonStyle.green)
+    async def enter_auth_code(self, interaction: discord.Interaction,
+                              button: discord.ui.Button) -> None:
         await interaction.response.send_modal(AniListAuthModal(self.cog))
 
 
@@ -182,7 +296,8 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            access_token: Optional[str] = await self.cog.get_access_token(self.auth_code.value)
+            access_token: Optional[str] = await self.cog.get_access_token(
+                self.auth_code.value)
             if not access_token:
                 await interaction.followup.send(
                     "Failed to authenticate. Please try again.",
@@ -194,7 +309,8 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
             self.cog.user_tokens[user_id] = access_token
             await self.cog.save_token(user_id, access_token)
 
-            stats: Optional[Dict[str, Any]] = await self.cog.fetch_anilist_data(access_token)
+            stats: Optional[Dict[
+                str, Any]] = await self.cog.fetch_anilist_data(access_token)
             if not stats:
                 await interaction.followup.send(
                     "Failed to fetch AniList data. Please try again.",
