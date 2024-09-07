@@ -456,14 +456,14 @@ class Paginator(discord.ui.View):
         self.update_buttons()
         await self.update_message(interaction)
 
-    @discord.ui.button(label="<", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label="<", style=discord.ButtonStyle.danger, row=0)
     async def prev_page_button(self, interaction: discord.Interaction,
                                button: discord.ui.Button):
         self.page = max(self.page - 1, 1)
         self.update_buttons()
         await self.update_message(interaction)
 
-    @discord.ui.button(label=">", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label=">", style=discord.ButtonStyle.success, row=0)
     async def next_page_button(self, interaction: discord.Interaction,
                                button: discord.ui.Button):
         total_pages = (len(self.list_data) + ITEMS_PER_PAGE -
