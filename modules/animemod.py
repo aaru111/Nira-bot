@@ -2,12 +2,13 @@ import os
 import re
 from typing import Optional, Dict, Any, List
 import discord
-from discord.ext import commands  # Import commands from discord.ext
+from discord.ext import commands
 from aiohttp import ClientSession
 
 from database import db
 
 LOGOUT_BUTTON_TIMEOUT = 30
+ITEMS_PER_PAGE = 10  # Items per page for the paginator
 
 class AniListModule:
 
@@ -112,7 +113,10 @@ class AniListModule:
                     data = await response.json()
                     if 'errors' in data:
                         raise Exception(f"AniList API Error: {data['errors'][0]['message']}")
-                    return data['data']['MediaListCollection']['lists'][0]['entries']
+                    lists = data['data']['MediaListCollection']['lists']
+                    if not lists:
+                        return []
+                    return lists[0]['entries']
                 else:
                     raise Exception(f"AniList API returned status code {response.status}")
 
@@ -181,13 +185,22 @@ class AniListModule:
                 else:
                     raise Exception(f"AniList API returned status code {response.status}")
 
-    def create_list_embed(self, list_data: List[Dict[str, Any]], list_type: str, status: str) -> discord.Embed:
+    def create_list_embed(self, list_data: List[Dict[str, Any]], list_type: str, status: str, page: int = 1) -> discord.Embed:
         embed = discord.Embed(
             title=f"{list_type.capitalize()} List - {status.capitalize()}",
             color=0x02A9FF
         )
 
-        for entry in list_data[:25]:  # Limit to 25 entries to avoid exceeding Discord's limits
+        # Pagination logic
+        start = (page - 1) * ITEMS_PER_PAGE
+        end = start + ITEMS_PER_PAGE
+        paginated_list = list_data[start:end]
+
+        if not paginated_list:
+            embed.description = "No entries found for this status."
+            return embed
+
+        for entry in paginated_list:
             media = entry['media']
             title = media['title']['english'] or media['title']['romaji']
             progress = entry['progress']
@@ -202,8 +215,9 @@ class AniListModule:
 
             embed.add_field(name=title, value=value, inline=False)
 
-        if len(list_data) > 25:
-            embed.set_footer(text=f"Showing 25 out of {len(list_data)} entries")
+        # Footer for pagination
+        total_pages = (len(list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        embed.set_footer(text=f"Page {page}/{total_pages} | Showing {len(paginated_list)} out of {len(list_data)} entries")
 
         return embed
 
@@ -296,6 +310,57 @@ class AniListModule:
 
         return embed
 
+class Paginator(discord.ui.View):
+
+    def __init__(self, cog: commands.Cog, list_data: List[Dict[str, Any]], list_type: str, status: str, page: int = 1):
+        super().__init__()
+        self.cog = cog
+        self.list_data = list_data
+        self.list_type = list_type
+        self.status = status
+        self.page = page
+
+        self.update_buttons()
+
+    def update_buttons(self):
+        total_pages = (len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+
+        # Enable/disable buttons based on the current page
+        self.first_page_button.disabled = self.page <= 1
+        self.prev_page_button.disabled = self.page <= 1
+        self.next_page_button.disabled = self.page >= total_pages
+        self.last_page_button.disabled = self.page >= total_pages
+
+    @discord.ui.button(label="<<", style=discord.ButtonStyle.primary, row=0)
+    async def first_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = 1
+        self.update_buttons()
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="<", style=discord.ButtonStyle.primary, row=0)
+    async def prev_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = max(self.page - 1, 1)
+        self.update_buttons()
+        await self.update_message(interaction)
+
+    @discord.ui.button(label=">", style=discord.ButtonStyle.primary, row=0)
+    async def next_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        total_pages = (len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        self.page = min(self.page + 1, total_pages)
+        self.update_buttons()
+        await self.update_message(interaction)
+
+    @discord.ui.button(label=">>", style=discord.ButtonStyle.primary, row=0)
+    async def last_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        total_pages = (len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        self.page = total_pages
+        self.update_buttons()
+        await self.update_message(interaction)
+
+    async def update_message(self, interaction: discord.Interaction):
+        embed = self.cog.anilist_module.create_list_embed(self.list_data, self.list_type, self.status, self.page)
+        await interaction.response.edit_message(embed=embed, view=self)
+
 class ListTypeSelect(discord.ui.Select):
 
     def __init__(self, cog: commands.Cog) -> None:
@@ -315,7 +380,7 @@ class ListTypeSelect(discord.ui.Select):
                 current_list = await self.cog.anilist_module.fetch_user_list(access_token, list_type, "CURRENT")
                 embed = self.cog.anilist_module.create_list_embed(current_list, list_type, "CURRENT")
 
-                view = discord.ui.View()
+                view = Paginator(self.cog, current_list, list_type, "CURRENT")
                 view.add_item(StatusSelect(self.cog, list_type))
                 view.add_item(BackButton(self.cog))
                 view.add_item(LogoutView(self.cog.anilist_module).children[0])  # Add only the logout button
@@ -349,7 +414,7 @@ class StatusSelect(discord.ui.Select):
                 list_data = await self.cog.anilist_module.fetch_user_list(access_token, self.list_type, status)
                 embed = self.cog.anilist_module.create_list_embed(list_data, self.list_type, status)
 
-                view = discord.ui.View()
+                view = Paginator(self.cog, list_data, self.list_type, status)
                 view.add_item(StatusSelect(self.cog, self.list_type))
                 view.add_item(BackButton(self.cog))
                 view.add_item(LogoutView(self.cog.anilist_module).children[0])  # Add only the logout button
