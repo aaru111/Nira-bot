@@ -49,7 +49,7 @@ class AniListCog(commands.Cog):
                     await interaction.response.send_message(embed=embed)
                 else:
                     await interaction.response.send_message(
-                        f"No AniList user found with the username {anilist_username}",
+                        f"No AniList user found with the username {anilist_username}.",
                         ephemeral=True)
             except Exception as e:
                 await interaction.response.send_message(

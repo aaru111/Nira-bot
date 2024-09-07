@@ -117,15 +117,19 @@ class AniListModule:
                                         'query': query,
                                         'variables': variables
                                     }) as response:
-                if response.status == 200:
-                    data: Dict[str, Any] = await response.json()
-                    if 'errors' in data:
-                        error_message = data['errors'][0]['message']
-                        raise Exception(f"AniList API Error: {error_message}")
-                    return data.get('data', {}).get('User')
-                else:
+                if response.status == 404:
+                    return None  # User not found
+                elif response.status != 200:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
+
+                data: Dict[str, Any] = await response.json()
+                if 'errors' in data:
+                    error_message = data['errors'][0]['message']
+                    if "User not found" in error_message:
+                        return None  # User not found
+                    raise Exception(f"AniList API Error: {error_message}")
+                return data.get('data', {}).get('User')
 
     async def fetch_user_list(self, access_token: str, list_type: str,
                               status: str) -> List[Dict[str, Any]]:
