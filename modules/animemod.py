@@ -504,28 +504,32 @@ class AniListModule:
         # Create two separate axes for counts/episodes and scores
         ax2 = ax.twinx()
 
+        # Get user profile colors
+        color1 = self.get_color(stats1['options']['profileColor'])
+        color2 = self.get_color(stats2['options']['profileColor'])
+
         rects1_counts = ax.bar([i - width / 2 for i in [0, 1, 3, 4]],
                                [user1_data[i] for i in [0, 1, 3, 4]],
                                width,
                                label=f"{stats1['name']} (Counts)",
-                               color='#3DB4F2')
+                               color=color1)
         rects2_counts = ax.bar([i + width / 2 for i in [0, 1, 3, 4]],
                                [user2_data[i] for i in [0, 1, 3, 4]],
                                width,
                                label=f"{stats2['name']} (Counts)",
-                               color='#FC9DD6')
+                               color=color2)
 
         rects1_scores = ax2.bar([i - width / 2 for i in [2, 5]],
                                 [user1_data[i] for i in [2, 5]],
                                 width,
                                 label=f"{stats1['name']} (Scores)",
-                                color='#3DB4F2',
+                                color=color1,
                                 alpha=0.5)
         rects2_scores = ax2.bar([i + width / 2 for i in [2, 5]],
                                 [user2_data[i] for i in [2, 5]],
                                 width,
                                 label=f"{stats2['name']} (Scores)",
-                                color='#FC9DD6',
+                                color=color2,
                                 alpha=0.5)
 
         ax.set_ylabel('Counts')
@@ -551,6 +555,23 @@ class AniListModule:
         buf.seek(0)
 
         return discord.File(buf, filename="comparison_graph.png")
+
+    def get_color(self, profile_color: str) -> str:
+        color_map = {
+            'blue': '#3DB4F2',
+            'purple': '#C063FF',
+            'pink': '#FC9DD6',
+            'orange': '#FC9344',
+            'red': '#E13333',
+            'green': '#4CCA51',
+            'gray': '#677B94'
+        }
+        if profile_color:
+            if profile_color.startswith('#'):
+                return profile_color
+            else:
+                return color_map.get(profile_color.lower(), '#02A9FF')
+        return '#02A9FF'
 
     def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
         profile_color = stats['options']['profileColor']
