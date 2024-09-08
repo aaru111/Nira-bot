@@ -513,7 +513,8 @@ class AniListModule:
 
         return discord.File(buf, filename="comparison_graph.png")
 
-    def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
+    def create_stats_embed(self, stats: Dict[str, Any],
+                           viewing_user_id: int) -> discord.Embed:
         profile_color = stats['options']['profileColor']
         color_map = {
             'blue': 0x3DB4F2,
@@ -854,12 +855,35 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
 
 class CompareButton(discord.ui.Button):
 
-    def __init__(self, module: AniListModule):
+    def __init__(self, module: AniListModule, viewing_user_id: int,
+                 viewed_user_id: int):
         super().__init__(label="Compare", style=discord.ButtonStyle.primary)
         self.module = module
+        self.viewing_user_id = viewing_user_id
+        self.viewed_user_id = viewed_user_id
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CompareModal(self.module))
+        if self.viewing_user_id not in self.module.user_tokens:
+            await interaction.response.send_message(
+                "You need to connect your AniList account first to compare.",
+                ephemeral=True)
+            return
+
+        try:
+            viewing_user_stats = await self.module.fetch_anilist_data(
+                self.module.user_tokens[self.viewing_user_id])
+            viewed_user_stats = await self.module.fetch_anilist_data(
+                self.module.user_tokens[self.viewed_user_id])
+
+            comparison_embed, graph_file = await self.module.compare_stats(
+                viewing_user_stats, viewed_user_stats)
+            await interaction.response.send_message(embed=comparison_embed,
+                                                    file=graph_file)
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"An error occurred during comparison: {str(e)}",
+                ephemeral=True)
 
 
 class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):

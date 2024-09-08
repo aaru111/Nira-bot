@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, CompareModal
+from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton
 
 
 class AniListCog(commands.Cog):
@@ -22,15 +22,26 @@ class AniListCog(commands.Cog):
                       interaction: discord.Interaction,
                       user: discord.User = None,
                       anilist_username: str = None) -> None:
+        viewing_user_id: int = interaction.user.id
+
         if user:
             # Look up AniList for mentioned Discord user
-            user_id: int = user.id
-            if user_id in self.anilist_module.user_tokens:
+            viewed_user_id: int = user.id
+            if viewed_user_id in self.anilist_module.user_tokens:
                 try:
                     stats = await self.anilist_module.fetch_anilist_data(
-                        self.anilist_module.user_tokens[user_id])
-                    embed = self.anilist_module.create_stats_embed(stats)
-                    await interaction.response.send_message(embed=embed)
+                        self.anilist_module.user_tokens[viewed_user_id])
+                    embed = self.anilist_module.create_stats_embed(
+                        stats, viewing_user_id)
+
+                    view = discord.ui.View()
+                    if viewing_user_id in self.anilist_module.user_tokens and viewing_user_id != viewed_user_id:
+                        view.add_item(
+                            CompareButton(self.anilist_module, viewing_user_id,
+                                          viewed_user_id))
+
+                    await interaction.response.send_message(embed=embed,
+                                                            view=view)
                 except Exception as e:
                     await interaction.response.send_message(
                         f"An error occurred while fetching data for {user.name}: {str(e)}",
@@ -45,8 +56,17 @@ class AniListCog(commands.Cog):
                 stats = await self.anilist_module.fetch_anilist_data_by_username(
                     anilist_username)
                 if stats:
-                    embed = self.anilist_module.create_stats_embed(stats)
-                    await interaction.response.send_message(embed=embed)
+                    embed = self.anilist_module.create_stats_embed(
+                        stats, viewing_user_id)
+
+                    view = discord.ui.View()
+                    if viewing_user_id in self.anilist_module.user_tokens:
+                        view.add_item(
+                            CompareButton(self.anilist_module, viewing_user_id,
+                                          anilist_username))
+
+                    await interaction.response.send_message(embed=embed,
+                                                            view=view)
                 else:
                     await interaction.response.send_message(
                         f"No AniList user found with the username {anilist_username}.",
@@ -57,24 +77,26 @@ class AniListCog(commands.Cog):
                     ephemeral=True)
         else:
             # Original functionality for the current user
-            user_id: int = interaction.user.id
-            if user_id in self.anilist_module.user_tokens:
+            if viewing_user_id in self.anilist_module.user_tokens:
                 try:
                     stats = await self.anilist_module.fetch_anilist_data(
-                        self.anilist_module.user_tokens[user_id])
-                    embed = self.anilist_module.create_stats_embed(stats)
+                        self.anilist_module.user_tokens[viewing_user_id])
+                    embed = self.anilist_module.create_stats_embed(
+                        stats, viewing_user_id)
                     view = discord.ui.View()
                     view.add_item(ListTypeSelect(self))
                     view.add_item(LogoutView(self.anilist_module).children[0])
-                    view.add_item(CompareButton(self.anilist_module))
+                    view.add_item(
+                        CompareButton(self.anilist_module, viewing_user_id,
+                                      viewing_user_id))
                     await interaction.response.send_message(embed=embed,
                                                             view=view)
                 except Exception as e:
                     await interaction.response.send_message(
                         f"An error occurred: {str(e)}. Please try reconnecting.",
                         ephemeral=True)
-                    await self.anilist_module.remove_token(user_id)
-                    del self.anilist_module.user_tokens[user_id]
+                    await self.anilist_module.remove_token(viewing_user_id)
+                    del self.anilist_module.user_tokens[viewing_user_id]
             else:
                 await interaction.response.send_message(
                     "AniList Integration",
