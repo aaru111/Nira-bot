@@ -331,6 +331,56 @@ class AniListModule:
         text = ' '.join(text.split())
         return text.strip()
 
+    async def compare_stats(self, stats1: Dict[str, Any],
+                            stats2: Dict[str, Any]) -> discord.Embed:
+        embed = discord.Embed(title="AniList Profile Comparison",
+                              color=0x02A9FF)
+
+        embed.add_field(name="Users",
+                        value=f"{stats1['name']} vs {stats2['name']}",
+                        inline=False)
+
+        anime_stats1 = stats1['statistics']['anime']
+        anime_stats2 = stats2['statistics']['anime']
+        manga_stats1 = stats1['statistics']['manga']
+        manga_stats2 = stats2['statistics']['manga']
+
+        embed.add_field(
+            name="Anime Count",
+            value=f"{anime_stats1['count']} vs {anime_stats2['count']}",
+            inline=True)
+        embed.add_field(
+            name="Manga Count",
+            value=f"{manga_stats1['count']} vs {manga_stats2['count']}",
+            inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+        embed.add_field(
+            name="Anime Episodes",
+            value=
+            f"{anime_stats1['episodesWatched']} vs {anime_stats2['episodesWatched']}",
+            inline=True)
+        embed.add_field(
+            name="Manga Chapters",
+            value=
+            f"{manga_stats1['chaptersRead']} vs {manga_stats2['chaptersRead']}",
+            inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+        embed.add_field(
+            name="Anime Mean Score",
+            value=
+            f"{anime_stats1['meanScore']:.2f} vs {anime_stats2['meanScore']:.2f}",
+            inline=True)
+        embed.add_field(
+            name="Manga Mean Score",
+            value=
+            f"{manga_stats1['meanScore']:.2f} vs {manga_stats2['meanScore']:.2f}",
+            inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+        return embed
+
     def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
         profile_color = stats['options']['profileColor']
         color_map = {
@@ -668,6 +718,77 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
+
+
+class CompareButton(discord.ui.Button):
+
+    def __init__(self, module: AniListModule):
+        super().__init__(label="Compare", style=discord.ButtonStyle.primary)
+        self.module = module
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(CompareModal(self.module))
+
+
+class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
+
+    def __init__(self, module: AniListModule):
+        super().__init__()
+        self.module = module
+
+    compare_input = discord.ui.TextInput(
+        label='Enter AniList username or Discord user ID',
+        placeholder='Username or User ID to compare with',
+        required=True)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        user_id = interaction.user.id
+        if user_id not in self.module.user_tokens:
+            await interaction.followup.send(
+                "You need to connect your AniList account first.",
+                ephemeral=True)
+            return
+
+        compare_value = self.compare_input.value
+
+        try:
+            # Fetch current user's stats
+            current_user_stats = await self.module.fetch_anilist_data(
+                self.module.user_tokens[user_id])
+
+            # Fetch comparison user's stats
+            if compare_value.isdigit():
+                # It's a Discord user ID
+                compare_user_id = int(compare_value)
+                if compare_user_id in self.module.user_tokens:
+                    compare_user_stats = await self.module.fetch_anilist_data(
+                        self.module.user_tokens[compare_user_id])
+                else:
+                    await interaction.followup.send(
+                        "The specified Discord user hasn't connected their AniList account.",
+                        ephemeral=True)
+                    return
+            else:
+                # It's an AniList username
+                compare_user_stats = await self.module.fetch_anilist_data_by_username(
+                    compare_value)
+
+            if not compare_user_stats:
+                await interaction.followup.send(
+                    "Couldn't find AniList data for the specified user.",
+                    ephemeral=True)
+                return
+
+            comparison_embed = await self.module.compare_stats(
+                current_user_stats, compare_user_stats)
+            await interaction.followup.send(embed=comparison_embed)
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"An error occurred during comparison: {str(e)}",
+                ephemeral=True)
 
 
 class LogoutView(discord.ui.View):

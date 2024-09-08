@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect
+from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, CompareModal
 
 
 class AniListCog(commands.Cog):
@@ -65,8 +65,8 @@ class AniListCog(commands.Cog):
                     embed = self.anilist_module.create_stats_embed(stats)
                     view = discord.ui.View()
                     view.add_item(ListTypeSelect(self))
-                    view.add_item(LogoutView(self.anilist_module).children[0]
-                                  )  # Add only the logout button
+                    view.add_item(LogoutView(self.anilist_module).children[0])
+                    view.add_item(CompareButton(self.anilist_module))
                     await interaction.response.send_message(embed=embed,
                                                             view=view)
                 except Exception as e:
