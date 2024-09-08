@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, CompareModal
+from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton
 
 
 class AniListCog(commands.Cog):
