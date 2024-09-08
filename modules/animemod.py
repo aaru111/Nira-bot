@@ -25,6 +25,7 @@ class AniListModule:
         self.user_tokens: Dict[int, str] = {}
 
     async def load_tokens(self) -> None:
+        await db.initialize()
         query = "SELECT user_id, access_token FROM anilist_tokens"
         results = await db.fetch(query)
         self.user_tokens = {
