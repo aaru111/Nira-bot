@@ -62,6 +62,40 @@ class AniListModule:
                     return token_data.get('access_token')
         return None
 
+    def blend_colors(self, color1: str, color2: str) -> int:
+        # Convert hex to RGB
+        def hex_to_rgb(hex_color):
+            return tuple(
+                int(hex_color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
+
+        # Blend two colors
+        def blend(c1, c2):
+            return int((c1 + c2) / 2)
+
+        # Convert profile colors to RGB
+        rgb1 = hex_to_rgb(color1) if color1.startswith('#') else hex_to_rgb(
+            self.get_default_color(color1))
+        rgb2 = hex_to_rgb(color2) if color2.startswith('#') else hex_to_rgb(
+            self.get_default_color(color2))
+
+        # Blend the colors
+        blended = tuple(blend(c1, c2) for c1, c2 in zip(rgb1, rgb2))
+
+        # Convert back to hex
+        return int(f'0x{blended[0]:02x}{blended[1]:02x}{blended[2]:02x}', 16)
+
+    def get_default_color(self, color_name: str) -> str:
+        color_map = {
+            'blue': '#3DB4F2',
+            'purple': '#C063FF',
+            'pink': '#FC9DD6',
+            'orange': '#FC9344',
+            'red': '#E13333',
+            'green': '#4CCA51',
+            'gray': '#677B94'
+        }
+        return color_map.get(color_name.lower(), '#02A9FF')
+
     async def fetch_anilist_data_by_username(
             self, username: str) -> Optional[Dict[str, Any]]:
         query = '''
@@ -336,8 +370,13 @@ class AniListModule:
     async def compare_stats(
             self, stats1: Dict[str, Any],
             stats2: Dict[str, Any]) -> tuple[discord.Embed, discord.File]:
+        # Blend the profile colors
+        color1 = stats1['options']['profileColor'] or 'blue'
+        color2 = stats2['options']['profileColor'] or 'blue'
+        blended_color = self.blend_colors(color1, color2)
+
         embed = discord.Embed(title="AniList Profile Comparison",
-                              color=0x02A9FF)
+                              color=blended_color)
 
         # User information
         embed.add_field(name=stats1['name'],
