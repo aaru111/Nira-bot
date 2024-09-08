@@ -1,9 +1,11 @@
 import os
 import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import discord
 from discord.ext import commands
 from aiohttp import ClientSession
+import matplotlib.pyplot as plt
+import io
 
 from database import db
 
@@ -331,55 +333,185 @@ class AniListModule:
         text = ' '.join(text.split())
         return text.strip()
 
-    async def compare_stats(self, stats1: Dict[str, Any],
-                            stats2: Dict[str, Any]) -> discord.Embed:
+    async def compare_stats(
+            self, stats1: Dict[str, Any],
+            stats2: Dict[str, Any]) -> tuple[discord.Embed, discord.File]:
         embed = discord.Embed(title="AniList Profile Comparison",
                               color=0x02A9FF)
 
-        embed.add_field(name="Users",
-                        value=f"{stats1['name']} vs {stats2['name']}",
-                        inline=False)
+        # User information
+        embed.add_field(name=stats1['name'],
+                        value=f"[Profile]({stats1['siteUrl']})",
+                        inline=True)
+        embed.add_field(name=stats2['name'],
+                        value=f"[Profile]({stats2['siteUrl']})",
+                        inline=True)
+        embed.add_field(name="\u200b", value="\u200b",
+                        inline=True)  # Empty field for alignment
 
+        if stats1['avatar']['medium']:
+            embed.set_thumbnail(url=stats1['avatar']['medium'])
+        if stats2['avatar']['medium']:
+            embed.set_image(url=stats2['avatar']['medium'])
+
+        # Anime and Manga Statistics
         anime_stats1 = stats1['statistics']['anime']
         anime_stats2 = stats2['statistics']['anime']
         manga_stats1 = stats1['statistics']['manga']
         manga_stats2 = stats2['statistics']['manga']
 
-        embed.add_field(
-            name="Anime Count",
-            value=f"{anime_stats1['count']} vs {anime_stats2['count']}",
-            inline=True)
-        embed.add_field(
-            name="Manga Count",
-            value=f"{manga_stats1['count']} vs {manga_stats2['count']}",
-            inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
+        self.add_comparison_fields(
+            embed,
+            "Anime",
+            stats1['name'],
+            stats2['name'],
+            count=(anime_stats1['count'], anime_stats2['count']),
+            episodes=(anime_stats1['episodesWatched'],
+                      anime_stats2['episodesWatched']),
+            hours=(anime_stats1['minutesWatched'] // 60,
+                   anime_stats2['minutesWatched'] // 60),
+            score=(anime_stats1['meanScore'], anime_stats2['meanScore']))
+
+        self.add_comparison_fields(
+            embed,
+            "Manga",
+            stats1['name'],
+            stats2['name'],
+            count=(manga_stats1['count'], manga_stats2['count']),
+            chapters=(manga_stats1['chaptersRead'],
+                      manga_stats2['chaptersRead']),
+            volumes=(manga_stats1['volumesRead'], manga_stats2['volumesRead']),
+            score=(manga_stats1['meanScore'], manga_stats2['meanScore']))
+
+        # Create and add graph
+        graph_file = await self.create_comparison_graph(stats1, stats2)
+        embed.set_image(url="attachment://comparison_graph.png")
+
+        # Favorites comparison
+        fav_anime1 = ", ".join([
+            anime['title']['romaji']
+            for anime in stats1['favourites']['anime']['nodes'][:3]
+        ])
+        fav_anime2 = ", ".join([
+            anime['title']['romaji']
+            for anime in stats2['favourites']['anime']['nodes'][:3]
+        ])
+        fav_manga1 = ", ".join([
+            manga['title']['romaji']
+            for manga in stats1['favourites']['manga']['nodes'][:3]
+        ])
+        fav_manga2 = ", ".join([
+            manga['title']['romaji']
+            for manga in stats2['favourites']['manga']['nodes'][:3]
+        ])
 
         embed.add_field(
-            name="Anime Episodes",
+            name="Top 3 Favorite Anime",
             value=
-            f"{anime_stats1['episodesWatched']} vs {anime_stats2['episodesWatched']}",
-            inline=True)
+            f"**{stats1['name']}**: {fav_anime1}\n**{stats2['name']}**: {fav_anime2}",
+            inline=False)
         embed.add_field(
-            name="Manga Chapters",
+            name="Top 3 Favorite Manga",
             value=
-            f"{manga_stats1['chaptersRead']} vs {manga_stats2['chaptersRead']}",
-            inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
+            f"**{stats1['name']}**: {fav_manga1}\n**{stats2['name']}**: {fav_manga2}",
+            inline=False)
 
-        embed.add_field(
-            name="Anime Mean Score",
-            value=
-            f"{anime_stats1['meanScore']:.2f} vs {anime_stats2['meanScore']:.2f}",
-            inline=True)
-        embed.add_field(
-            name="Manga Mean Score",
-            value=
-            f"{manga_stats1['meanScore']:.2f} vs {manga_stats2['meanScore']:.2f}",
-            inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
+        return embed, graph_file
 
-        return embed
+    def add_comparison_fields(self, embed: discord.Embed, category: str,
+                              name1: str, name2: str, **kwargs):
+        for key, (value1, value2) in kwargs.items():
+            key = key.replace('_', ' ').title()
+            embed.add_field(name=f"{category} {key}",
+                            value=self.format_comparison(
+                                name1, name2, value1, value2),
+                            inline=True)
+
+    def format_comparison(self, name1: str, name2: str, value1: Union[int,
+                                                                      float],
+                          value2: Union[int, float]) -> str:
+        if isinstance(value1, float) and isinstance(value2, float):
+            return f"{name1}: {value1:.2f}\n{name2}: {value2:.2f}"
+        else:
+            return f"{name1}: {value1}\n{name2}: {value2}"
+
+    async def create_comparison_graph(self, stats1: Dict[str, Any],
+                                      stats2: Dict[str, Any]) -> discord.File:
+        anime_stats1 = stats1['statistics']['anime']
+        anime_stats2 = stats2['statistics']['anime']
+        manga_stats1 = stats1['statistics']['manga']
+        manga_stats2 = stats2['statistics']['manga']
+
+        categories = [
+            'Anime Count', 'Anime Episodes', 'Anime Score', 'Manga Count',
+            'Manga Chapters', 'Manga Score'
+        ]
+        user1_data = [
+            anime_stats1['count'], anime_stats1['episodesWatched'],
+            anime_stats1['meanScore'], manga_stats1['count'],
+            manga_stats1['chaptersRead'], manga_stats1['meanScore']
+        ]
+        user2_data = [
+            anime_stats2['count'], anime_stats2['episodesWatched'],
+            anime_stats2['meanScore'], manga_stats2['count'],
+            manga_stats2['chaptersRead'], manga_stats2['meanScore']
+        ]
+
+        x = range(len(categories))
+        width = 0.35
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create two separate axes for counts/episodes and scores
+        ax2 = ax.twinx()
+
+        rects1_counts = ax.bar([i - width / 2 for i in [0, 1, 3, 4]],
+                               [user1_data[i] for i in [0, 1, 3, 4]],
+                               width,
+                               label=f"{stats1['name']} (Counts)",
+                               color='#3DB4F2')
+        rects2_counts = ax.bar([i + width / 2 for i in [0, 1, 3, 4]],
+                               [user2_data[i] for i in [0, 1, 3, 4]],
+                               width,
+                               label=f"{stats2['name']} (Counts)",
+                               color='#FC9DD6')
+
+        rects1_scores = ax2.bar([i - width / 2 for i in [2, 5]],
+                                [user1_data[i] for i in [2, 5]],
+                                width,
+                                label=f"{stats1['name']} (Scores)",
+                                color='#3DB4F2',
+                                alpha=0.5)
+        rects2_scores = ax2.bar([i + width / 2 for i in [2, 5]],
+                                [user2_data[i] for i in [2, 5]],
+                                width,
+                                label=f"{stats2['name']} (Scores)",
+                                color='#FC9DD6',
+                                alpha=0.5)
+
+        ax.set_ylabel('Counts')
+        ax2.set_ylabel('Scores')
+        ax.set_title('AniList Stats Comparison')
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories, rotation=45, ha='right')
+
+        # Combine legends
+        lines1, labels1 = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+
+        ax.bar_label(rects1_counts, padding=3, rotation=90)
+        ax.bar_label(rects2_counts, padding=3, rotation=90)
+        ax2.bar_label(rects1_scores, padding=3, rotation=90, fmt='%.2f')
+        ax2.bar_label(rects2_scores, padding=3, rotation=90, fmt='%.2f')
+
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+
+        return discord.File(buf, filename="comparison_graph.png")
 
     def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
         profile_color = stats['options']['profileColor']
@@ -781,9 +913,10 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
                     ephemeral=True)
                 return
 
-            comparison_embed = await self.module.compare_stats(
+            comparison_embed, graph_file = await self.module.compare_stats(
                 current_user_stats, compare_user_stats)
-            await interaction.followup.send(embed=comparison_embed)
+            await interaction.followup.send(embed=comparison_embed,
+                                            file=graph_file)
 
         except Exception as e:
             await interaction.followup.send(
