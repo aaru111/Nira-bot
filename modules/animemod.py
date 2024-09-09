@@ -189,55 +189,52 @@ class AniListModule:
 
     def create_recent_activities_embed(self, activities: List[Dict[str, Any]],
                                        page: int) -> discord.Embed:
-        embed = discord.Embed(title="Recent Activities", color=0x02A9FF)
+        embed = discord.Embed(title="Recent Activity", color=0x02A9FF)
 
         if not activities:
             embed.description = "No recent activities found."
             embed.set_footer(text="Page 1/1")
             return embed
 
-        start = (page - 1) * ITEMS_PER_PAGE
-        end = start + ITEMS_PER_PAGE
-        paginated_activities = activities[start:end]
+        activity = activities[page - 1]
+        activity_type = activity['type']
+        time_ago = discord.utils.format_dt(datetime.fromtimestamp(
+            activity['createdAt']),
+                                           style='R')
 
-        for activity in paginated_activities:
-            activity_type = activity['type']
-            time_ago = discord.utils.format_dt(datetime.fromtimestamp(
-                activity['createdAt']),
-                                               style='R')
+        if activity_type in ['ANIME_LIST', 'MANGA_LIST']:
+            media = activity['media']
+            title = media['title']['english'] or media['title']['romaji']
+            status = activity['status']
+            progress = activity['progress']
+            embed.add_field(
+                name=f"{media['type']}: {title}",
+                value=
+                f"Status: {status}\nProgress: {progress}\nUpdated: {time_ago}",
+                inline=False)
 
-            if activity_type in ['ANIME_LIST', 'MANGA_LIST']:
-                media = activity['media']
-                title = media['title']['english'] or media['title']['romaji']
-                status = activity['status']
-                progress = activity['progress']
-                value = f"Status: {status}\nProgress: {progress}\nUpdated: {time_ago}"
-                embed.add_field(name=f"{media['type']}: {title}",
-                                value=value,
-                                inline=False)
+            if media['coverImage']['medium']:
+                embed.set_thumbnail(url=media['coverImage']['medium'])
 
-                if media['coverImage']['medium']:
-                    embed.set_thumbnail(url=media['coverImage']['medium'])
+        elif activity_type == 'TEXT':
+            text = activity['text']
+            embed.add_field(name=f"Text Post",
+                            value=f"{text}\nPosted: {time_ago}",
+                            inline=False)
 
-            elif activity_type == 'TEXT':
-                text = activity['text']
-                embed.add_field(name=f"Text Post",
-                                value=f"{text[:100]}...\nPosted: {time_ago}",
-                                inline=False)
+        elif activity_type == 'MESSAGE':
+            message = activity['message']
+            embed.add_field(name=f"Message",
+                            value=f"{message}\nSent: {time_ago}",
+                            inline=False)
 
-            elif activity_type == 'MESSAGE':
-                message = activity['message']
-                embed.add_field(name=f"Message",
-                                value=f"{message[:100]}...\nSent: {time_ago}",
-                                inline=False)
+        else:
+            embed.add_field(
+                name=f"Unknown Activity",
+                value=f"Type: {activity_type}\nOccurred: {time_ago}",
+                inline=False)
 
-            else:
-                embed.add_field(
-                    name=f"Unknown Activity",
-                    value=f"Type: {activity_type}\nOccurred: {time_ago}",
-                    inline=False)
-
-        total_pages = (len(activities) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = len(activities)
         embed.set_footer(text=f"Page {page}/{total_pages}")
 
         return embed
@@ -828,10 +825,9 @@ class Paginator(discord.ui.View):
         self.update_buttons()
 
     def update_buttons(self):
-        total_pages = (len(self.list_data) + ITEMS_PER_PAGE -
-                       1) // ITEMS_PER_PAGE
+        total_pages = len(self.list_data) if self.list_type == "recent" else (
+            len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
-        # Enable/disable buttons based on the current page
         self.first_page_button.disabled = self.page <= 1
         self.prev_page_button.disabled = self.page <= 1
         self.next_page_button.disabled = self.page >= total_pages
