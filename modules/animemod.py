@@ -498,15 +498,16 @@ class AniListModule:
         return embed
 
     def clean_anilist_text(self, text: str) -> str:
+        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'<img\s+[^>]*>', '', text)
         text = re.sub(r'https?://\S+', '', text)
-        text = re.sub(r'(img|Img)(\d*%?)?\(+', '', text)
-        text = re.sub(r'\)+', '', text)
-        text = re.sub(r'\(+', '', text)
         text = re.sub(r'~!.*?!~', '', text)
         text = re.sub(r'__(.*?)__', r'\1', text)
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
         text = re.sub(r'_(.*?)_', r'\1', text)
-        text = re.sub(r'[~\[\]{}]', '', text)
+        text = re.sub(r'[$$$${}()]', '', text)
+        text = re.sub(r'\s+\w+="[^"]*"', '', text)
+        text = re.sub(r'img|src=|alt=|width=|height=|a href=', '', text)
         text = ' '.join(text.split())
         return text.strip()
 
@@ -749,9 +750,13 @@ class AniListModule:
         if stats['about']:
             about_clean = self.clean_anilist_text(stats['about'])
             if about_clean:
-                embed.add_field(name="About",
-                                value=about_clean[:1024],
-                                inline=False)
+                chunks = [
+                    about_clean[i:i + 1024]
+                    for i in range(0, len(about_clean), 1024)
+                ]
+                for i, chunk in enumerate(chunks):
+                    field_name = "About" if i == 0 else "About (continued)"
+                    embed.add_field(name=field_name, value=chunk, inline=False)
 
         anime_stats: Dict[str, Any] = stats['statistics']['anime']
         manga_stats: Dict[str, Any] = stats['statistics']['manga']
