@@ -6,7 +6,7 @@ from discord.ext import commands
 from aiohttp import ClientSession
 import matplotlib.pyplot as plt
 import io
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 from database import db
@@ -143,7 +143,7 @@ class AniListModule:
                                 english
                             }
                             coverImage {
-                                medium
+                                large
                             }
                             type
                         }
@@ -210,28 +210,28 @@ class AniListModule:
             embed.add_field(
                 name=f"{media['type']}: {title}",
                 value=
-                f"Status: {status}\nProgress: {progress}\nUpdated: {time_ago}",
+                f"- **Status:** {status}\n- **Progress:** {progress}\n- **Updated:** {time_ago}",
                 inline=False)
 
-            if media['coverImage']['medium']:
-                embed.set_thumbnail(url=media['coverImage']['medium'])
+            if media['coverImage']['large']:
+                embed.set_image(url=media['coverImage']['large'])
 
         elif activity_type == 'TEXT':
             text = activity['text']
-            embed.add_field(name=f"Text Post",
-                            value=f"{text}\nPosted: {time_ago}",
+            embed.add_field(name="Text Post",
+                            value=f"{text}\n- **Posted:** {time_ago}",
                             inline=False)
 
         elif activity_type == 'MESSAGE':
             message = activity['message']
-            embed.add_field(name=f"Message",
-                            value=f"{message}\nSent: {time_ago}",
+            embed.add_field(name="Message",
+                            value=f"{message}\n- **Sent:** {time_ago}",
                             inline=False)
 
         else:
             embed.add_field(
-                name=f"Unknown Activity",
-                value=f"Type: {activity_type}\nOccurred: {time_ago}",
+                name="Unknown Activity",
+                value=f"Type: {activity_type}\n- **Occurred:** {time_ago}",
                 inline=False)
 
         total_pages = len(activities)
@@ -246,7 +246,7 @@ class AniListModule:
             User(name: $username) {
                 name
                 avatar {
-                    medium
+                    large
                 }
                 bannerImage
                 siteUrl
@@ -391,7 +391,7 @@ class AniListModule:
             Viewer {
                 name
                 avatar {
-                    medium
+                    large
                 }
                 bannerImage
                 siteUrl
@@ -531,10 +531,10 @@ class AniListModule:
         embed.add_field(name="\u200b", value="\u200b",
                         inline=True)  # Empty field for alignment
 
-        if stats1['avatar']['medium']:
-            embed.set_thumbnail(url=stats1['avatar']['medium'])
-        if stats2['avatar']['medium']:
-            embed.set_image(url=stats2['avatar']['medium'])
+        if stats1['avatar']['large']:
+            embed.set_thumbnail(url=stats1['avatar']['large'])
+        if stats2['avatar']['large']:
+            embed.set_image(url=stats2['avatar']['large'])
 
         # Anime and Manga Statistics
         anime_stats1 = stats1['statistics']['anime']
@@ -740,8 +740,8 @@ class AniListModule:
                               url=stats['siteUrl'],
                               color=embed_color)
 
-        if stats['avatar']['medium']:
-            embed.set_thumbnail(url=stats['avatar']['medium'])
+        if stats['avatar']['large']:
+            embed.set_thumbnail(url=stats['avatar']['large'])
 
         if stats['bannerImage']:
             embed.set_image(url=stats['bannerImage'])
