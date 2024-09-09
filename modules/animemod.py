@@ -979,8 +979,8 @@ class BackButton(discord.ui.Button):
 
                 view = discord.ui.View()
                 view.add_item(ListTypeSelect(self.cog))
-                view.add_item(LogoutView(self.cog.anilist_module).children[0]
-                              )  # Add only the logout button
+                view.add_item(CompareButton(self.cog.anilist_module))
+                view.add_item(LogoutView(self.cog.anilist_module).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
@@ -990,10 +990,9 @@ class BackButton(discord.ui.Button):
                 await self.cog.anilist_module.remove_token(user_id)
                 del self.cog.anilist_module.user_tokens[user_id]
         else:
-            await interaction.response.send_message(
-                "AniList Integration",
-                view=AniListView(self.cog.anilist_module),
-                ephemeral=True)
+            view = AniListView(self.cog.anilist_module)
+            await interaction.response.edit_message(
+                content="AniList Integration", view=view, embed=None)
 
 
 class AniListView(discord.ui.View):
@@ -1059,7 +1058,10 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
                 return
 
             embed: discord.Embed = self.module.create_stats_embed(stats)
-            view = LogoutView(self.module)
+            view = discord.ui.View()
+            view.add_item(ListTypeSelect(self.cog))
+            view.add_item(CompareButton(self.module))
+            view.add_item(LogoutView(self.module).children[0])
             message = await interaction.followup.send(embed=embed, view=view)
             view.message = message
         except Exception as e:
