@@ -6,6 +6,8 @@ from discord.ext import commands
 from aiohttp import ClientSession
 import matplotlib.pyplot as plt
 import io
+from datetime import datetime, timedelta
+import logging
 
 from database import db
 
@@ -96,6 +98,149 @@ class AniListModule:
             'gray': '#677B94'
         }
         return color_map.get(color_name.lower(), '#02A9FF')
+
+    async def fetch_recent_activities(
+            self, access_token: str) -> List[Dict[str, Any]]:
+        # First, fetch the user's ID
+        user_query = '''
+        query {
+            Viewer {
+                id
+            }
+        }
+        '''
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={'query': user_query},
+                                    headers=headers) as response:
+                if response.status != 200:
+                    raise Exception(
+                        f"Failed to fetch user ID. Status: {response.status}")
+                user_data = await response.json()
+                user_id = user_data['data']['Viewer']['id']
+
+        # Now fetch the activities using the user's ID
+        query = '''
+        query ($userId: Int, $page: Int, $perPage: Int) {
+            Page(page: $page, perPage: $perPage) {
+                activities(userId: $userId, sort: ID_DESC, type_in: [ANIME_LIST, MANGA_LIST, TEXT, MESSAGE]) {
+                    ... on ListActivity {
+                        id
+                        type
+                        status
+                        progress
+                        media {
+                            id
+                            title {
+                                romaji
+                                english
+                            }
+                            coverImage {
+                                medium
+                            }
+                            type
+                        }
+                        createdAt
+                    }
+                    ... on TextActivity {
+                        id
+                        type
+                        text
+                        createdAt
+                    }
+                    ... on MessageActivity {
+                        id
+                        type
+                        message
+                        createdAt
+                    }
+                }
+            }
+        }
+        '''
+
+        variables = {"userId": user_id, "page": 1, "perPage": 50}
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': query,
+                                        'variables': variables
+                                    },
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    activities = data['data']['Page']['activities']
+                    logging.info(
+                        f"Fetched {len(activities)} activities for user {user_id}"
+                    )
+                    return activities
+                else:
+                    error_message = f"AniList API returned status code {response.status}"
+                    logging.error(error_message)
+                    raise Exception(error_message)
+
+    def create_recent_activities_embed(self, activities: List[Dict[str, Any]],
+                                       page: int) -> discord.Embed:
+        embed = discord.Embed(title="Recent Activities", color=0x02A9FF)
+
+        if not activities:
+            embed.description = "No recent activities found."
+            embed.set_footer(text="Page 1/1")
+            return embed
+
+        start = (page - 1) * ITEMS_PER_PAGE
+        end = start + ITEMS_PER_PAGE
+        paginated_activities = activities[start:end]
+
+        for activity in paginated_activities:
+            activity_type = activity['type']
+            time_ago = discord.utils.format_dt(datetime.fromtimestamp(
+                activity['createdAt']),
+                                               style='R')
+
+            if activity_type in ['ANIME_LIST', 'MANGA_LIST']:
+                media = activity['media']
+                title = media['title']['english'] or media['title']['romaji']
+                status = activity['status']
+                progress = activity['progress']
+                value = f"Status: {status}\nProgress: {progress}\nUpdated: {time_ago}"
+                embed.add_field(name=f"{media['type']}: {title}",
+                                value=value,
+                                inline=False)
+
+                if media['coverImage']['medium']:
+                    embed.set_thumbnail(url=media['coverImage']['medium'])
+
+            elif activity_type == 'TEXT':
+                text = activity['text']
+                embed.add_field(name=f"Text Post",
+                                value=f"{text[:100]}...\nPosted: {time_ago}",
+                                inline=False)
+
+            elif activity_type == 'MESSAGE':
+                message = activity['message']
+                embed.add_field(name=f"Message",
+                                value=f"{message[:100]}...\nSent: {time_ago}",
+                                inline=False)
+
+            else:
+                embed.add_field(
+                    name=f"Unknown Activity",
+                    value=f"Type: {activity_type}\nOccurred: {time_ago}",
+                    inline=False)
+
+        total_pages = (len(activities) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        embed.set_footer(text=f"Page {page}/{total_pages}")
+
+        return embed
 
     async def fetch_anilist_data_by_username(
             self, username: str) -> Optional[Dict[str, Any]]:
@@ -725,8 +870,12 @@ class Paginator(discord.ui.View):
         await self.update_message(interaction)
 
     async def update_message(self, interaction: discord.Interaction):
-        embed = self.cog.anilist_module.create_list_embed(
-            self.list_data, self.list_type, self.status, self.page)
+        if self.list_type == "recent":
+            embed = self.cog.anilist_module.create_recent_activities_embed(
+                self.list_data, self.page)
+        else:
+            embed = self.cog.anilist_module.create_list_embed(
+                self.list_data, self.list_type, self.status, self.page)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -735,7 +884,8 @@ class ListTypeSelect(discord.ui.Select):
     def __init__(self, cog: commands.Cog) -> None:
         options = [
             discord.SelectOption(label="Anime List", value="anime"),
-            discord.SelectOption(label="Manga List", value="manga")
+            discord.SelectOption(label="Manga List", value="manga"),
+            discord.SelectOption(label="Recent Activities", value="recent")
         ]
         super().__init__(placeholder="Choose a list type", options=options)
         self.cog = cog
@@ -746,16 +896,24 @@ class ListTypeSelect(discord.ui.Select):
         access_token = self.cog.anilist_module.user_tokens.get(user_id)
         if access_token:
             try:
-                current_list = await self.cog.anilist_module.fetch_user_list(
-                    access_token, list_type, "CURRENT")
-                embed = self.cog.anilist_module.create_list_embed(
-                    current_list, list_type, "CURRENT")
+                if list_type == "recent":
+                    activities = await self.cog.anilist_module.fetch_recent_activities(
+                        access_token)
+                    embed = self.cog.anilist_module.create_recent_activities_embed(
+                        activities, 1)
+                    view = Paginator(self.cog, activities, list_type, "recent")
+                else:
+                    current_list = await self.cog.anilist_module.fetch_user_list(
+                        access_token, list_type, "CURRENT")
+                    embed = self.cog.anilist_module.create_list_embed(
+                        current_list, list_type, "CURRENT")
+                    view = Paginator(self.cog, current_list, list_type,
+                                     "CURRENT")
+                    view.add_item(StatusSelect(self.cog, list_type))
 
-                view = Paginator(self.cog, current_list, list_type, "CURRENT")
-                view.add_item(StatusSelect(self.cog, list_type))
+                view.add_item(ListTypeSelect(self.cog))
                 view.add_item(BackButton(self.cog))
-                view.add_item(LogoutView(self.cog.anilist_module).children[0]
-                              )  # Add only the logout button
+                view.add_item(LogoutView(self.cog.anilist_module).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
