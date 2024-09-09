@@ -4,11 +4,10 @@ from discord import app_commands
 import aiohttp
 import os
 from urllib.parse import quote
-import asyncio
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from modules.weathermod import create_weather_embed
-from modules.urbanmod import UrbanDictionaryView, create_definition_embeds
+from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown
 from modules.shortnermod import URLShortenerCore
 
 # Retrieve the Bitly API token from environment variables
@@ -47,11 +46,13 @@ class Utilities(commands.Cog):
                 return
             page_info = await self.searcher.get_page_info(page_title)
             base_embed = self.embed_creator.create_base_embed(
-                page_info['title'], page_url or page_info['url'], page_info.get('image_url'))
+                page_info['title'], page_url or page_info['url'],
+                page_info.get('image_url'))
             content_chunks = self.embed_creator.split_content(
                 page_info['summary'])
             initial_embed = base_embed.copy()
-            initial_embed.description = content_chunks[0] if content_chunks else f"No summary available for '{query}'. This is the closest match found."
+            initial_embed.description = content_chunks[
+                0] if content_chunks else f"No summary available for '{query}'. This is the closest match found."
             if len(content_chunks) <= 1:
                 # If there's only one page or no content, don't use the WikiView
                 initial_embed.set_footer(text="Source: Wikipedia")
@@ -100,10 +101,12 @@ class Utilities(commands.Cog):
                 if not definitions:
                     await ctx.send(f"No definitions found for '{word}'.")
                     return
-                pages = create_definition_embeds(word, encoded_word,
-                                                 definitions[:10])
-                view = UrbanDictionaryView(pages)
-                await view.start(ctx)
+                main_embed = create_definition_embed(word, encoded_word,
+                                                     definitions[0], 1,
+                                                     min(8, len(definitions)))
+                dropdown = create_urban_dropdown(definitions[:8])
+                view = UrbanDictionaryView(definitions[:8], dropdown)
+                await view.start(ctx, main_embed)
             else:
                 await ctx.send(
                     "An error occurred while fetching the definition.")
