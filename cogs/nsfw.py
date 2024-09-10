@@ -100,14 +100,6 @@ class NSFW(commands.Cog):
             return False
         return True
 
-    @commands.hybrid_command(description="Get a hentai image from r/hentai.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def hentai(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('hentai', ctx)
-
     @commands.hybrid_command(
         description="Use a sauce code to find a hentai comic from nhentai.net."
     )
@@ -149,100 +141,6 @@ class NSFW(commands.Cog):
             await paginator.run(embeds)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}", delete_after=3)
-
-    @commands.hybrid_command(description="Get a porn image from r/porn.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def porn(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('porn', ctx)
-
-    @commands.hybrid_command(aliases=["tits", "boob", "tit"],
-                             description="Get a picture of boobs via r/boobs.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def boobs(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('boobs', ctx)
-
-    @commands.hybrid_command(
-        aliases=["tittydrop", "titdrop"],
-        description="Get a boobdrop from r/tittydrop. [MOST GIFS MAY NOT SHOW]"
-    )
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def boobdrop(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('tittydrop', ctx)
-
-    @commands.hybrid_command(description="What the fuck?")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def feet(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await ctx.send(
-            "What the fuck is wrong with you? Fucking toe gobbling fuck.",
-            delete_after=3)
-        log_channel_id = 793927796354449459  # Replace with your actual channel ID
-        await self.client.get_channel(log_channel_id).send(
-            "Some degenerate just tried to use the feet command.")
-
-    @commands.hybrid_command(description="Get gay porn from r/gayporn.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def gay(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('gayporn', ctx)
-
-    @commands.hybrid_command(
-        aliases=["lesbo"],
-        description="Get a lesbian porn image from r/lesbians.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def lesbian(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('lesbians', ctx)
-
-    @commands.hybrid_command(
-        description="Get Overwatch porn from r/overwatch_porn.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def overwatch(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('overwatch_porn', ctx)
-
-    @commands.hybrid_command(
-        description="Get an SFM piece of porn from r/sfmcompileclub.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def sfm(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('sfmcompileclub', ctx)
-
-    @commands.hybrid_command(aliases=["vagina"],
-                             description="Get pussy pics from r/pussy.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def pussy(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('pussy', ctx)
-
-    @commands.hybrid_command(description="Get a waifu from r/waifusgonewild.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def waifu(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('waifusgonewild', ctx)
 
     @commands.hybrid_command(
         aliases=["r34"],
@@ -308,26 +206,6 @@ class NSFW(commands.Cog):
                     pass
                 except NotFound:
                     pass
-
-    @commands.hybrid_command(
-        aliases=["futa"],
-        description=
-        "Is futanari considered gay? Get a Futa image from r/futanari.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def futanari(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('futanari', ctx)
-
-    @commands.hybrid_command(
-        description="See images of naked people in pain. Images from r/bdsm.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.is_nsfw()
-    async def bdsm(self, ctx: commands.Context) -> None:
-        if not await self.check_nsfw_channel(ctx):
-            return
-        await self.fetch_reddit_post('bdsm', ctx)
 
 
 async def setup(bot: commands.Bot) -> None:
