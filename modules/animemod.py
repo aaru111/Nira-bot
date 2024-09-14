@@ -868,6 +868,11 @@ class Paginator(discord.ui.View):
         self.update_buttons()
         await self.update_message(interaction)
 
+    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=2)
+    async def delete_button(self, interaction: discord.Interaction,
+                            button: discord.ui.Button):
+        await interaction.message.delete()
+
     async def update_message(self, interaction: discord.Interaction):
         if self.list_type == "recent":
             embed = self.cog.anilist_module.create_recent_activities_embed(
