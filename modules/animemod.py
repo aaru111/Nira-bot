@@ -498,15 +498,17 @@ class AniListModule:
         return embed
 
     def clean_anilist_text(self, text: str) -> str:
-        # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
-
-        # Remove image placeholders
-        text = re.sub(r'~~~\s*(Img\s*)+(\[\d+%\s*\])+', '', text)
-
-        # Remove specific AniList syntax
-        text = re.sub(r'(img|src=|alt=|width=|height=|a href=)', '', text)
-
+        text = re.sub(r'<img\s+[^>]*>', '', text)
+        text = re.sub(r'https?://\S+', '', text)
+        text = re.sub(r'~!.*?!~', '', text)
+        text = re.sub(r'__(.*?)__', r'\1', text)
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+        text = re.sub(r'_(.*?)_', r'\1', text)
+        text = re.sub(r'[$$$${}()]', '', text)
+        text = re.sub(r'\s+\w+="[^"]*"', '', text)
+        text = re.sub(r'img|src=|alt=|width=|height=|a href=', '', text)
+        text = ' '.join(text.split())
         return text.strip()
 
     async def compare_stats(
@@ -880,40 +882,39 @@ class Paginator(discord.ui.View):
 
 class ListTypeSelect(discord.ui.Select):
 
-    def __init__(self, module: AniListModule) -> None:
+    def __init__(self, cog: commands.Cog) -> None:
         options = [
             discord.SelectOption(label="Anime List", value="anime"),
             discord.SelectOption(label="Manga List", value="manga"),
             discord.SelectOption(label="Recent Activities", value="recent")
         ]
         super().__init__(placeholder="Choose a list type", options=options)
-        self.module = module
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction) -> None:
         list_type: str = self.values[0]
         user_id: int = interaction.user.id
-        access_token = self.module.user_tokens.get(user_id)
+        access_token = self.cog.anilist_module.user_tokens.get(user_id)
         if access_token:
             try:
                 if list_type == "recent":
-                    activities = await self.module.fetch_recent_activities(
+                    activities = await self.cog.anilist_module.fetch_recent_activities(
                         access_token)
-                    embed = self.module.create_recent_activities_embed(
+                    embed = self.cog.anilist_module.create_recent_activities_embed(
                         activities, 1)
-                    view = Paginator(self.module, activities, list_type,
-                                     "recent")
+                    view = Paginator(self.cog, activities, list_type, "recent")
                 else:
-                    current_list = await self.module.fetch_user_list(
+                    current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
-                    embed = self.module.create_list_embed(
+                    embed = self.cog.anilist_module.create_list_embed(
                         current_list, list_type, "CURRENT")
-                    view = Paginator(self.module, current_list, list_type,
+                    view = Paginator(self.cog, current_list, list_type,
                                      "CURRENT")
-                    view.add_item(StatusSelect(self.module, list_type))
+                    view.add_item(StatusSelect(self.cog, list_type))
 
-                view.add_item(ListTypeSelect(self.module))
-                view.add_item(BackButton(self.module))
-                view.add_item(LogoutView(self.module).children[0])
+                view.add_item(ListTypeSelect(self.cog))
+                view.add_item(BackButton(self.cog))
+                view.add_item(LogoutView(self.cog.anilist_module).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
@@ -1063,7 +1064,7 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
 
             embed: discord.Embed = self.module.create_stats_embed(stats)
             view = discord.ui.View()
-            view.add_item(ListTypeSelect(self.module))
+            view.add_item(ListTypeSelect(self.cog))
             view.add_item(CompareButton(self.module))
             view.add_item(LogoutView(self.module).children[0])
             message = await interaction.followup.send(embed=embed, view=view)
