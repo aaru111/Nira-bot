@@ -1032,15 +1032,15 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
     def __init__(self, module: AniListModule) -> None:
         super().__init__()
         self.module: AniListModule = module
-
+    
     auth_code: discord.ui.TextInput = discord.ui.TextInput(
         label='Enter your AniList authorization code',
         placeholder='Paste your auth code here...',
         required=True)
-
+    
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-
+    
         try:
             access_token: Optional[str] = await self.module.get_access_token(
                 self.auth_code.value)
@@ -1049,11 +1049,11 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
                     "Failed to authenticate. Please try again.",
                     ephemeral=True)
                 return
-
+    
             user_id = interaction.user.id
             self.module.user_tokens[user_id] = access_token
             await self.module.save_token(user_id, access_token)
-
+    
             stats: Optional[Dict[
                 str, Any]] = await self.module.fetch_anilist_data(access_token)
             if not stats:
@@ -1061,10 +1061,10 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
                     "Failed to fetch AniList data. Please try again.",
                     ephemeral=True)
                 return
-
+    
             embed: discord.Embed = self.module.create_stats_embed(stats)
             view = discord.ui.View()
-            view.add_item(ListTypeSelect(self.cog))
+            view.add_item(ListTypeSelect(self.module))  # Change this line
             view.add_item(CompareButton(self.module))
             view.add_item(LogoutView(self.module).children[0])
             message = await interaction.followup.send(embed=embed, view=view)
