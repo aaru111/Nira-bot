@@ -498,17 +498,15 @@ class AniListModule:
         return embed
 
     def clean_anilist_text(self, text: str) -> str:
+        # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
-        text = re.sub(r'<img\s+[^>]*>', '', text)
-        text = re.sub(r'https?://\S+', '', text)
-        text = re.sub(r'~!.*?!~', '', text)
-        text = re.sub(r'__(.*?)__', r'\1', text)
-        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-        text = re.sub(r'_(.*?)_', r'\1', text)
-        text = re.sub(r'[$$$${}()]', '', text)
-        text = re.sub(r'\s+\w+="[^"]*"', '', text)
-        text = re.sub(r'img|src=|alt=|width=|height=|a href=', '', text)
-        text = ' '.join(text.split())
+
+        # Remove image placeholders
+        text = re.sub(r'~~~\s*(Img\s*)+(\[\d+%\s*\])+', '', text)
+
+        # Remove specific AniList syntax
+        text = re.sub(r'(img|src=|alt=|width=|height=|a href=)', '', text)
+
         return text.strip()
 
     async def compare_stats(
@@ -1032,15 +1030,15 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
     def __init__(self, module: AniListModule) -> None:
         super().__init__()
         self.module: AniListModule = module
-    
+
     auth_code: discord.ui.TextInput = discord.ui.TextInput(
         label='Enter your AniList authorization code',
         placeholder='Paste your auth code here...',
         required=True)
-    
+
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-    
+
         try:
             access_token: Optional[str] = await self.module.get_access_token(
                 self.auth_code.value)
@@ -1049,11 +1047,11 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
                     "Failed to authenticate. Please try again.",
                     ephemeral=True)
                 return
-    
+
             user_id = interaction.user.id
             self.module.user_tokens[user_id] = access_token
             await self.module.save_token(user_id, access_token)
-    
+
             stats: Optional[Dict[
                 str, Any]] = await self.module.fetch_anilist_data(access_token)
             if not stats:
@@ -1061,7 +1059,7 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
                     "Failed to fetch AniList data. Please try again.",
                     ephemeral=True)
                 return
-    
+
             embed: discord.Embed = self.module.create_stats_embed(stats)
             view = discord.ui.View()
             view.add_item(ListTypeSelect(self.module))  # Change this line
