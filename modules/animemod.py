@@ -911,7 +911,6 @@ class ListTypeSelect(discord.ui.Select):
                     view.add_item(StatusSelect(self.cog, list_type))
 
                 view.add_item(BackButton(self.cog))
-                view.add_item(LogoutView(self.cog.anilist_module).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
@@ -951,7 +950,6 @@ class StatusSelect(discord.ui.Select):
                 view = Paginator(self.cog, list_data, self.list_type, status)
                 view.add_item(StatusSelect(self.cog, self.list_type))
                 view.add_item(BackButton(self.cog))
-                view.add_item(LogoutView(self.cog.anilist_module).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
