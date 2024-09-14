@@ -507,6 +507,9 @@ class AniListModule:
         # Remove specific AniList syntax
         text = re.sub(r'(img|src=|alt=|width=|height=|a href=)', '', text)
 
+        # Remove ~~ to prevent unintended strikethrough
+        text = text.replace('~~', '')
+
         return text.strip()
 
     async def compare_stats(
