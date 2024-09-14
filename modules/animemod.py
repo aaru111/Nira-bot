@@ -504,24 +504,6 @@ class AniListModule:
         # Remove image placeholders
         text = re.sub(r'~~~\s*(Img\s*)+(\[\d+%\s*\])+', '', text)
 
-        # Remove URLs
-        text = re.sub(r'https?://\S+', '', text)
-
-        # Remove AniList spoiler tags
-        text = re.sub(r'~!.*?!~', '', text)
-
-        # Convert AniList formatting to Discord markdown
-        text = re.sub(r'__(.*?)__', r'**\1**', text)  # Bold
-        text = re.sub(r'\*\*(.*?)\*\*', r'**\1**',
-                      text)  # Already bold, keep as is
-        text = re.sub(r'_(.*?)_', r'*\1*', text)  # Italic
-
-        # Remove any leftover square brackets often used in AniList formatting
-        text = re.sub(r'\[.*?\]', '', text)
-
-        # Remove any HTML attributes that might have been left
-        text = re.sub(r'\s+\w+="[^"]*"', '', text)
-
         # Remove specific AniList syntax
         text = re.sub(r'(img|src=|alt=|width=|height=|a href=)', '', text)
 
