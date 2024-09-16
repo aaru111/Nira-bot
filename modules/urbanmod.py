@@ -44,11 +44,20 @@ class UrbanDictionaryView(ui.View):
 
 
 def format_definition(text):
-    words = re.findall(r'$$([^$$]+)$$', text)
+    # Format words in square brackets
+    words = re.findall(r'\[([^\]]+)\]', text)
     for word in words:
         encoded_word = quote(word)
         link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
         text = text.replace(f"[{word}]", f"[{word}]({link})")
+
+    # Format words with double dollar signs
+    words = re.findall(r'\$\$([^\$]+)\$\$', text)
+    for word in words:
+        encoded_word = quote(word)
+        link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
+        text = text.replace(f"$${word}$$", f"[{word}]({link})")
+
     return text
 
 
@@ -59,10 +68,8 @@ def create_definition_embed(word, encoded_word, definition, index, total):
         color=0x00ff00)
     embed.set_author(name="Urban Dictionary",
                      icon_url="https://i.imgur.com/vdoosDm.png")
-
     formatted_definition = format_definition(definition["definition"])
     formatted_example = format_definition(definition["example"])
-
     embed.add_field(name="📚 Definition",
                     value=formatted_definition[:1000],
                     inline=False)
@@ -77,7 +84,6 @@ def create_definition_embed(word, encoded_word, definition, index, total):
                     inline=True)
     embed.set_footer(
         text=f"Definition {index}/{total} | Written by {definition['author']}")
-
     return embed
 
 
