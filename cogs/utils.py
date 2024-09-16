@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 import os
-from typing import Optional
+from typing import Optional, List
 from urllib.parse import quote
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
@@ -38,9 +38,14 @@ class Utilities(commands.Cog):
         await self.session.close()
         await self.url_shortener_core.close_session()
 
+    async def wiki_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        suggestions = await self.searcher.autocomplete(current)
+        return [app_commands.Choice(name=suggestion, value=suggestion) for suggestion in suggestions[:25]]
+
     @commands.hybrid_command(name="wiki",
                              description="Search Wikipedia for information")
     @app_commands.describe(query="The search query for Wikipedia")
+    @app_commands.autocomplete(query=wiki_autocomplete)
     async def wiki(self, ctx: commands.Context, *, query: str):
         await ctx.defer()
         try:
