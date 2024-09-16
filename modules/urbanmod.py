@@ -3,19 +3,19 @@ from discord import ui
 from urllib.parse import quote
 import re
 
-
 class UrbanDictionarySelect(ui.Select):
-
     def __init__(self, definitions):
+        # Sort definitions by thumbs_up in descending order
+        sorted_definitions = sorted(definitions, key=lambda x: x['thumbs_up'], reverse=True)
         options = [
             discord.SelectOption(
                 label=f"{definition['word'][:50]}",
-                description=
-                f"{definition['author'][:50]} | 👍 {definition['thumbs_up']}",
-                value=str(i)) for i, definition in enumerate(definitions)
+                description=f"{definition['author'][:50]} | 👍 {definition['thumbs_up']}",
+                value=str(i)
+            ) for i, definition in enumerate(sorted_definitions)
         ]
         super().__init__(placeholder="Select a definition", options=options)
-        self.definitions = definitions
+        self.definitions = sorted_definitions
 
     async def callback(self, interaction: discord.Interaction):
         index = int(self.values[0])
@@ -25,9 +25,7 @@ class UrbanDictionarySelect(ui.Select):
                                         index + 1, len(self.definitions))
         await interaction.response.edit_message(embed=embed)
 
-
 class UrbanDictionaryView(ui.View):
-
     def __init__(self, definitions, dropdown):
         super().__init__(timeout=30)
         self.definitions = definitions
@@ -42,7 +40,6 @@ class UrbanDictionaryView(ui.View):
     async def start(self, ctx, embed):
         self.message = await ctx.send(embed=embed, view=self)
 
-
 def format_definition(text):
     # Format words in square brackets
     words = re.findall(r'\[([^\]]+)\]', text)
@@ -50,16 +47,13 @@ def format_definition(text):
         encoded_word = quote(word)
         link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
         text = text.replace(f"[{word}]", f"[{word}]({link})")
-
     # Format words with double dollar signs
     words = re.findall(r'\$\$([^\$]+)\$\$', text)
     for word in words:
         encoded_word = quote(word)
         link = f"https://www.urbandictionary.com/define.php?term={encoded_word}"
         text = text.replace(f"$${word}$$", f"[{word}]({link})")
-
     return text
-
 
 def create_definition_embed(word, encoded_word, definition, index, total):
     embed = discord.Embed(
@@ -85,7 +79,6 @@ def create_definition_embed(word, encoded_word, definition, index, total):
     embed.set_footer(
         text=f"Definition {index}/{total} | Written by {definition['author']}")
     return embed
-
 
 def create_urban_dropdown(definitions):
     return UrbanDictionarySelect(definitions)
