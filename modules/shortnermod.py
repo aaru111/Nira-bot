@@ -1,4 +1,3 @@
-import requests
 import qrcode
 import io
 import time
@@ -6,19 +5,21 @@ import aiohttp
 from urllib.parse import urlparse
 from typing import Optional, Dict, Tuple
 
-
 class URLShortenerCore:
-
-    def __init__(self, bitly_token: str, rate_limit: int,
-                 reset_interval: int) -> None:
+    def __init__(self, bitly_token: str, rate_limit: int, reset_interval: int) -> None:
         self.bitly_token = bitly_token
         self.rate_limit = rate_limit
         self.reset_interval = reset_interval
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.session: Optional[aiohttp.ClientSession] = None
+
+    async def initialize_session(self) -> None:
+        """Initialize the aiohttp session."""
+        self.session = aiohttp.ClientSession()
 
     async def close_session(self) -> None:
         """Clean up the aiohttp session."""
-        await self.session.close()
+        if self.session:
+            await self.session.close()
 
     @staticmethod
     def is_already_shortened(url: str) -> bool:
@@ -26,26 +27,29 @@ class URLShortenerCore:
         parsed_url = urlparse(url)
         return parsed_url.netloc in ["bit.ly", "j.mp", "bitly.is"]
 
-    def shorten_url(self,
-                    url: str,
-                    expire_days: Optional[int] = None) -> Optional[str]:
+    async def shorten_url(self, url: str, expire_days: Optional[int] = None) -> Optional[str]:
         """Shortens the provided URL using the Bitly API with an optional expiration time."""
+        if not self.session:
+            await self.initialize_session()
+
         headers = {
             "Authorization": f"Bearer {self.bitly_token}",
             "Content-Type": "application/json",
         }
         data = {"long_url": url, "domain": "bit.ly"}
         if expire_days:
-            data["expires_at"] = time.time(
-            ) + expire_days * 86400  # Convert days to seconds
+            data["expires_at"] = int(time.time() + expire_days * 86400)  # Convert days to seconds
 
         try:
-            response = requests.post("https://api-ssl.bitly.com/v4/shorten",
-                                     json=data,
-                                     headers=headers)
-            response.raise_for_status()
-            return response.json().get("link")
-        except requests.exceptions.RequestException as e:
+            async with self.session.post("https://api-ssl.bitly.com/v4/shorten", json=data, headers=headers) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("link")
+                else:
+                    error_message = await response.text()
+                    print(f"Error occurred: {response.status} - {error_message}")
+                    return None
+        except aiohttp.ClientError as e:
             print(f"Error occurred: {e}")
             return None
 
@@ -65,16 +69,13 @@ class URLShortenerCore:
         )
         qr.add_data(url)
         qr.make(fit=True)
-
         img = qr.make_image(fill="black", back_color="white")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         return buf
 
-    def is_within_rate_limit(
-            self, user_id: int,
-            user_rate_limits: Dict[int, Tuple[float, int]]) -> bool:
+    def is_within_rate_limit(self, user_id: int, user_rate_limits: Dict[int, Tuple[float, int]]) -> bool:
         """Checks if a user is within the rate limit."""
         current_time = time.time()
         if user_id in user_rate_limits:

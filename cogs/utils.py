@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 import os
-from typing import Optional, List
+from typing import Optional
 from urllib.parse import quote
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
@@ -26,8 +26,12 @@ class Utilities(commands.Cog):
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.searcher = WikipediaSearcher()
         self.embed_creator = WikiEmbedCreator()
-        self.url_shortener_core = URLShortenerCore(BITLY_TOKEN, RATE_LIMIT,
-                                                   RESET_INTERVAL)
+        self.url_shortener_core = URLShortenerCore(BITLY_TOKEN or "",
+                                                   RATE_LIMIT, RESET_INTERVAL)
+
+    async def cog_load(self):
+        """Initialize resources when the cog is loaded."""
+        await self.url_shortener_core.initialize_session()
 
     async def cog_unload(self):
         """Cleanup resources when the cog is unloaded."""
@@ -131,6 +135,7 @@ class Utilities(commands.Cog):
                       generate_qr: bool = False,
                       expire_days: Optional[int] = None) -> None:
         """Handles the /shorten command to shorten a given URL."""
+        await ctx.defer()
         user_id = ctx.author.id
         if not self.url_shortener_core.is_within_rate_limit(
                 user_id, user_rate_limits):
@@ -140,7 +145,7 @@ class Utilities(commands.Cog):
         if self.url_shortener_core.is_already_shortened(url):
             await ctx.send("Cannot shorten an already shortened URL.")
             return
-        shortened_url = self.url_shortener_core.shorten_url(url, expire_days)
+        shortened_url = await self.url_shortener_core.shorten_url(url, expire_days)
         if shortened_url:
             formatted_url = self.url_shortener_core.format_shortened_url(
                 shortened_url)
