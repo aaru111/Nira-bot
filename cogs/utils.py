@@ -3,11 +3,12 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 import os
+from typing import Optional, List
 from urllib.parse import quote
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from modules.weathermod import create_weather_embed
-from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown
+from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
 from modules.shortnermod import URLShortenerCore
 
 # Retrieve the Bitly API token from environment variables
@@ -33,14 +34,15 @@ class Utilities(commands.Cog):
         await self.session.close()
         await self.url_shortener_core.close_session()
 
-    @app_commands.command(name="wiki",
-                          description="Search Wikipedia for information")
-    async def wiki(self, interaction: discord.Interaction, query: str):
-        await interaction.response.defer()
+    @commands.hybrid_command(name="wiki",
+                             description="Search Wikipedia for information")
+    @app_commands.describe(query="The search query for Wikipedia")
+    async def wiki(self, ctx: commands.Context, *, query: str):
+        await ctx.defer()
         try:
             page_title, page_url = await self.searcher.search(query)
             if not page_title:
-                await interaction.followup.send(
+                await ctx.send(
                     "No results found for your query. Please try a different search term.",
                     ephemeral=True)
                 return
@@ -56,42 +58,43 @@ class Utilities(commands.Cog):
             if len(content_chunks) <= 1:
                 # If there's only one page or no content, don't use the WikiView
                 initial_embed.set_footer(text="Source: Wikipedia")
-                await interaction.followup.send(embed=initial_embed)
+                await ctx.send(embed=initial_embed)
             else:
                 # If there are multiple pages, use the WikiView
                 view = WikiView(base_embed, content_chunks)
                 initial_embed.set_footer(
                     text=f"Page 1/{len(content_chunks)} | Source: Wikipedia")
-                message = await interaction.followup.send(embed=initial_embed,
-                                                          view=view)
+                message = await ctx.send(embed=initial_embed, view=view)
                 view.message = message
         except Exception as e:
-            await interaction.followup.send(
+            await ctx.send(
                 f"An error occurred while processing your request: {str(e)}",
                 ephemeral=True)
 
-    @app_commands.command(
+    @commands.hybrid_command(
         name="weather", description="Get the weather for a specified location")
-    async def weather(self, interaction: discord.Interaction, location: str):
+    @app_commands.describe(location="The location to get weather for")
+    async def weather(self, ctx: commands.Context, *, location: str):
         api_key = os.getenv(
             "WEATHER_API_KEY")  # Retrieve the API key from the environment
         if not api_key:
-            await interaction.response.send_message("Error: API key not found."
-                                                    )
+            await ctx.send("Error: API key not found.")
             return
         base_url = "http://api.openweathermap.org/data/2.5/weather"
         params = {"q": location, "appid": api_key, "units": "metric"}
         async with self.session.get(base_url, params=params) as response:
             data = await response.json()
         if data["cod"] != 200:
-            await interaction.response.send_message(f"Error: {data['message']}"
-                                                    )
+            await ctx.send(f"Error: {data['message']}")
             return
         embed = create_weather_embed(data, location)
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
-    @commands.command(name="urban")
-    async def urban(self, ctx, *, word: str):
+    @commands.hybrid_command(name="urban",
+                             description="Search Urban Dictionary for a word")
+    @app_commands.describe(word="The word to search for in Urban Dictionary")
+    @app_commands.autocomplete(word=search_urban_dictionary)
+    async def urban(self, ctx: commands.Context, *, word: str):
         encoded_word = quote(word)
         url = f"https://api.urbandictionary.com/v0/define?term={encoded_word}"
         async with self.session.get(url) as response:
@@ -111,7 +114,7 @@ class Utilities(commands.Cog):
                 await ctx.send(
                     "An error occurred while fetching the definition.")
 
-    @app_commands.command(
+    @commands.hybrid_command(
         name="shorten",
         description=
         "Shorten any valid URL using the Bitly API. Optionally generate a QR code and set an expiration time."
@@ -123,20 +126,19 @@ class Utilities(commands.Cog):
         "Number of days after which the shortened URL will expire (default is no expiry)"
     )
     async def shorten(self,
-                      interaction: discord.Interaction,
+                      ctx: commands.Context,
                       url: str,
                       generate_qr: bool = False,
-                      expire_days: int = None) -> None:
+                      expire_days: Optional[int] = None) -> None:
         """Handles the /shorten command to shorten a given URL."""
-        user_id = interaction.user.id
+        user_id = ctx.author.id
         if not self.url_shortener_core.is_within_rate_limit(
                 user_id, user_rate_limits):
-            await interaction.response.send_message(
+            await ctx.send(
                 "You have reached the rate limit. Please try again later.")
             return
         if self.url_shortener_core.is_already_shortened(url):
-            await interaction.response.send_message(
-                "Cannot shorten an already shortened URL.")
+            await ctx.send("Cannot shorten an already shortened URL.")
             return
         shortened_url = self.url_shortener_core.shorten_url(url, expire_days)
         if shortened_url:
@@ -146,14 +148,13 @@ class Utilities(commands.Cog):
                 qr_image = self.url_shortener_core.generate_qr_code(
                     shortened_url)
                 file = discord.File(qr_image, filename="qrcode.png")
-                await interaction.response.send_message(
+                await ctx.send(
                     content=f"Here is your shortened URL: {formatted_url}",
                     file=file)
             else:
-                await interaction.response.send_message(
-                    f"Here is your shortened URL: {formatted_url}")
+                await ctx.send(f"Here is your shortened URL: {formatted_url}")
         else:
-            await interaction.response.send_message(
+            await ctx.send(
                 "Failed to shorten the URL. Please ensure it's a valid URL and try again."
             )
 
