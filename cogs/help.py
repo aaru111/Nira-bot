@@ -281,7 +281,9 @@ class HelpCog(commands.Cog):
                     cmd,
                 (commands.Command, app_commands.Command
                  )) and current.lower() in cmd.qualified_name.lower() and (
-                     not self.is_owner_only(cmd) or is_owner):
+                     not self.is_owner_only(cmd)
+                     or is_owner) and (not self.is_jishaku_command(cmd)
+                                       or is_owner):
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -293,7 +295,9 @@ class HelpCog(commands.Cog):
                     cmd,
                 (commands.Command, app_commands.Command
                  )) and current.lower() in cmd.qualified_name.lower() and (
-                     not self.is_owner_only(cmd) or is_owner):
+                     not self.is_owner_only(cmd)
+                     or is_owner) and (not self.is_jishaku_command(cmd)
+                                       or is_owner):
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -348,7 +352,9 @@ class HelpCog(commands.Cog):
         for command in sorted(self.bot.tree.walk_commands(),
                               key=lambda c: c.name):
             if isinstance(command, app_commands.Command) and (
-                    not self.is_owner_only(command) or is_owner):
+                    not self.is_owner_only(command)
+                    or is_owner) and (not self.is_jishaku_command(command)
+                                      or is_owner):
                 cog_name = command.binding.__class__.__name__ if command.binding else self.no_category_name
                 if cog_name not in cog_commands:
                     cog_commands[cog_name] = []
@@ -358,7 +364,9 @@ class HelpCog(commands.Cog):
         # Then process bot commands, skipping those already seen
         for command in sorted(self.bot.commands, key=lambda c: c.name):
             if command.qualified_name not in seen_commands and (
-                    not self.is_owner_only(command) or is_owner):
+                    not self.is_owner_only(command)
+                    or is_owner) and (not self.is_jishaku_command(command)
+                                      or is_owner):
                 cog_name = command.cog.qualified_name if command.cog else self.no_category_name
                 if cog_name not in cog_commands:
                     cog_commands[cog_name] = []
@@ -381,10 +389,10 @@ class HelpCog(commands.Cog):
         if isinstance(ctx, commands.Context):
             message = await ctx.send(embed=initial_embed, view=view)
         else:
-            message = await ctx.response.send_message(embed=initial_embed,
-                                                      view=view)
-            if message is not None:
-                view.message = message
+            await ctx.response.send_message(embed=initial_embed, view=view)
+            message = await ctx.original_response()
+
+        view.message = message
 
         # Start a background task to check for timeout
         self.bot.loop.create_task(self.check_view_timeout(view))
