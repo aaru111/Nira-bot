@@ -7,7 +7,6 @@ import io
 from typing import Optional, Dict, Tuple
 from database import db
 import time
-import asyncio
 
 
 class XPRateSelect(discord.ui.Select):
