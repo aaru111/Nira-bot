@@ -93,12 +93,14 @@ class LevelUpMessageModal(discord.ui.Modal, title='Edit Level Up Message'):
         required=True,
         max_length=1000)
 
-    def __init__(self, current_message: str):
+    def __init__(self, current_message: str, view: 'SetupView'):
         super().__init__()
         self.message.default = current_message
+        self.view = view
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        self.view.level_up_message = self.message.value
+        await self.view.update_embed(interaction)
         self.stop()
 
 
@@ -146,12 +148,9 @@ class SetupView(discord.ui.View):
                        style=discord.ButtonStyle.blurple)
     async def edit_message_button(self, interaction: discord.Interaction,
                                   button: discord.ui.Button):
-        modal = LevelUpMessageModal(self.level_up_message)
+        modal = LevelUpMessageModal(self.level_up_message, self)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        if modal.message.value:
-            self.level_up_message = modal.message.value
-            await self.update_embed(interaction)
 
     @discord.ui.button(label='Reset All Levels',
                        style=discord.ButtonStyle.danger)
@@ -261,12 +260,12 @@ class Leveling(commands.Cog):
         DECLARE
             column_added BOOLEAN := FALSE;
         BEGIN
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                            WHERE table_name='guild_leveling_settings' AND column_name='announcement_channel') THEN
                 ALTER TABLE guild_leveling_settings ADD COLUMN announcement_channel BIGINT;
                 column_added := TRUE;
             END IF;
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                            WHERE table_name='guild_leveling_settings' AND column_name='level_up_message') THEN
                 ALTER TABLE guild_leveling_settings ADD COLUMN level_up_message TEXT;
                 column_added := TRUE;
@@ -394,7 +393,6 @@ class Leveling(commands.Cog):
         card_width, card_height = 400, 150
         card = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
 
-        # Fetch and process avatar
         avatar_size = 100
         avatar_url = member.display_avatar.replace(format='png', size=128)
         avatar_data = io.BytesIO(await avatar_url.read())
@@ -402,47 +400,38 @@ class Leveling(commands.Cog):
         avatar_image = avatar_image.resize((avatar_size, avatar_size),
                                            Image.Resampling.LANCZOS)
 
-        # Create circular mask for avatar
         mask = Image.new('L', (avatar_size, avatar_size), 0)
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
 
-        # Create gradient background
         gradient = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
         gradient_draw = ImageDraw.Draw(gradient)
 
-        # Use a default color if we can't get a dominant color from the avatar
         try:
             avatar_colors = avatar_image.getcolors(avatar_image.size[0] *
                                                    avatar_image.size[1])
             dominant_color = max(avatar_colors, key=lambda x: x[0])[1][:3]
         except:
-            dominant_color = (100, 100, 100
-                              )  # Default gray if color extraction fails
+            dominant_color = (100, 100, 100)
 
         for y in range(card_height):
             alpha = int(255 * (1 - y / card_height))
             gradient_draw.line([(0, y), (card_width, y)],
                                fill=dominant_color + (alpha, ))
 
-        # Composite gradient onto card
         card = Image.alpha_composite(card, gradient)
 
-        # Paste avatar onto card
         card.paste(avatar_image, (20, 25), mask)
 
         draw = ImageDraw.Draw(card)
 
-        # Load fonts (adjust paths as needed)
         try:
             title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
             text_font = ImageFont.truetype("fonts/InterVariable.ttf", 20)
         except IOError:
-            # Fallback to default font if custom fonts are not available
             title_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
 
-        # Draw text
         draw.text((140, 20),
                   member.display_name,
                   font=title_font,
@@ -456,7 +445,6 @@ class Leveling(commands.Cog):
                   font=text_font,
                   fill=(255, 255, 255, 255))
 
-        # Draw XP progress bar
         xp_to_next_level = (level + 1)**2 * 100
         progress = xp / xp_to_next_level
         bar_width, bar_height = 200, 20
@@ -466,7 +454,6 @@ class Leveling(commands.Cog):
                                    (int(bar_width * progress), bar_height),
                                    dominant_color + (180, ))
 
-        # Create rounded corners for progress bar
         def round_corner(radius: int, fill: Tuple[int, int, int, int]):
             corner = Image.new('RGBA', (radius, radius), (0, 0, 0, 0))
             draw = ImageDraw.Draw(corner)
@@ -481,11 +468,9 @@ class Leveling(commands.Cog):
                              (bar_width - radius, bar_height - radius))
         bar_background.paste(corner.rotate(270), (bar_width - radius, 0))
 
-        # Paste progress bars
         card.paste(bar_background, (180, 120), bar_background)
         card.paste(bar_foreground, (180, 120), bar_foreground)
 
-        # Draw XP text
         xp_text = f"XP: {xp}/{xp_to_next_level}"
         text_width = draw.textlength(xp_text, font=text_font)
         draw.text((180 + (bar_width - text_width) / 2, 120),
@@ -493,7 +478,6 @@ class Leveling(commands.Cog):
                   font=text_font,
                   fill=(255, 255, 255, 255))
 
-        # Save and return
         buffer = io.BytesIO()
         card.save(buffer, 'PNG')
         buffer.seek(0)
