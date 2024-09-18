@@ -4,14 +4,14 @@ from discord.ext import commands
 import random
 from PIL import Image, ImageDraw, ImageFont
 import io
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 from database import db
 import time
 
 
 class XPRateSelect(discord.ui.Select):
 
-    def __init__(self, current_min, current_max):
+    def __init__(self, current_min: int, current_max: int):
         options = [
             discord.SelectOption(label='Low (5-15 XP)',
                                  description='Slower progression',
@@ -35,7 +35,7 @@ class XPRateSelect(discord.ui.Select):
 
 class XPCooldownSelect(discord.ui.Select):
 
-    def __init__(self, current_cooldown):
+    def __init__(self, current_cooldown: int):
         options = [
             discord.SelectOption(label='Short (30 seconds)',
                                  description='More frequent XP gains',
@@ -98,7 +98,7 @@ class ConfirmView(discord.ui.View):
 
     def __init__(self):
         super().__init__()
-        self.value = None
+        self.value: Optional[bool] = None
 
     @discord.ui.button(label='Confirm', style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction,
@@ -127,7 +127,7 @@ class ConfirmButton(discord.ui.Button):
 
 class AnnouncementChannelSelect(discord.ui.ChannelSelect):
 
-    def __init__(self, current_channel_id):
+    def __init__(self, current_channel_id: Optional[int]):
         super().__init__(
             channel_types=[discord.ChannelType.text],
             placeholder=
@@ -143,27 +143,26 @@ class AnnouncementChannelSelect(discord.ui.ChannelSelect):
 
 class SetupView(discord.ui.View):
 
-    def __init__(self, guild_settings: Dict):
+    def __init__(self, guild_settings: Dict[str, int | bool | Optional[int]]):
         super().__init__()
-        self.add_item(
-            XPRateSelect(guild_settings['xp_min'], guild_settings['xp_max']))
-        self.add_item(XPCooldownSelect(guild_settings['xp_cooldown']))
-        self.add_item(ToggleButton(guild_settings['enabled']))
-        self.add_item(
-            AnnouncementChannelSelect(
-                guild_settings.get('announcement_channel')))
-        self.add_item(ResetButton())
-        self.add_item(ConfirmButton())
-        self.xp_min = guild_settings['xp_min']
-        self.xp_max = guild_settings['xp_max']
-        self.xp_cooldown = guild_settings['xp_cooldown']
-        self.is_enabled = guild_settings['enabled']
-        self.announcement_channel = guild_settings.get('announcement_channel')
-        self.level_up_message = guild_settings.get(
+        self.xp_min: int = guild_settings['xp_min']
+        self.xp_max: int = guild_settings['xp_max']
+        self.xp_cooldown: int = guild_settings['xp_cooldown']
+        self.is_enabled: bool = guild_settings['enabled']
+        self.announcement_channel: Optional[int] = guild_settings.get(
+            'announcement_channel')
+        self.level_up_message: str = guild_settings.get(
             'level_up_message',
             "Congratulations {user_mention}! You've reached level {new_level}!"
         )
-        self.confirmed = False
+        self.confirmed: bool = False
+
+        self.add_item(XPRateSelect(self.xp_min, self.xp_max))
+        self.add_item(XPCooldownSelect(self.xp_cooldown))
+        self.add_item(ToggleButton(self.is_enabled))
+        self.add_item(AnnouncementChannelSelect(self.announcement_channel))
+        self.add_item(ResetButton())
+        self.add_item(ConfirmButton())
 
     async def update_message(self, interaction: discord.Interaction):
         content = (
@@ -179,36 +178,83 @@ class SetupView(discord.ui.View):
 
 class Leveling(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.leveling_settings: Dict[int, Dict] = {}
+        self.leveling_settings: Dict[int,
+                                     Dict[str,
+                                          int | bool | Optional[int]]] = {}
         self.cooldowns: Dict[int, Dict[int, float]] = {}
-        self.default_level_up_message = "Congratulations {user_mention}! You've reached level {new_level}!"
+        self.default_level_up_message: str = "Congratulations {user_mention}! You've reached level {new_level}!"
 
     async def cog_load(self):
         await self.create_tables()
         await self.load_settings()
 
     async def create_tables(self):
-        query = """
-        CREATE TABLE IF NOT EXISTS user_levels (
-            user_id BIGINT,
-            guild_id BIGINT,
-            xp INT DEFAULT 0,
-            level INT DEFAULT 0,
-            PRIMARY KEY (user_id, guild_id)
-        );
-        CREATE TABLE IF NOT EXISTS guild_leveling_settings (
-            guild_id BIGINT PRIMARY KEY,
-            enabled BOOLEAN DEFAULT FALSE,
-            xp_min INT DEFAULT 10,
-            xp_max INT DEFAULT 20,
-            xp_cooldown INT DEFAULT 60,
-            announcement_channel BIGINT,
-            level_up_message TEXT
-        );
+        queries = [
+            """
+            CREATE TABLE IF NOT EXISTS user_levels (
+                user_id BIGINT,
+                guild_id BIGINT,
+                xp INT DEFAULT 0,
+                level INT DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id)
+            );
+            """, """
+            CREATE TABLE IF NOT EXISTS guild_leveling_settings (
+                guild_id BIGINT PRIMARY KEY,
+                enabled BOOLEAN DEFAULT FALSE,
+                xp_min INT DEFAULT 10,
+                xp_max INT DEFAULT 20,
+                xp_cooldown INT DEFAULT 60,
+                announcement_channel BIGINT,
+                level_up_message TEXT
+            );
+            """
+        ]
+
+        changes_made = False
+
+        for query in queries:
+            try:
+                result = await db.execute(query)
+                if result and "CREATE TABLE" in result:
+                    changes_made = True
+            except Exception as e:
+                print(f"Error executing query: {e}")
+                print(f"Query: {query}")
+
+        # Check and add columns if they don't exist
+        check_columns_query = """
+        DO $$
+        DECLARE
+            column_added BOOLEAN := FALSE;
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='guild_leveling_settings' AND column_name='announcement_channel') THEN
+                ALTER TABLE guild_leveling_settings ADD COLUMN announcement_channel BIGINT;
+                column_added := TRUE;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='guild_leveling_settings' AND column_name='level_up_message') THEN
+                ALTER TABLE guild_leveling_settings ADD COLUMN level_up_message TEXT;
+                column_added := TRUE;
+            END IF;
+            IF column_added THEN
+                RAISE NOTICE 'Columns added';
+            END IF;
+        END $$;
         """
-        await db.execute(query)
+
+        try:
+            result = await db.execute(check_columns_query)
+            if result and "NOTICE" in result:
+                changes_made = True
+        except Exception as e:
+            print(f"Error checking/adding columns: {e}")
+
+        if changes_made:
+            print("Database tables and columns checked/created successfully.")
 
     async def load_settings(self):
         query = "SELECT * FROM guild_leveling_settings;"
@@ -230,7 +276,7 @@ class Leveling(commands.Cog):
             }
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
 
@@ -292,7 +338,8 @@ class Leveling(commands.Cog):
         return result[0]['level'] if result else 0
 
     async def send_level_up_message(self, user: discord.Member, new_level: int,
-                                    guild_settings: Dict):
+                                    guild_settings: Dict[str, int | bool
+                                                         | Optional[int]]):
         message = guild_settings['level_up_message'].format(
             user_mention=user.mention, new_level=new_level)
 
@@ -390,7 +437,7 @@ class Leveling(commands.Cog):
                                    dominant_color + (180, ))
 
         # Create rounded corners for progress bar
-        def round_corner(radius, fill):
+        def round_corner(radius: int, fill: Tuple[int, int, int, int]):
             corner = Image.new('RGBA', (radius, radius), (0, 0, 0, 0))
             draw = ImageDraw.Draw(corner)
             draw.pieslice((0, 0, radius * 2, radius * 2), 180, 270, fill=fill)
