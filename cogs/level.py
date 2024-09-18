@@ -525,20 +525,25 @@ class Leveling(commands.Cog):
             member = member or interaction.user
             user_id, guild_id = member.id, interaction.guild_id
 
+            # First, get all users' XP and calculate ranks
             query = """
-            SELECT xp, level,
+            SELECT user_id, xp, level,
                    ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
             FROM user_levels
-            WHERE guild_id = $1 AND user_id = $2;
+            WHERE guild_id = $1
+            ORDER BY xp DESC;
             """
-            result = await db.fetch(query, guild_id, user_id)
+            all_results = await db.fetch(query, guild_id)
 
-            if not result:
+            user_data = next(
+                (r for r in all_results if r['user_id'] == user_id), None)
+
+            if not user_data:
                 return await interaction.followup.send(
                     f"{member.display_name} has not gained any XP yet.",
                     ephemeral=True)
 
-            xp, level, rank = result[0]['xp'], result[0]['level'], result[0][
+            xp, level, rank = user_data['xp'], user_data['level'], user_data[
                 'rank']
             card = await self.create_rank_card(member, xp, level, rank)
 
