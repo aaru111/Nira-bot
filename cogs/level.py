@@ -644,25 +644,6 @@ class Leveling(commands.Cog):
                 embed=None,
                 view=None)
 
-    @level_group.command(name="set_level_up_message")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def set_level_up_message(self, interaction: discord.Interaction, *,
-                                   message: str):
-        """Set a custom level-up message"""
-        guild_settings = self.leveling_settings.get(interaction.guild_id)
-        if not guild_settings:
-            return await interaction.response.send_message(
-                "Leveling system is not set up for this server.",
-                ephemeral=True)
-
-        guild_settings['level_up_message'] = message
-        query = "UPDATE guild_leveling_settings SET level_up_message = $1 WHERE guild_id = $2;"
-        await db.execute(query, message, interaction.guild_id)
-
-        await interaction.response.send_message(
-            f"Level-up message has been updated to:\n{message}",
-            ephemeral=True)
-
     @level_group.command(name="leaderboard")
     async def leaderboard(self,
                           interaction: discord.Interaction,
