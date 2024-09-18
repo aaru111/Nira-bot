@@ -467,11 +467,9 @@ class Leveling(commands.Cog):
         bar_bg = ImageEnhance.Brightness(bar_bg).enhance(0.2)
         card.paste(bar_bg, (bar_x, bar_y), bar_bg)
 
-        # Generate random gradient colors
-        start_color = tuple(
-            int(x * 255) for x in colorsys.hsv_to_rgb(random.random(), 0.8, 1))
-        end_color = tuple(
-            int(x * 255) for x in colorsys.hsv_to_rgb(random.random(), 0.8, 1))
+        # Generate purple gradient colors
+        start_color = (138, 43, 226)  # Light purple
+        end_color = (75, 0, 130)  # Dark purple
 
         # Create progress gradient
         progress_width = int(bar_width * progress)
