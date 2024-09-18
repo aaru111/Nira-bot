@@ -7,6 +7,7 @@ import io
 from typing import Optional, Dict, Tuple
 from database import db
 import time
+import asyncio
 
 
 class XPRateSelect(discord.ui.Select):
@@ -23,14 +24,13 @@ class XPRateSelect(discord.ui.Select):
                                  description='Faster progression',
                                  value='15,25')
         ]
-        super().__init__(
-            placeholder=f'XP Rate (Current: {current_min}-{current_max})',
-            options=options)
+        super().__init__(placeholder=f'XP Rate: {current_min}-{current_max}',
+                         options=options)
 
     async def callback(self, interaction: discord.Interaction):
         self.view.xp_min, self.view.xp_max = map(int,
                                                  self.values[0].split(','))
-        await self.view.update_message(interaction)
+        await self.view.update_embed(interaction)
 
 
 class XPCooldownSelect(discord.ui.Select):
@@ -47,13 +47,12 @@ class XPCooldownSelect(discord.ui.Select):
                                  description='Less frequent XP gains',
                                  value='120')
         ]
-        super().__init__(
-            placeholder=f'XP Cooldown (Current: {current_cooldown}s)',
-            options=options)
+        super().__init__(placeholder=f'XP Cooldown: {current_cooldown}s',
+                         options=options)
 
     async def callback(self, interaction: discord.Interaction):
         self.view.xp_cooldown = int(self.values[0])
-        await self.view.update_message(interaction)
+        await self.view.update_embed(interaction)
 
 
 class ToggleButton(discord.ui.Button):
@@ -68,37 +67,42 @@ class ToggleButton(discord.ui.Button):
         self.view.is_enabled = not self.view.is_enabled
         self.style = discord.ButtonStyle.green if self.view.is_enabled else discord.ButtonStyle.red
         self.label = 'Enabled' if self.view.is_enabled else 'Disabled'
-        await self.view.update_message(interaction)
+        await self.view.update_embed(interaction)
 
 
-class ResetButton(discord.ui.Button):
+class AnnouncementChannelSelect(discord.ui.ChannelSelect):
 
-    def __init__(self):
-        super().__init__(style=discord.ButtonStyle.danger,
-                         label='Reset All Levels')
+    def __init__(self, current_channel_id: Optional[int]):
+        super().__init__(
+            channel_types=[discord.ChannelType.text],
+            placeholder=
+            f'Announcement Channel: {current_channel_id or "Not set"}',
+            min_values=0,
+            max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
-        confirm_view = ConfirmView()
-        await interaction.response.send_message(
-            "Are you sure you want to reset all levels?",
-            view=confirm_view,
-            ephemeral=True)
-        await confirm_view.wait()
-        if confirm_view.value:
-            query = "DELETE FROM user_levels WHERE guild_id = $1;"
-            await db.execute(query, interaction.guild_id)
-            await interaction.followup.send("All levels have been reset.",
-                                            ephemeral=True)
-        else:
-            await interaction.followup.send("Level reset cancelled.",
-                                            ephemeral=True)
+        self.view.announcement_channel = self.values[
+            0].id if self.values else None
+        await self.view.update_embed(interaction)
+
+
+class LevelUpMessageModal(discord.ui.Modal, title='Edit Level Up Message'):
+    message = discord.ui.TextInput(
+        label='New Level Up Message',
+        style=discord.TextStyle.paragraph,
+        placeholder='Enter the new level up message...',
+        required=True,
+        max_length=1000)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
 
 
 class ConfirmView(discord.ui.View):
 
     def __init__(self):
         super().__init__()
-        self.value: Optional[bool] = None
+        self.value = None
 
     @discord.ui.button(label='Confirm', style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction,
@@ -111,34 +115,6 @@ class ConfirmView(discord.ui.View):
                      button: discord.ui.Button):
         self.value = False
         self.stop()
-
-
-class ConfirmButton(discord.ui.Button):
-
-    def __init__(self):
-        super().__init__(style=discord.ButtonStyle.blurple, label='Confirm')
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.confirmed = True
-        await interaction.response.edit_message(content='Setup confirmed!',
-                                                view=None)
-        self.view.stop()
-
-
-class AnnouncementChannelSelect(discord.ui.ChannelSelect):
-
-    def __init__(self, current_channel_id: Optional[int]):
-        super().__init__(
-            channel_types=[discord.ChannelType.text],
-            placeholder=
-            f'Select Announcement Channel (Current: {current_channel_id})',
-            min_values=0,
-            max_values=1)
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.announcement_channel = self.values[
-            0].id if self.values else None
-        await self.view.update_message(interaction)
 
 
 class SetupView(discord.ui.View):
@@ -157,23 +133,70 @@ class SetupView(discord.ui.View):
         )
         self.confirmed: bool = False
 
+        self.add_item(ToggleButton(self.is_enabled))
         self.add_item(XPRateSelect(self.xp_min, self.xp_max))
         self.add_item(XPCooldownSelect(self.xp_cooldown))
-        self.add_item(ToggleButton(self.is_enabled))
         self.add_item(AnnouncementChannelSelect(self.announcement_channel))
-        self.add_item(ResetButton())
-        self.add_item(ConfirmButton())
 
-    async def update_message(self, interaction: discord.Interaction):
-        content = (
-            "**🛠️ Leveling System Configuration**\n\n"
-            f"**Status:** {'🟢 Enabled' if self.is_enabled else '🔴 Disabled'}\n"
-            f"**XP Range:** {self.xp_min}-{self.xp_max}\n"
-            f"**XP Cooldown:** {self.xp_cooldown} seconds\n"
-            f"**Announcement Channel:** {f'<#{self.announcement_channel}>' if self.announcement_channel else '❌ Not set'}\n"
-            f"**Level Up Message:**\n```{self.level_up_message}```\n\n"
-            "Please select your preferences:")
-        await interaction.response.edit_message(content=content, view=self)
+    @discord.ui.button(label='Edit Level Up Message',
+                       style=discord.ButtonStyle.blurple)
+    async def edit_message_button(self, interaction: discord.Interaction,
+                                  button: discord.ui.Button):
+        modal = LevelUpMessageModal(self.level_up_message)
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        if modal.message.value:
+            self.level_up_message = modal.message.value
+            await self.update_embed(interaction)
+
+    @discord.ui.button(label='Reset All Levels',
+                       style=discord.ButtonStyle.danger)
+    async def reset_levels_button(self, interaction: discord.Interaction,
+                                  button: discord.ui.Button):
+        confirm_view = ConfirmView()
+        await interaction.response.send_message(
+            "Are you sure you want to reset all levels?",
+            view=confirm_view,
+            ephemeral=True)
+        await confirm_view.wait()
+        if confirm_view.value:
+            query = "DELETE FROM user_levels WHERE guild_id = $1;"
+            await db.execute(query, interaction.guild_id)
+            await interaction.followup.send("All levels have been reset.",
+                                            ephemeral=True)
+        else:
+            await interaction.followup.send("Level reset cancelled.",
+                                            ephemeral=True)
+
+    @discord.ui.button(label='Save Changes', style=discord.ButtonStyle.green)
+    async def confirm_button(self, interaction: discord.Interaction,
+                             button: discord.ui.Button):
+        self.confirmed = True
+        await interaction.response.edit_message(content='Setup confirmed!',
+                                                view=None,
+                                                embed=None)
+        self.stop()
+
+    async def update_embed(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="🛠️ Leveling System Configuration",
+                              color=discord.Color.blue())
+        embed.add_field(name="Status",
+                        value="🟢 Enabled" if self.is_enabled else "🔴 Disabled",
+                        inline=False)
+        embed.add_field(name="XP Range",
+                        value=f"{self.xp_min}-{self.xp_max}",
+                        inline=True)
+        embed.add_field(name="XP Cooldown",
+                        value=f"{self.xp_cooldown} seconds",
+                        inline=True)
+        embed.add_field(name="Announcement Channel",
+                        value=f"<#{self.announcement_channel}>"
+                        if self.announcement_channel else "Not set",
+                        inline=False)
+        embed.add_field(name="Level Up Message",
+                        value=f"```{self.level_up_message}```",
+                        inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class Leveling(commands.Cog):
@@ -224,7 +247,6 @@ class Leveling(commands.Cog):
                 print(f"Error executing query: {e}")
                 print(f"Query: {query}")
 
-        # Check and add columns if they don't exist
         check_columns_query = """
         DO $$
         DECLARE
@@ -350,11 +372,10 @@ class Leveling(commands.Cog):
                 await channel.send(message)
                 return
 
-        # If no announcement channel is set or it's not found, send to user's DM
         try:
             await user.send(message)
         except discord.Forbidden:
-            pass  # Unable to send DM to the user
+            pass
 
     level_group = app_commands.Group(name="level",
                                      description="Leveling system commands")
@@ -523,23 +544,41 @@ class Leveling(commands.Cog):
             })
 
         view = SetupView(guild_settings)
+        embed = discord.Embed(title="🛠️ Leveling System Setup Wizard",
+                              color=discord.Color.blue())
+        embed.add_field(
+            name="Status",
+            value="🟢 Enabled" if guild_settings['enabled'] else "🔴 Disabled",
+            inline=False)
+        embed.add_field(
+            name="XP Range",
+            value=f"{guild_settings['xp_min']}-{guild_settings['xp_max']}",
+            inline=True)
+        embed.add_field(name="XP Cooldown",
+                        value=f"{guild_settings['xp_cooldown']} seconds",
+                        inline=True)
+        embed.add_field(
+            name="Announcement Channel",
+            value=f"<#{guild_settings['announcement_channel']}>"
+            if guild_settings.get('announcement_channel') else "Not set",
+            inline=False)
+        embed.add_field(
+            name="Level Up Message",
+            value=
+            f"```{guild_settings.get('level_up_message', self.default_level_up_message)}```",
+            inline=False)
+        embed.set_footer(
+            text=
+            "Use the buttons and dropdowns below to configure the leveling system."
+        )
 
-        content = (
-            "**🛠️ Leveling System Setup Wizard**\n\n"
-            "**Current Configuration:**\n"
-            f"**Status:** {'🟢 Enabled' if guild_settings['enabled'] else '🔴 Disabled'}\n"
-            f"**XP Range:** {guild_settings['xp_min']}-{guild_settings['xp_max']}\n"
-            f"**XP Cooldown:** {guild_settings['xp_cooldown']} seconds\n"
-            f"**Announcement Channel:** {f'<#{guild_settings['announcement_channel']}>' if guild_settings.get('announcement_channel') else '❌ Not set'}\n"
-            f"**Level Up Message:**\n```{guild_settings.get('level_up_message', self.default_level_up_message)}```\n\n"
-            "Please select your preferences:")
-
-        await interaction.response.send_message(content=content, view=view)
+        await interaction.response.send_message(embed=embed, view=view)
 
         timeout = await view.wait()
         if timeout:
             await interaction.edit_original_message(
                 content="⏱️ Setup wizard timed out. No changes were made.",
+                embed=None,
                 view=None)
             return
 
@@ -563,19 +602,36 @@ class Leveling(commands.Cog):
                              view.xp_min, view.xp_max, view.xp_cooldown,
                              view.announcement_channel, view.level_up_message)
 
-            status = "🟢 Enabled" if view.is_enabled else "🔴 Disabled"
-            announcement_channel = f"<#{view.announcement_channel}>" if view.announcement_channel else "❌ Not set"
-            await interaction.edit_original_message(content=(
-                "**✅ Leveling System Setup Complete!**\n\n"
-                f"**Status:** {status}\n"
-                f"**XP Range:** {view.xp_min}-{view.xp_max}\n"
-                f"**XP Cooldown:** {view.xp_cooldown} seconds\n"
-                f"**Announcement Channel:** {announcement_channel}\n"
-                f"**Level Up Message:**\n```{view.level_up_message}```"),
+            confirmation_embed = discord.Embed(
+                title="✅ Leveling System Setup Complete!",
+                color=discord.Color.green())
+            confirmation_embed.add_field(
+                name="Status",
+                value="🟢 Enabled" if view.is_enabled else "🔴 Disabled",
+                inline=False)
+            confirmation_embed.add_field(name="XP Range",
+                                         value=f"{view.xp_min}-{view.xp_max}",
+                                         inline=True)
+            confirmation_embed.add_field(name="XP Cooldown",
+                                         value=f"{view.xp_cooldown} seconds",
+                                         inline=True)
+            confirmation_embed.add_field(
+                name="Announcement Channel",
+                value=f"<#{view.announcement_channel}>"
+                if view.announcement_channel else "Not set",
+                inline=False)
+            confirmation_embed.add_field(
+                name="Level Up Message",
+                value=f"```{view.level_up_message}```",
+                inline=False)
+
+            await interaction.edit_original_message(embed=confirmation_embed,
                                                     view=None)
         else:
             await interaction.edit_original_message(
-                content="❌ Setup cancelled. No changes were made.", view=None)
+                content="❌ Setup cancelled. No changes were made.",
+                embed=None,
+                view=None)
 
     @level_group.command(name="set_level_up_message")
     @app_commands.checks.has_permissions(administrator=True)
@@ -623,13 +679,17 @@ class Leveling(commands.Cog):
                 return await interaction.followup.send(
                     "No one has gained any XP yet.", ephemeral=True)
 
-            leaderboard = "**🏆 XP Leaderboard**\n\n"
+            embed = discord.Embed(title="🏆 XP Leaderboard",
+                                  color=discord.Color.gold())
             for row in results:
                 user = interaction.guild.get_member(row['user_id'])
                 if user:
-                    leaderboard += f"{row['rank']}. {user.display_name}: Level {row['level']} (XP: {row['xp']})\n"
+                    embed.add_field(
+                        name=f"{row['rank']}. {user.display_name}",
+                        value=f"Level: {row['level']} (XP: {row['xp']})",
+                        inline=False)
 
-            await interaction.followup.send(leaderboard)
+            await interaction.followup.send(embed=embed)
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
