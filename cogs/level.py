@@ -2,11 +2,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import random
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import io
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 from database import db
 import time
+import colorsys
 
 
 class XPRateSelect(discord.ui.Select):
@@ -428,9 +429,12 @@ class Leveling(commands.Cog):
         try:
             title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
             text_font = ImageFont.truetype("fonts/InterVariable.ttf", 20)
+            xp_font = ImageFont.truetype("fonts/InterVariable.ttf",
+                                         14)  # Smaller font for XP text
         except IOError:
             title_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
+            xp_font = ImageFont.load_default()
 
         draw.text((140, 20),
                   member.display_name,
@@ -448,34 +452,58 @@ class Leveling(commands.Cog):
         xp_to_next_level = (level + 1)**2 * 100
         progress = xp / xp_to_next_level
         bar_width, bar_height = 200, 20
-        bar_background = Image.new('RGBA', (bar_width, bar_height),
-                                   (44, 47, 51, 180))
-        bar_foreground = Image.new('RGBA',
-                                   (int(bar_width * progress), bar_height),
-                                   dominant_color + (180, ))
+        bar_x, bar_y = 140, 118
 
-        def round_corner(radius: int, fill: Tuple[int, int, int, int]):
-            corner = Image.new('RGBA', (radius, radius), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(corner)
-            draw.pieslice((0, 0, radius * 2, radius * 2), 180, 270, fill=fill)
-            return corner
+        def rounded_rectangle(size, radius):
+            rect = Image.new('RGBA', size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(rect)
+            draw.rounded_rectangle([(0, 0), size],
+                                   radius,
+                                   fill=(255, 255, 255, 255))
+            return rect
 
-        radius = 10
-        corner = round_corner(radius, (44, 47, 51, 180))
-        bar_background.paste(corner, (0, 0))
-        bar_background.paste(corner.rotate(90), (0, bar_height - radius))
-        bar_background.paste(corner.rotate(180),
-                             (bar_width - radius, bar_height - radius))
-        bar_background.paste(corner.rotate(270), (bar_width - radius, 0))
+        # Background of XP bar
+        bar_bg = rounded_rectangle((bar_width, bar_height), bar_height // 2)
+        bar_bg = ImageEnhance.Brightness(bar_bg).enhance(0.2)
+        card.paste(bar_bg, (bar_x, bar_y), bar_bg)
 
-        card.paste(bar_background, (180, 120), bar_background)
-        card.paste(bar_foreground, (180, 120), bar_foreground)
+        # Generate random gradient colors
+        start_color = tuple(
+            int(x * 255) for x in colorsys.hsv_to_rgb(random.random(), 0.8, 1))
+        end_color = tuple(
+            int(x * 255) for x in colorsys.hsv_to_rgb(random.random(), 0.8, 1))
 
-        xp_text = f"XP: {xp}/{xp_to_next_level}"
-        text_width = draw.textlength(xp_text, font=text_font)
-        draw.text((180 + (bar_width - text_width) / 2, 120),
+        # Create progress gradient
+        progress_width = int(bar_width * progress)
+        progress_bar = Image.new('RGBA', (progress_width, bar_height),
+                                 (0, 0, 0, 0))
+        progress_draw = ImageDraw.Draw(progress_bar)
+        for x in range(progress_width):
+            r = int(start_color[0] + (end_color[0] - start_color[0]) *
+                    (x / progress_width))
+            g = int(start_color[1] + (end_color[1] - start_color[1]) *
+                    (x / progress_width))
+            b = int(start_color[2] + (end_color[2] - start_color[2]) *
+                    (x / progress_width))
+            progress_draw.line([(x, 0), (x, bar_height)], fill=(r, g, b, 255))
+
+        # Apply rounded corners to progress bar
+        progress_mask = rounded_rectangle((progress_width, bar_height),
+                                          bar_height // 2)
+        card.paste(progress_bar, (bar_x, bar_y), progress_mask)
+
+        xp_text = f"{xp}/{xp_to_next_level} XP"
+        bbox = draw.textbbox((0, 0), xp_text, font=xp_font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = bar_x + (bar_width - text_width) // 2
+        text_y = bar_y + (bar_height -
+                          text_height) // 2 - 1  # Moved up by 1 pixel
+
+        # Draw the XP text
+        draw.text((text_x, text_y),
                   xp_text,
-                  font=text_font,
+                  font=xp_font,
                   fill=(255, 255, 255, 255))
 
         buffer = io.BytesIO()
