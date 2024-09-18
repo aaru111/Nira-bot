@@ -125,6 +125,22 @@ class ConfirmButton(discord.ui.Button):
         self.view.stop()
 
 
+class AnnouncementChannelSelect(discord.ui.ChannelSelect):
+
+    def __init__(self, current_channel_id):
+        super().__init__(
+            channel_types=[discord.ChannelType.text],
+            placeholder=
+            f'Select Announcement Channel (Current: {current_channel_id})',
+            min_values=0,
+            max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.announcement_channel = self.values[
+            0].id if self.values else None
+        await self.view.update_message(interaction)
+
+
 class SetupView(discord.ui.View):
 
     def __init__(self, guild_settings: Dict):
@@ -133,20 +149,31 @@ class SetupView(discord.ui.View):
             XPRateSelect(guild_settings['xp_min'], guild_settings['xp_max']))
         self.add_item(XPCooldownSelect(guild_settings['xp_cooldown']))
         self.add_item(ToggleButton(guild_settings['enabled']))
+        self.add_item(
+            AnnouncementChannelSelect(
+                guild_settings.get('announcement_channel')))
         self.add_item(ResetButton())
         self.add_item(ConfirmButton())
         self.xp_min = guild_settings['xp_min']
         self.xp_max = guild_settings['xp_max']
         self.xp_cooldown = guild_settings['xp_cooldown']
         self.is_enabled = guild_settings['enabled']
+        self.announcement_channel = guild_settings.get('announcement_channel')
+        self.level_up_message = guild_settings.get(
+            'level_up_message',
+            "Congratulations {user_mention}! You've reached level {new_level}!"
+        )
         self.confirmed = False
 
     async def update_message(self, interaction: discord.Interaction):
-        content = f"Current Configuration:\n" \
-                  f"Status: {'Enabled' if self.is_enabled else 'Disabled'}\n" \
-                  f"XP Range: {self.xp_min}-{self.xp_max}\n" \
-                  f"XP Cooldown: {self.xp_cooldown} seconds\n\n" \
-                  f"Please select your preferences:"
+        content = (
+            "**🛠️ Leveling System Configuration**\n\n"
+            f"**Status:** {'🟢 Enabled' if self.is_enabled else '🔴 Disabled'}\n"
+            f"**XP Range:** {self.xp_min}-{self.xp_max}\n"
+            f"**XP Cooldown:** {self.xp_cooldown} seconds\n"
+            f"**Announcement Channel:** {f'<#{self.announcement_channel}>' if self.announcement_channel else '❌ Not set'}\n"
+            f"**Level Up Message:**\n```{self.level_up_message}```\n\n"
+            "Please select your preferences:")
         await interaction.response.edit_message(content=content, view=self)
 
 
@@ -156,6 +183,7 @@ class Leveling(commands.Cog):
         self.bot = bot
         self.leveling_settings: Dict[int, Dict] = {}
         self.cooldowns: Dict[int, Dict[int, float]] = {}
+        self.default_level_up_message = "Congratulations {user_mention}! You've reached level {new_level}!"
 
     async def cog_load(self):
         await self.create_tables()
@@ -175,7 +203,9 @@ class Leveling(commands.Cog):
             enabled BOOLEAN DEFAULT FALSE,
             xp_min INT DEFAULT 10,
             xp_max INT DEFAULT 20,
-            xp_cooldown INT DEFAULT 60
+            xp_cooldown INT DEFAULT 60,
+            announcement_channel BIGINT,
+            level_up_message TEXT
         );
         """
         await db.execute(query)
@@ -185,10 +215,18 @@ class Leveling(commands.Cog):
         results = await db.fetch(query)
         for row in results:
             self.leveling_settings[row['guild_id']] = {
-                'enabled': row['enabled'],
-                'xp_min': row['xp_min'],
-                'xp_max': row['xp_max'],
-                'xp_cooldown': row['xp_cooldown']
+                'enabled':
+                row['enabled'],
+                'xp_min':
+                row['xp_min'],
+                'xp_max':
+                row['xp_max'],
+                'xp_cooldown':
+                row['xp_cooldown'],
+                'announcement_channel':
+                row.get('announcement_channel'),
+                'level_up_message':
+                row.get('level_up_message') or self.default_level_up_message
             }
 
     @commands.Cog.listener()
@@ -212,8 +250,13 @@ class Leveling(commands.Cog):
 
         xp_gained = random.randint(guild_settings['xp_min'],
                                    guild_settings['xp_max'])
-        await self.add_xp(user_id, guild_id, xp_gained)
+        leveled_up = await self.add_xp(user_id, guild_id, xp_gained)
         self.cooldowns[guild_id][user_id] = current_time
+
+        if leveled_up:
+            new_level = await self.get_level(user_id, guild_id)
+            await self.send_level_up_message(message.author, new_level,
+                                             guild_settings)
 
     async def add_xp(self, user_id: int, guild_id: int, xp: int) -> bool:
         query = """
@@ -248,47 +291,26 @@ class Leveling(commands.Cog):
         result = await db.fetch(query, user_id, guild_id)
         return result[0]['level'] if result else 0
 
+    async def send_level_up_message(self, user: discord.Member, new_level: int,
+                                    guild_settings: Dict):
+        message = guild_settings['level_up_message'].format(
+            user_mention=user.mention, new_level=new_level)
+
+        if guild_settings['announcement_channel']:
+            channel = self.bot.get_channel(
+                guild_settings['announcement_channel'])
+            if channel:
+                await channel.send(message)
+                return
+
+        # If no announcement channel is set or it's not found, send to user's DM
+        try:
+            await user.send(message)
+        except discord.Forbidden:
+            pass  # Unable to send DM to the user
+
     level_group = app_commands.Group(name="level",
                                      description="Leveling system commands")
-
-    @level_group.command(name="rank")
-    async def rank(self,
-                   interaction: discord.Interaction,
-                   member: Optional[discord.Member] = None):
-        """Check your or another member's rank"""
-        await interaction.response.defer()
-        try:
-            guild_settings = self.leveling_settings.get(interaction.guild_id)
-            if not guild_settings or not guild_settings['enabled']:
-                return await interaction.followup.send(
-                    "Leveling system is not enabled in this server.",
-                    ephemeral=True)
-
-            member = member or interaction.user
-            user_id, guild_id = member.id, interaction.guild_id
-
-            query = """
-            SELECT xp, level,
-                   ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
-            FROM user_levels
-            WHERE guild_id = $1 AND user_id = $2;
-            """
-            result = await db.fetch(query, guild_id, user_id)
-
-            if not result:
-                return await interaction.followup.send(
-                    f"{member.display_name} has not gained any XP yet.",
-                    ephemeral=True)
-
-            xp, level, rank = result[0]['xp'], result[0]['level'], result[0][
-                'rank']
-            card = await self.create_rank_card(member, xp, level, rank)
-
-            await interaction.followup.send(
-                file=discord.File(card, filename="rank_card.png"))
-        except Exception as e:
-            await interaction.followup.send(f"An error occurred: {str(e)}",
-                                            ephemeral=True)
 
     async def create_rank_card(self, member: discord.Member, xp: int,
                                level: int, rank: int) -> io.BytesIO:
@@ -400,31 +422,77 @@ class Leveling(commands.Cog):
         buffer.seek(0)
         return buffer
 
+    @level_group.command(name="rank")
+    async def rank(self,
+                   interaction: discord.Interaction,
+                   member: Optional[discord.Member] = None):
+        """Check your or another member's rank"""
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
+
+            member = member or interaction.user
+            user_id, guild_id = member.id, interaction.guild_id
+
+            query = """
+            SELECT xp, level,
+                   ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
+            FROM user_levels
+            WHERE guild_id = $1 AND user_id = $2;
+            """
+            result = await db.fetch(query, guild_id, user_id)
+
+            if not result:
+                return await interaction.followup.send(
+                    f"{member.display_name} has not gained any XP yet.",
+                    ephemeral=True)
+
+            xp, level, rank = result[0]['xp'], result[0]['level'], result[0][
+                'rank']
+            card = await self.create_rank_card(member, xp, level, rank)
+
+            await interaction.followup.send(
+                file=discord.File(card, filename="rank_card.png"))
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
+
     @level_group.command(name="setup")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_wizard(self, interaction: discord.Interaction):
         """Setup wizard for the leveling system"""
-        guild_settings = self.leveling_settings.get(interaction.guild_id, {
-            'enabled': False,
-            'xp_min': 10,
-            'xp_max': 20,
-            'xp_cooldown': 60
-        })
+        guild_settings = self.leveling_settings.get(
+            interaction.guild_id, {
+                'enabled': False,
+                'xp_min': 10,
+                'xp_max': 20,
+                'xp_cooldown': 60,
+                'announcement_channel': None,
+                'level_up_message': self.default_level_up_message
+            })
 
         view = SetupView(guild_settings)
 
-        content = f"Current Configuration:\n" \
-                  f"Status: {'Enabled' if guild_settings['enabled'] else 'Disabled'}\n" \
-                  f"XP Range: {guild_settings['xp_min']}-{guild_settings['xp_max']}\n" \
-                  f"XP Cooldown: {guild_settings['xp_cooldown']} seconds\n\n" \
-                  f"Please select your preferences:"
+        content = (
+            "**🛠️ Leveling System Setup Wizard**\n\n"
+            "**Current Configuration:**\n"
+            f"**Status:** {'🟢 Enabled' if guild_settings['enabled'] else '🔴 Disabled'}\n"
+            f"**XP Range:** {guild_settings['xp_min']}-{guild_settings['xp_max']}\n"
+            f"**XP Cooldown:** {guild_settings['xp_cooldown']} seconds\n"
+            f"**Announcement Channel:** {f'<#{guild_settings['announcement_channel']}>' if guild_settings.get('announcement_channel') else '❌ Not set'}\n"
+            f"**Level Up Message:**\n```{guild_settings.get('level_up_message', self.default_level_up_message)}```\n\n"
+            "Please select your preferences:")
 
         await interaction.response.send_message(content=content, view=view)
 
         timeout = await view.wait()
         if timeout:
             await interaction.edit_original_message(
-                content="Setup wizard timed out. No changes were made.",
+                content="⏱️ Setup wizard timed out. No changes were made.",
                 view=None)
             return
 
@@ -433,28 +501,53 @@ class Leveling(commands.Cog):
                 'enabled': view.is_enabled,
                 'xp_min': view.xp_min,
                 'xp_max': view.xp_max,
-                'xp_cooldown': view.xp_cooldown
+                'xp_cooldown': view.xp_cooldown,
+                'announcement_channel': view.announcement_channel,
+                'level_up_message': view.level_up_message
             }
 
             query = """
-            INSERT INTO guild_leveling_settings (guild_id, enabled, xp_min, xp_max, xp_cooldown)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO guild_leveling_settings (guild_id, enabled, xp_min, xp_max, xp_cooldown, announcement_channel, level_up_message)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (guild_id)
-            DO UPDATE SET enabled = $2, xp_min = $3, xp_max = $4, xp_cooldown = $5;
+            DO UPDATE SET enabled = $2, xp_min = $3, xp_max = $4, xp_cooldown = $5, announcement_channel = $6, level_up_message = $7;
             """
             await db.execute(query, interaction.guild_id, view.is_enabled,
-                             view.xp_min, view.xp_max, view.xp_cooldown)
+                             view.xp_min, view.xp_max, view.xp_cooldown,
+                             view.announcement_channel, view.level_up_message)
 
-            status = "enabled" if view.is_enabled else "disabled"
-            await interaction.edit_original_message(
-                content=f"Leveling system setup complete!\n"
-                f"Status: {status}\n"
-                f"XP Range: {view.xp_min}-{view.xp_max}\n"
-                f"XP Cooldown: {view.xp_cooldown} seconds",
-                view=None)
+            status = "🟢 Enabled" if view.is_enabled else "🔴 Disabled"
+            announcement_channel = f"<#{view.announcement_channel}>" if view.announcement_channel else "❌ Not set"
+            await interaction.edit_original_message(content=(
+                "**✅ Leveling System Setup Complete!**\n\n"
+                f"**Status:** {status}\n"
+                f"**XP Range:** {view.xp_min}-{view.xp_max}\n"
+                f"**XP Cooldown:** {view.xp_cooldown} seconds\n"
+                f"**Announcement Channel:** {announcement_channel}\n"
+                f"**Level Up Message:**\n```{view.level_up_message}```"),
+                                                    view=None)
         else:
             await interaction.edit_original_message(
-                content="Setup cancelled. No changes were made.", view=None)
+                content="❌ Setup cancelled. No changes were made.", view=None)
+
+    @level_group.command(name="set_level_up_message")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def set_level_up_message(self, interaction: discord.Interaction, *,
+                                   message: str):
+        """Set a custom level-up message"""
+        guild_settings = self.leveling_settings.get(interaction.guild_id)
+        if not guild_settings:
+            return await interaction.response.send_message(
+                "Leveling system is not set up for this server.",
+                ephemeral=True)
+
+        guild_settings['level_up_message'] = message
+        query = "UPDATE guild_leveling_settings SET level_up_message = $1 WHERE guild_id = $2;"
+        await db.execute(query, message, interaction.guild_id)
+
+        await interaction.response.send_message(
+            f"Level-up message has been updated to:\n{message}",
+            ephemeral=True)
 
     @level_group.command(name="leaderboard")
     async def leaderboard(self,
@@ -483,7 +576,7 @@ class Leveling(commands.Cog):
                 return await interaction.followup.send(
                     "No one has gained any XP yet.", ephemeral=True)
 
-            leaderboard = "XP Leaderboard:\n\n"
+            leaderboard = "**🏆 XP Leaderboard**\n\n"
             for row in results:
                 user = interaction.guild.get_member(row['user_id'])
                 if user:
