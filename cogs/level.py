@@ -93,8 +93,13 @@ class LevelUpMessageModal(discord.ui.Modal, title='Edit Level Up Message'):
         required=True,
         max_length=1000)
 
+    def __init__(self, current_message: str):
+        super().__init__()
+        self.message.default = current_message
+
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
+        self.stop()
 
 
 class ConfirmView(discord.ui.View):
@@ -175,6 +180,11 @@ class SetupView(discord.ui.View):
                                                 view=None,
                                                 embed=None)
         self.stop()
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
 
     async def update_embed(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🛠️ Leveling System Configuration",
