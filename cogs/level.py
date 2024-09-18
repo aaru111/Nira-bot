@@ -7,6 +7,7 @@ import io
 from typing import Optional, Dict
 from database import db
 import time
+import asyncio
 
 
 class XPRateSelect(discord.ui.Select):
@@ -203,7 +204,6 @@ class Leveling(commands.Cog):
         user_id = message.author.id
         guild_id = message.guild.id
 
-        # Check if user is on cooldown
         current_time = time.time()
         if guild_id not in self.cooldowns:
             self.cooldowns[guild_id] = {}
@@ -211,11 +211,9 @@ class Leveling(commands.Cog):
         if current_time - last_message_time < guild_settings['xp_cooldown']:
             return
 
-        # Award XP
         xp_gained = random.randint(guild_settings['xp_min'],
                                    guild_settings['xp_max'])
         await self.add_xp(user_id, guild_id, xp_gained)
-        # Set cooldown
         self.cooldowns[guild_id][user_id] = current_time
 
     async def add_xp(self, user_id: int, guild_id: int, xp: int) -> bool:
@@ -259,72 +257,145 @@ class Leveling(commands.Cog):
                    interaction: discord.Interaction,
                    member: Optional[discord.Member] = None):
         """Check your or another member's rank"""
-        guild_settings = self.leveling_settings.get(interaction.guild_id)
-        if not guild_settings or not guild_settings['enabled']:
-            return await interaction.response.send_message(
-                "Leveling system is not enabled in this server.",
-                ephemeral=True)
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
 
-        member = member or interaction.user
-        user_id, guild_id = member.id, interaction.guild_id
+            member = member or interaction.user
+            user_id, guild_id = member.id, interaction.guild_id
 
-        query = """
-        SELECT xp, level,
-               ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
-        FROM user_levels
-        WHERE guild_id = $1 AND user_id = $2;
-        """
-        result = await db.fetch(query, guild_id, user_id)
+            query = """
+            SELECT xp, level,
+                   ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
+            FROM user_levels
+            WHERE guild_id = $1 AND user_id = $2;
+            """
+            result = await db.fetch(query, guild_id, user_id)
 
-        if not result:
-            return await interaction.response.send_message(
-                f"{member.display_name} has not gained any XP yet.",
-                ephemeral=True)
+            if not result:
+                return await interaction.followup.send(
+                    f"{member.display_name} has not gained any XP yet.",
+                    ephemeral=True)
 
-        xp, level, rank = result[0]['xp'], result[0]['level'], result[0][
-            'rank']
-        card = await self.create_rank_card(member, xp, level, rank)
+            xp, level, rank = result[0]['xp'], result[0]['level'], result[0][
+                'rank']
+            card = await self.create_rank_card(member, xp, level, rank)
 
-        await interaction.response.send_message(
-            file=discord.File(card, filename="rank_card.png"))
+            await interaction.followup.send(
+                file=discord.File(card, filename="rank_card.png"))
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
 
     async def create_rank_card(self, member: discord.Member, xp: int,
                                level: int, rank: int) -> io.BytesIO:
-        # Create a new image with a gradient background
-        card = Image.new('RGB', (400, 150), color='#23272A')
-        draw = ImageDraw.Draw(card)
+        card_width, card_height = 400, 150
+        card = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
 
-        # Load fonts (make sure to replace with actual font paths)
-        title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
-        text_font = ImageFont.truetype("fonts/font.ttf", 20)
-
-        # Draw user avatar
+        # Fetch and process avatar
+        avatar_size = 100
         avatar_url = member.display_avatar.replace(format='png', size=128)
         avatar_data = io.BytesIO(await avatar_url.read())
-        avatar_image = Image.open(avatar_data)
-        avatar_image = avatar_image.resize((100, 100))
-        card.paste(avatar_image, (20, 25))
+        avatar_image = Image.open(avatar_data).convert('RGBA')
+        avatar_image = avatar_image.resize((avatar_size, avatar_size),
+                                           Image.Resampling.LANCZOS)
 
-        # Draw username
+        # Create circular mask for avatar
+        mask = Image.new('L', (avatar_size, avatar_size), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+
+        # Create gradient background
+        gradient = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
+        gradient_draw = ImageDraw.Draw(gradient)
+
+        # Use a default color if we can't get a dominant color from the avatar
+        try:
+            avatar_colors = avatar_image.getcolors(avatar_image.size[0] *
+                                                   avatar_image.size[1])
+            dominant_color = max(avatar_colors, key=lambda x: x[0])[1][:3]
+        except:
+            dominant_color = (100, 100, 100
+                              )  # Default gray if color extraction fails
+
+        for y in range(card_height):
+            alpha = int(255 * (1 - y / card_height))
+            gradient_draw.line([(0, y), (card_width, y)],
+                               fill=dominant_color + (alpha, ))
+
+        # Composite gradient onto card
+        card = Image.alpha_composite(card, gradient)
+
+        # Paste avatar onto card
+        card.paste(avatar_image, (20, 25), mask)
+
+        draw = ImageDraw.Draw(card)
+
+        # Load fonts (adjust paths as needed)
+        try:
+            title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
+            text_font = ImageFont.truetype("fonts/font.ttf", 20)
+        except IOError:
+            # Fallback to default font if custom fonts are not available
+            title_font = ImageFont.load_default()
+            text_font = ImageFont.load_default()
+
+        # Draw text
         draw.text((140, 20),
                   member.display_name,
                   font=title_font,
-                  fill='#FFFFFF')
-
-        # Draw rank, level, and XP
-        draw.text((140, 60), f"Rank: #{rank}", font=text_font, fill='#FFFFFF')
-        draw.text((140, 90), f"Level: {level}", font=text_font, fill='#FFFFFF')
-        draw.text((140, 120), f"XP: {xp}", font=text_font, fill='#FFFFFF')
+                  fill=(255, 255, 255, 255))
+        draw.text((140, 60),
+                  f"Rank: #{rank}",
+                  font=text_font,
+                  fill=(255, 255, 255, 255))
+        draw.text((140, 90),
+                  f"Level: {level}",
+                  font=text_font,
+                  fill=(255, 255, 255, 255))
 
         # Draw XP progress bar
         xp_to_next_level = (level + 1)**2 * 100
         progress = xp / xp_to_next_level
-        bar_width = 200
-        draw.rectangle([180, 70, 180 + bar_width, 80], fill='#2C2F33')
-        draw.rectangle([180, 70, 180 + int(bar_width * progress), 80],
-                       fill='#7289DA')
+        bar_width, bar_height = 200, 20
+        bar_background = Image.new('RGBA', (bar_width, bar_height),
+                                   (44, 47, 51, 180))
+        bar_foreground = Image.new('RGBA',
+                                   (int(bar_width * progress), bar_height),
+                                   dominant_color + (180, ))
 
-        # Save the image to a BytesIO object
+        # Create rounded corners for progress bar
+        def round_corner(radius, fill):
+            corner = Image.new('RGBA', (radius, radius), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(corner)
+            draw.pieslice((0, 0, radius * 2, radius * 2), 180, 270, fill=fill)
+            return corner
+
+        radius = 10
+        corner = round_corner(radius, (44, 47, 51, 180))
+        bar_background.paste(corner, (0, 0))
+        bar_background.paste(corner.rotate(90), (0, bar_height - radius))
+        bar_background.paste(corner.rotate(180),
+                             (bar_width - radius, bar_height - radius))
+        bar_background.paste(corner.rotate(270), (bar_width - radius, 0))
+
+        # Paste progress bars
+        card.paste(bar_background, (180, 120), bar_background)
+        card.paste(bar_foreground, (180, 120), bar_foreground)
+
+        # Draw XP text
+        xp_text = f"XP: {xp}/{xp_to_next_level}"
+        text_width = draw.textlength(xp_text, font=text_font)
+        draw.text((180 + (bar_width - text_width) / 2, 120),
+                  xp_text,
+                  font=text_font,
+                  fill=(255, 255, 255, 255))
+
+        # Save and return
         buffer = io.BytesIO()
         card.save(buffer, 'PNG')
         buffer.seek(0)
@@ -391,33 +462,38 @@ class Leveling(commands.Cog):
                           interaction: discord.Interaction,
                           top: int = 10):
         """Show the server's XP leaderboard"""
-        guild_settings = self.leveling_settings.get(interaction.guild_id)
-        if not guild_settings or not guild_settings['enabled']:
-            return await interaction.response.send_message(
-                "Leveling system is not enabled in this server.",
-                ephemeral=True)
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
 
-        query = """
-        SELECT user_id, xp, level,
-               ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
-        FROM user_levels
-        WHERE guild_id = $1
-        ORDER BY xp DESC
-        LIMIT $2;
-        """
-        results = await db.fetch(query, interaction.guild_id, top)
+            query = """
+            SELECT user_id, xp, level,
+                   ROW_NUMBER() OVER (ORDER BY xp DESC) as rank
+            FROM user_levels
+            WHERE guild_id = $1
+            ORDER BY xp DESC
+            LIMIT $2;
+            """
+            results = await db.fetch(query, interaction.guild_id, top)
 
-        if not results:
-            return await interaction.response.send_message(
-                "No one has gained any XP yet.", ephemeral=True)
+            if not results:
+                return await interaction.followup.send(
+                    "No one has gained any XP yet.", ephemeral=True)
 
-        leaderboard = "XP Leaderboard:\n\n"
-        for row in results:
-            user = interaction.guild.get_member(row['user_id'])
-            if user:
-                leaderboard += f"{row['rank']}. {user.display_name}: Level {row['level']} (XP: {row['xp']})\n"
+            leaderboard = "XP Leaderboard:\n\n"
+            for row in results:
+                user = interaction.guild.get_member(row['user_id'])
+                if user:
+                    leaderboard += f"{row['rank']}. {user.display_name}: Level {row['level']} (XP: {row['xp']})\n"
 
-        await interaction.response.send_message(leaderboard)
+            await interaction.followup.send(leaderboard)
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
