@@ -7,7 +7,6 @@ import io
 from typing import Optional, Dict
 from database import db
 import time
-import asyncio
 
 
 class XPRateSelect(discord.ui.Select):
@@ -338,7 +337,7 @@ class Leveling(commands.Cog):
         # Load fonts (adjust paths as needed)
         try:
             title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
-            text_font = ImageFont.truetype("fonts/font.ttf", 20)
+            text_font = ImageFont.truetype("fonts/InterVariable.ttf", 20)
         except IOError:
             # Fallback to default font if custom fonts are not available
             title_font = ImageFont.load_default()
