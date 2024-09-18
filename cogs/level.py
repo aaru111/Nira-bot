@@ -572,7 +572,9 @@ class Leveling(commands.Cog):
             "Use the buttons and dropdowns below to configure the leveling system."
         )
 
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.response.send_message(embed=embed,
+                                                view=view,
+                                                ephemeral=True)
 
         timeout = await view.wait()
         if timeout:
