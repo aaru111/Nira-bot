@@ -820,8 +820,16 @@ class Leveling(commands.Cog):
             """
             await db.execute(query, user_id, guild_id, new_xp, new_level)
 
+            # Check and award roles
+            awarded_roles = await self.check_and_award_role(member, new_level)
+
+            # Announce level up and role rewards
+            await self.announce_level_up(member, new_level, awarded_roles)
+
+            role_text = ", ".join([role.name for role in awarded_roles
+                                   ]) if awarded_roles else "no new roles"
             await interaction.followup.send(
-                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}."
+                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}. They were awarded: {role_text}."
             )
 
         except Exception as e:
@@ -907,19 +915,47 @@ class Leveling(commands.Cog):
     async def check_and_award_role(self, member: discord.Member,
                                    new_level: int):
         guild_id = member.guild.id
+        awarded_roles = []
         if guild_id in self.role_rewards:
-            for level, role_id in self.role_rewards[guild_id].items():
+            for level, role_id in sorted(self.role_rewards[guild_id].items()):
                 if new_level >= level:
                     role = member.guild.get_role(role_id)
                     if role and role not in member.roles:
                         try:
                             await member.add_roles(role)
-                            return role
+                            awarded_roles.append(role)
                         except discord.Forbidden:
                             print(
-                                f"Failed to add role `@{role.name}` to {member.mention} due to insufficient permissions."
+                                f"Failed to add role {role.name} to {member.name} due to insufficient permissions."
                             )
-        return None
+        return awarded_roles
+
+    async def announce_level_up(self, member: discord.Member, new_level: int,
+                                awarded_roles: list):
+        guild_id = member.guild.id
+        guild_settings = self.leveling_settings.get(guild_id)
+        if guild_settings and guild_settings['announcement_channel']:
+            channel = self.bot.get_channel(
+                guild_settings['announcement_channel'])
+            if channel:
+                role_mentions = []
+                for role in awarded_roles:
+                    original_mentionable = role.mentionable
+                    try:
+                        await role.edit(mentionable=False)
+                        role_mentions.append(role.name)
+                    finally:
+                        await role.edit(mentionable=original_mentionable)
+
+                role_text = ", ".join(role_mentions)
+                if role_text:
+                    await channel.send(
+                        f"Congratulations {member.mention}! You've reached level {new_level} and earned the following role(s): {role_text}!"
+                    )
+                else:
+                    await channel.send(
+                        f"Congratulations {member.mention}! You've reached level {new_level}!"
+                    )
 
 
 async def setup(bot: commands.Bot) -> None:
