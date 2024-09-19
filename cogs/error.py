@@ -58,7 +58,7 @@ class Errors(commands.Cog):
                                description: str,
                                button_color: discord.ButtonStyle) -> None:
         """Send an embed with error information to the context channel."""
-        embed_color: int = self.get_embed_color(title)
+        button_color, embed_color = self.get_error_style(title)
         embed: discord.Embed = discord.Embed(
             title=title,
             description=f"```py\n{description}```",
@@ -114,7 +114,7 @@ class Errors(commands.Cog):
                            error: commands.CommandError, description: str,
                            title: str) -> None:
         """Handle sending an error embed based on the error type."""
-        button_color: discord.ButtonStyle = self.get_button_color(title)
+        button_color, _ = self.get_error_style(title)
         await self.send_error_embed(ctx, title, description, button_color)
 
         if not isinstance(error,
@@ -126,49 +126,27 @@ class Errors(commands.Cog):
         if DEBUG_MODE:
             ipdb.set_trace()
 
-    def get_button_color(self, title: str) -> discord.ButtonStyle:
-        """Determine button color based on the error severity."""
+    def get_error_style(self, title: str) -> Tuple[discord.ButtonStyle, int]:
+        """Determine button color and embed color based on the error severity."""
         if title in {
                 "Missing Required Argument", "Command Not Found",
                 "User Input Error", "Invalid End of Quoted String",
                 "Expected Closing Quote", "Unexpected Quote", "Bad Argument"
         }:
-            return discord.ButtonStyle.success
+            return discord.ButtonStyle.success, 0x57F287  # Green
         elif title in {
                 "Missing Permissions", "Bot Missing Permissions",
                 "Command on Cooldown", "No Private Message", "Check Failure",
                 "Disabled Command", "NSFW Channel Required"
         }:
-            return discord.ButtonStyle.primary
+            return discord.ButtonStyle.primary, 0x5865F2  # Blue
         elif title in {
                 "Not Owner", "Forbidden", "Not Found", "HTTP Exception",
                 "Max Concurrency Reached", "Unexpected Error"
         }:
-            return discord.ButtonStyle.danger
+            return discord.ButtonStyle.danger, 0xED4245  # Red
         else:
-            return discord.ButtonStyle.secondary
-
-    def get_embed_color(self, title: str) -> int:
-        """Determine embed color based on the error severity."""
-        if title in {
-                "Missing Required Argument", "Command Not Found",
-                "User Input Error", "Invalid End of Quoted String",
-                "Expected Closing Quote", "Unexpected Quote", "Bad Argument"
-        }:
-            return 0x57F287  # Green
-        elif title in {
-                "Missing Permissions", "Bot Missing Permissions",
-                "Command on Cooldown", "No Private Message", "Check Failure",
-                "Disabled Command", "NSFW Channel Required"
-        }:
-            return 0x5865F2  # Blue
-        elif title in {
-                "Not Owner", "Forbidden", "Not Found", "HTTP Exception",
-                "Max Concurrency Reached", "Unexpected Error"
-        }:
-            return 0xED4245  # Red
-        else:
-            return DEFAULT_EMBED_COLOR  # Default Grey
+            return discord.ButtonStyle.secondary, DEFAULT_EMBED_COLOR  # Default Grey
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context,
@@ -182,36 +160,7 @@ class Errors(commands.Cog):
             error = error.original  # Get the original error
 
         if isinstance(error, discord.HTTPException) and error.status == 429:
-            retry_after: float = float(
-                error.response.headers.get("Retry-After", 5))
-            base_retry_time: float = retry_after
-            for attempt in range(MAX_RETRIES):
-                await ctx.send(
-                    f"Rate limit hit! Retrying after {format_cooldown(retry_after)}... (Attempt {attempt + 1}/{MAX_RETRIES})",
-                    delete_after=DELETE_AFTER)
-                await asyncio.sleep(retry_after)
-
-                try:
-                    await ctx.reinvoke()
-                    return
-                except discord.HTTPException as e:
-                    if e.status == 429:
-                        retry_after = min(base_retry_time * (2**attempt),
-                                          600)  # Cap at 10 minutes
-                        logger.warning(
-                            f"Rate limit hit again. Retrying in {format_cooldown(retry_after)}."
-                        )
-                    else:
-                        await self.handle_error(ctx, e, str(e),
-                                                "HTTP Exception")
-                        return
-
-            logger.error(
-                f"Command failed after {MAX_RETRIES} attempts due to rate limiting."
-            )
-            await ctx.send(
-                f"Command failed after {MAX_RETRIES} attempts due to rate limiting. Please try again later.",
-                delete_after=DELETE_AFTER)
+            await self.handle_rate_limit(ctx, error)
             return
 
         # Fallback for other errors
@@ -225,6 +174,38 @@ class Errors(commands.Cog):
 
         if DEBUG_MODE:
             ipdb.set_trace()
+
+    async def handle_rate_limit(self, ctx: commands.Context,
+                                error: discord.HTTPException) -> None:
+        retry_after: float = float(error.response.headers.get(
+            "Retry-After", 5))
+        base_retry_time: float = retry_after
+        for attempt in range(MAX_RETRIES):
+            await ctx.send(
+                f"Rate limit hit! Retrying after {format_cooldown(retry_after)}... (Attempt {attempt + 1}/{MAX_RETRIES})",
+                delete_after=DELETE_AFTER)
+            await asyncio.sleep(retry_after)
+
+            try:
+                await ctx.reinvoke()
+                return
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    retry_after = min(base_retry_time * (2**attempt),
+                                      600)  # Cap at 10 minutes
+                    logger.warning(
+                        f"Rate limit hit again. Retrying in {format_cooldown(retry_after)}."
+                    )
+                else:
+                    await self.handle_error(ctx, e, str(e), "HTTP Exception")
+                    return
+
+        logger.error(
+            f"Command failed after {MAX_RETRIES} attempts due to rate limiting."
+        )
+        await ctx.send(
+            f"Command failed after {MAX_RETRIES} attempts due to rate limiting. Please try again later.",
+            delete_after=DELETE_AFTER)
 
     def get_error_title_and_description(
             self, ctx: commands.Context, error: commands.CommandError,
