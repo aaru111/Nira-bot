@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from typing import List, Optional, Union, Any, Dict
+from typing import List, Optional, Union, Any, Dict, TypeVar
 import inspect
 import math
 import asyncio
@@ -17,7 +17,8 @@ COMMANDS_PER_PAGE = 6
 VIEW_TIMEOUT = 40
 
 CommandType = Union[commands.Command[Any, Any, Any], app_commands.Command]
-ContextType = Union[commands.Context, discord.Interaction]
+ContextType = Union[commands.Context[Any], discord.Interaction]
+BotT = TypeVar('BotT', bound=commands.Bot)
 
 
 class HelpView(discord.ui.View):
@@ -25,26 +26,24 @@ class HelpView(discord.ui.View):
     def __init__(self, cog: 'HelpCog', ctx: ContextType,
                  categories: Dict[str, List[CommandType]]):
         super().__init__(timeout=VIEW_TIMEOUT)
-        self.cog = cog
-        self.ctx = ctx
-        self.categories = categories
-        self.current_category = None
-        self.current_page = 0
-        self.last_interaction_time = asyncio.get_event_loop().time()
+        self.cog: HelpCog = cog
+        self.ctx: ContextType = ctx
+        self.categories: Dict[str, List[CommandType]] = categories
+        self.current_category: Optional[str] = None
+        self.current_page: int = 0
+        self.last_interaction_time: float = asyncio.get_event_loop().time()
         self.message: Optional[discord.Message] = None
 
     async def on_timeout(self) -> None:
         for item in self.children:
             if isinstance(item, (discord.ui.Button, discord.ui.Select)):
                 item.disabled = True
-        if self.message is not None:
+        if self.message:
             try:
                 await self.message.edit(view=self)
             except discord.NotFound:
-                # Message was deleted, there is nothing we can do [napolean(song plays)]
                 pass
             except discord.HTTPException:
-                # Any other error, we'll just ignore it
                 pass
 
     async def interaction_check(self,
@@ -60,7 +59,7 @@ class HelpView(discord.ui.View):
                        min_values=1,
                        max_values=1)
     async def category_select(self, interaction: discord.Interaction,
-                              select: discord.ui.Select):
+                              select: discord.ui.Select) -> None:
         self.current_category = select.values[0]
         self.current_page = 0
         await self.update_message(interaction)
@@ -69,7 +68,7 @@ class HelpView(discord.ui.View):
                        style=discord.ButtonStyle.primary,
                        disabled=True)
     async def previous_button(self, interaction: discord.Interaction,
-                              button: discord.ui.Button):
+                              button: discord.ui.Button) -> None:
         self.current_page = max(0, self.current_page - 1)
         await self.update_message(interaction)
 
@@ -77,7 +76,7 @@ class HelpView(discord.ui.View):
                        style=discord.ButtonStyle.primary,
                        disabled=True)
     async def next_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
+                          button: discord.ui.Button) -> None:
         if self.current_category:
             max_pages = math.ceil(
                 len(self.categories[self.current_category]) /
@@ -85,7 +84,7 @@ class HelpView(discord.ui.View):
             self.current_page = min(max_pages - 1, self.current_page + 1)
         await self.update_message(interaction)
 
-    async def update_message(self, interaction: discord.Interaction):
+    async def update_message(self, interaction: discord.Interaction) -> None:
         if self.current_category == "Home" or not self.current_category:
             embed = self.create_home_embed()
             self.previous_button.disabled = True
@@ -97,7 +96,7 @@ class HelpView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
         self.message = await interaction.original_response()
 
-    def update_button_states(self):
+    def update_button_states(self) -> None:
         if self.current_category and self.current_category != "Home":
             max_pages = math.ceil(
                 len(self.categories[self.current_category]) /
@@ -114,12 +113,11 @@ class HelpView(discord.ui.View):
             description=
             "Welcome to the help menu! Select a category from the dropdown to view commands.",
             color=self.cog.embed_color)
-        for category in self.categories.keys():
-            if category != "Home":
-                embed.add_field(
-                    name=f"**{category}**",
-                    value=f"`{len(self.categories[category])}` commands",
-                    inline=True)
+        for category, commands in self.categories.items():
+            if category not in ["Home", "HelpCog"]:
+                embed.add_field(name=f"**{category}**",
+                                value=f"`{len(commands)}` commands",
+                                inline=True)
         embed.set_footer(text=self.cog.embed_footer.format(
             prefix=self.get_prefix()))
         return embed
@@ -148,7 +146,6 @@ class HelpView(discord.ui.View):
         return embed
 
     def get_prefix(self) -> str:
-        # Fetch the prefix from the context, or use default if not found
         if isinstance(self.ctx, commands.Context):
             return self.ctx.prefix or '.'
         return '.'
@@ -157,10 +154,10 @@ class HelpView(discord.ui.View):
         if isinstance(command, app_commands.Command) or (isinstance(
                 command, commands.Command) and command.parent is None):
             if isinstance(command, app_commands.Command):
-                return f"/{command.name}"  # Slash command
+                return f"/{command.name}"
             else:
-                return f"{self.get_prefix()}{command.name}"  # Prefix command with dynamic prefix
-        return f"{self.get_prefix()}{command.name}"  # Subcommand with dynamic prefix
+                return f"{self.get_prefix()}{command.name}"
+        return f"{self.get_prefix()}{command.name}"
 
     def get_user(self) -> Union[discord.User, discord.Member]:
         return self.ctx.author if isinstance(
@@ -169,8 +166,8 @@ class HelpView(discord.ui.View):
 
 class HelpCog(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
-        self.bot: commands.Bot = bot
+    def __init__(self, bot: BotT):
+        self.bot: BotT = bot
         self._original_help_command: Optional[
             commands.HelpCommand] = bot.help_command
         bot.help_command = None
@@ -184,26 +181,23 @@ class HelpCog(commands.Cog):
 
     async def cog_unload(self) -> None:
         self.bot.help_command = self._original_help_command
-        return None
 
     @staticmethod
-    def generate_usage(command: Union[commands.Command[Any, Any, Any],
-                                      app_commands.Command],
+    def generate_usage(command: CommandType,
                        flag_converter: Optional[type[
                            commands.FlagConverter]] = None,
                        prefix: str = '.') -> str:
         command_name = command.qualified_name
 
-        # Add appropriate prefix based on command type
         if isinstance(command, commands.Command):
-            if command.parent is None:  # Top-level command
+            if command.parent is None:
                 if isinstance(command, commands.HybridCommand):
                     usage = f"[/{command_name} | {prefix}{command_name}]"
                 else:
                     usage = f"{prefix}{command_name}"
-            else:  # Subcommand
+            else:
                 usage = f"{prefix}{command_name}"
-        else:  # Application command
+        else:
             usage = f"/{command_name}"
 
         if isinstance(command, commands.Command):
@@ -217,9 +211,9 @@ class HelpCog(commands.Cog):
         if flag_converter:
             flag_prefix = getattr(flag_converter, "__commands_flag_prefix__",
                                   "-")
-            flags: dict[str, commands.Flag] = flag_converter.get_flags()
+            flags: Dict[str, commands.Flag] = flag_converter.get_flags()
         else:
-            flag_prefix = "-"  # Default flag prefix
+            flag_prefix = "-"
             flags = {}
 
         for param_name, param in parameters.items():
@@ -241,7 +235,7 @@ class HelpCog(commands.Cog):
             return any(
                 check.__qualname__.startswith('is_owner')
                 for check in command.checks)
-        return command.checks
+        return bool(command.checks)
 
     def is_jishaku_command(self, command: CommandType) -> bool:
         if isinstance(command, commands.Command):
@@ -250,6 +244,7 @@ class HelpCog(commands.Cog):
         elif isinstance(command, app_commands.Command):
             return command.module is not None and "jishaku" in command.module.lower(
             )
+        return False
 
     async def is_owner(self, user: Union[discord.User,
                                          discord.Member]) -> bool:
@@ -259,7 +254,7 @@ class HelpCog(commands.Cog):
                              description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
     async def help_command(self,
-                           ctx: commands.Context,
+                           ctx: commands.Context[BotT],
                            command: Optional[str] = None) -> None:
         prefix = await self.bot.get_prefix(ctx.message)
         prefix = prefix[0] if isinstance(prefix, list) else prefix
@@ -277,13 +272,11 @@ class HelpCog(commands.Cog):
         seen_commands = set()
 
         for cmd in self.bot.walk_commands():
-            if isinstance(
-                    cmd,
-                (commands.Command, app_commands.Command
-                 )) and current.lower() in cmd.qualified_name.lower() and (
-                     not self.is_owner_only(cmd)
-                     or is_owner) and (not self.is_jishaku_command(cmd)
-                                       or is_owner):
+            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
+               current.lower() in cmd.qualified_name.lower() and \
+               (not self.is_owner_only(cmd) or is_owner) and \
+               (not self.is_jishaku_command(cmd) or is_owner) and \
+               cmd.cog and cmd.cog.qualified_name != "HelpCog":
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -291,13 +284,11 @@ class HelpCog(commands.Cog):
                     seen_commands.add(cmd.qualified_name)
 
         for cmd in self.bot.tree.walk_commands():
-            if isinstance(
-                    cmd,
-                (commands.Command, app_commands.Command
-                 )) and current.lower() in cmd.qualified_name.lower() and (
-                     not self.is_owner_only(cmd)
-                     or is_owner) and (not self.is_jishaku_command(cmd)
-                                       or is_owner):
+            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
+               current.lower() in cmd.qualified_name.lower() and \
+               (not self.is_owner_only(cmd) or is_owner) and \
+               (not self.is_jishaku_command(cmd) or is_owner) and \
+               cmd.binding and cmd.binding.__class__.__name__ != "HelpCog":
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
                         app_commands.Choice(name=f"/{cmd.qualified_name}",
@@ -348,25 +339,23 @@ class HelpCog(commands.Cog):
         cog_commands: Dict[str, List[CommandType]] = {"Home": []}
         seen_commands = set()
 
-        # Process application commands first
         for command in sorted(self.bot.tree.walk_commands(),
                               key=lambda c: c.name):
-            if isinstance(command, app_commands.Command) and (
-                    not self.is_owner_only(command)
-                    or is_owner) and (not self.is_jishaku_command(command)
-                                      or is_owner):
+            if isinstance(command, app_commands.Command) and \
+               (not self.is_owner_only(command) or is_owner) and \
+               (not self.is_jishaku_command(command) or is_owner) and \
+               command.binding and command.binding.__class__.__name__ != "HelpCog":
                 cog_name = command.binding.__class__.__name__ if command.binding else self.no_category_name
                 if cog_name not in cog_commands:
                     cog_commands[cog_name] = []
                 cog_commands[cog_name].append(command)
                 seen_commands.add(command.qualified_name)
 
-        # Then process bot commands, skipping those already seen
         for command in sorted(self.bot.commands, key=lambda c: c.name):
-            if command.qualified_name not in seen_commands and (
-                    not self.is_owner_only(command)
-                    or is_owner) and (not self.is_jishaku_command(command)
-                                      or is_owner):
+            if command.qualified_name not in seen_commands and \
+               (not self.is_owner_only(command) or is_owner) and \
+               (not self.is_jishaku_command(command) or is_owner) and \
+               command.cog and command.cog.qualified_name != "HelpCog":
                 cog_name = command.cog.qualified_name if command.cog else self.no_category_name
                 if cog_name not in cog_commands:
                     cog_commands[cog_name] = []
@@ -397,7 +386,7 @@ class HelpCog(commands.Cog):
         # Start a background task to check for timeout
         self.bot.loop.create_task(self.check_view_timeout(view))
 
-    async def check_view_timeout(self, view: HelpView):
+    async def check_view_timeout(self, view: HelpView) -> None:
         while not view.is_finished():
             await asyncio.sleep(1)
             if asyncio.get_event_loop().time(
