@@ -5,9 +5,10 @@ import aiohttp
 import asyncio
 import io
 import time
-from discord import Interaction, app_commands
+from discord import app_commands
 from discord.ext.commands import Context
 import platform
+from datetime import datetime, timedelta
 
 
 # Utility Functions
@@ -56,34 +57,31 @@ async def _create_new_channel(guild: discord.Guild,
 async def _recreate_channel_data(
     new_channel: discord.TextChannel, webhooks: List[discord.Webhook],
     invites: List[discord.Invite], pinned_messages: List[discord.Message]
-) -> Tuple[Optional[discord.Invite], Optional[discord.Webhook]]:
+) -> Tuple[List[discord.Invite], List[discord.Webhook]]:
     """Recreate webhooks, invites, and pinned messages in the new channel."""
-    new_invite = None
-    new_webhook = None
+    new_invites = []
+    new_webhooks = []
 
     # Recreate webhooks
-    if webhooks:
-        for webhook in webhooks:
-            try:
-                avatar = await webhook.avatar.read(
-                ) if webhook.avatar else None
-                new_webhook = await new_channel.create_webhook(
-                    name=webhook.name, avatar=avatar)
-                break  # We only need one webhook for demonstration
-            except Exception as e:
-                print(f"Error recreating webhook: {e}")
+    for webhook in webhooks:
+        try:
+            avatar = await webhook.avatar.read() if webhook.avatar else None
+            new_webhook = await new_channel.create_webhook(name=webhook.name,
+                                                           avatar=avatar)
+            new_webhooks.append(new_webhook)
+        except Exception as e:
+            print(f"Error recreating webhook: {e}")
 
     # Recreate invites
-    if invites:
-        for invite in invites:
-            try:
-                new_invite = await new_channel.create_invite(
-                    max_age=invite.max_age if invite.max_age != 0 else None,
-                    max_uses=invite.max_uses if invite.max_uses != 0 else None,
-                    temporary=invite.temporary)
-                break  # We only need one invite for demonstration
-            except Exception as e:
-                print(f"Error recreating invite: {e}")
+    for i, invite in enumerate(invites, 1):
+        try:
+            new_invite = await new_channel.create_invite(
+                max_age=invite.max_age if invite.max_age != 0 else None,
+                max_uses=invite.max_uses if invite.max_uses != 0 else None,
+                temporary=invite.temporary)
+            new_invites.append(new_invite)
+        except Exception as e:
+            print(f"Error recreating invite: {e}")
 
     # Recreate pinned messages
     if pinned_messages:
@@ -130,7 +128,7 @@ async def _recreate_channel_data(
                     file.close()
                 files.clear()
 
-    return new_invite, new_webhook
+    return new_invites, new_webhooks
 
 
 class RoleInfoView(discord.ui.View):
@@ -496,85 +494,165 @@ class Moderation(commands.Cog):
             f"Slowmode for {channel.mention} has been changed to {delay} seconds."
         )
 
+    async def safe_send(self, ctx, content, **kwargs):
+        try:
+            if ctx.interaction and not ctx.interaction.response.is_done():
+                await ctx.interaction.response.send_message(content, **kwargs)
+            else:
+                await ctx.send(content, **kwargs)
+        except discord.HTTPException as e:
+            if e.code == 10062:  # Unknown interaction
+                await ctx.send(content, **kwargs)
+            else:
+                raise
+
     @commands.hybrid_command()
     @commands.has_permissions(manage_channels=True)
     async def nuke(self,
                    ctx: commands.Context,
                    channel: Optional[discord.TextChannel] = None):
         """Delete and recreate a channel, with confirmation."""
+        # Check for cooldown
+        bucket = self.nuke_cooldowns.get_bucket(ctx.message)
+        retry_after = bucket.update_rate_limit()
+        if retry_after:
+            return await ctx.send(
+                f"You're on cooldown. Try again in {retry_after:.2f} seconds.",
+                ephemeral=True)
+
         channel = channel or ctx.channel
         if not isinstance(channel, discord.TextChannel):
             await ctx.send("This command can only be used in a text channel.",
                            ephemeral=True)
             return
 
+        # Defer the response for slash commands
+        if ctx.interaction:
+            await ctx.defer(ephemeral=True)
+
         confirmation_view = ConfirmationView(ctx, channel)
-        confirmation_message = await ctx.send(
-            f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
-            view=confirmation_view)
+        try:
+            confirmation_message = await ctx.send(
+                f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
+                view=confirmation_view)
+        except discord.NotFound:
+            await self.safe_send(
+                ctx,
+                "The channel was deleted before the confirmation could be sent.",
+                ephemeral=True)
+            return
 
         await confirmation_view.wait()
 
-        if confirmation_view.value is None:
-            await ctx.send("Nuke command timed out. No action was taken.",
-                           ephemeral=True)
-            return
-        elif confirmation_view.value is False:
-            await ctx.send("Nuke command cancelled.", ephemeral=True)
-            return
-
-        if ctx.interaction:
-            await ctx.interaction.response.defer(ephemeral=True)
-        else:
-            await ctx.typing()
-
-        properties = await _get_channel_properties(channel)
-
         try:
-            webhooks = await channel.webhooks()
-        except Exception:
-            webhooks = []
+            if confirmation_view.value is None:
+                for item in confirmation_view.children:
+                    item.disabled = True
+                await confirmation_message.edit(
+                    content="Nuke command timed out. No action was taken.",
+                    view=confirmation_view)
+                return
+            elif confirmation_view.value is False:
+                for item in confirmation_view.children:
+                    item.disabled = True
+                await confirmation_message.edit(
+                    content="Nuke command cancelled.", view=confirmation_view)
+                return
 
-        try:
-            invites = await channel.invites()
-        except Exception:
-            invites = []
+            # Edit the original message to show that nuking is in progress
+            for item in confirmation_view.children:
+                item.disabled = True
+            await confirmation_message.edit(content="Nuking channel...",
+                                            view=confirmation_view)
 
-        try:
-            pinned_messages = await channel.pins()
-        except Exception:
-            pinned_messages = []
+            properties = await _get_channel_properties(channel)
 
-        await channel.delete(reason=f"Channel nuked by {ctx.author}")
-        new_channel = await _create_new_channel(ctx.guild, properties)
-        new_invite, new_webhook = await _recreate_channel_data(
-            new_channel, webhooks, invites, pinned_messages)
+            try:
+                webhooks = await channel.webhooks()
+            except discord.NotFound:
+                webhooks = []
 
-        message_content = f"Channel has been nuked by {ctx.author.mention}\n"
-        message_content += f"New channel: {new_channel.mention}\n"
+            try:
+                invites = await channel.invites()
+            except discord.NotFound:
+                invites = []
 
-        if new_invite:
-            message_content += f"New invite link: {new_invite.url}\n"
+            try:
+                pinned_messages = await channel.pins()
+            except discord.NotFound:
+                pinned_messages = []
 
-        if new_webhook:
-            message_content += f"New webhook URL: {new_webhook.url}\n"
+            try:
+                await channel.delete(reason=f"Channel nuked by {ctx.author}")
+            except discord.NotFound:
+                await self.safe_send(ctx,
+                                     "The channel was already deleted.",
+                                     ephemeral=True)
+                return
 
-        try:
-            await new_channel.send(message_content)
+            new_channel = await _create_new_channel(ctx.guild, properties)
+            new_invites, new_webhooks = await _recreate_channel_data(
+                new_channel, webhooks, invites, pinned_messages)
+
+            message_content = f"Channel has been nuked by {ctx.author.mention}\n"
+            message_content += f"New channel: {new_channel.mention}\n\n"
+
+            if new_invites:
+                message_content += "**Invite Links:**\n"
+                for i, invite in enumerate(new_invites, 1):
+                    expiry_date = datetime.utcnow() + timedelta(
+                        seconds=invite.max_age) if invite.max_age else "Never"
+                    invite_name = f"Invite {i} - (Expires: {expiry_date})"
+                    message_content += f"[{invite_name}]({invite.url})\n"
+
+            if new_webhooks:
+                message_content += "\n**Webhook URLs:**\n"
+                for webhook in new_webhooks:
+                    message_content += f"[{webhook.name}]({webhook.url})\n"
+
+            try:
+                await new_channel.send(message_content)
+            except discord.Forbidden:
+                await ctx.author.send(
+                    f"Nuke operation completed, but the bot couldn't send a message to {new_channel.mention} due to missing permissions."
+                )
+
+            completion_message = f"Nuked and recreated {new_channel.mention}."
+            await self.safe_send(ctx, completion_message, ephemeral=True)
+
+        except discord.NotFound:
+            await self.safe_send(
+                ctx,
+                "The channel was deleted during the nuke process.",
+                ephemeral=True)
         except discord.Forbidden:
-            await ctx.author.send(
-                f"Nuke operation completed, but the bot couldn't send a message to {new_channel.mention} due to missing permissions."
-            )
+            await self.safe_send(
+                ctx,
+                "The bot doesn't have permission to delete or recreate the channel.",
+                ephemeral=True)
+        except discord.HTTPException as e:
+            await self.safe_send(
+                ctx,
+                f"An error occurred while nuking the channel: {str(e)}",
+                ephemeral=True)
+        except Exception as e:
+            await self.safe_send(ctx,
+                                 f"An unexpected error occurred: {str(e)}",
+                                 ephemeral=True)
 
+    async def safe_send(self, ctx, content, **kwargs):
         try:
-            if ctx.interaction:
-                await ctx.interaction.followup.send(
-                    f"Nuked and recreated {new_channel.mention}.",
-                    ephemeral=True)
+            if ctx.interaction and not ctx.interaction.response.is_done():
+                await ctx.interaction.followup.send(content, **kwargs)
             else:
-                await ctx.send(f"Nuked and recreated {new_channel.mention}.")
+                await ctx.send(content, **kwargs)
+        except discord.NotFound:
+            try:
+                await ctx.author.send(content, **kwargs)
+            except:
+                pass  # If we can't send to the user, we've done all we can
         except discord.HTTPException:
-            pass
+            pass  # If we can't send the message, we've done all we can
 
     @commands.hybrid_command(
         name="nick", description="Change the nickname of a user on a server.")

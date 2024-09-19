@@ -72,8 +72,17 @@ class Errors(commands.Cog):
                                                       ephemeral=True)
             view.message = message
             await self.delete_message_with_retry(message)
+        except discord.NotFound:
+            logger.warning(
+                "Channel or message not found when sending error embed.")
+        except discord.Forbidden:
+            logger.warning(
+                "Bot doesn't have permission to send messages in this channel."
+            )
         except discord.HTTPException as e:
             logger.warning(f"Failed to send or delete an error embed: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error when sending error embed: {e}")
 
     async def delete_message_with_retry(self,
                                         message: discord.Message,
@@ -88,12 +97,18 @@ class Errors(commands.Cog):
                 logger.info("Message already deleted.")
                 return
             except discord.HTTPException as e:
+                if e.code == 10008:  # Unknown Message error
+                    logger.info("Message no longer exists.")
+                    return
                 if attempt == max_retries - 1:
                     logger.warning(
                         f"Failed to delete message after {max_retries} attempts: {e}"
                     )
                 else:
                     await asyncio.sleep(2**attempt)  # Exponential backoff
+            except Exception as e:
+                logger.error(f"Unexpected error while deleting message: {e}")
+                return
 
     async def handle_error(self, ctx: commands.Context,
                            error: commands.CommandError, description: str,
