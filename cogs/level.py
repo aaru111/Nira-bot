@@ -734,6 +734,76 @@ class Leveling(commands.Cog):
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
 
+    @level_group.command(name="give")
+    @app_commands.checks.has_permissions(manage_roles=True)
+    async def give_levels(self, interaction: discord.Interaction,
+                          member: discord.Member, levels: int):
+        """Give a specified number of levels to a member"""
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
+
+            if levels <= 0:
+                return await interaction.followup.send(
+                    "Please specify a positive number of levels to give.",
+                    ephemeral=True)
+
+            user_id, guild_id = member.id, interaction.guild_id
+
+            # Get current XP and level
+            query = "SELECT xp, level FROM user_levels WHERE user_id = $1 AND guild_id = $2;"
+            result = await db.fetch(query, user_id, guild_id)
+
+            if not result:
+                current_xp, current_level = 0, 0
+            else:
+                current_xp, current_level = result[0]['xp'], result[0]['level']
+
+            # Calculate new level and XP
+            new_level = current_level + levels
+            new_xp = new_level**2 * 100  # Ensure XP is at least the minimum for the new level
+
+            # Update database
+            query = """
+            INSERT INTO user_levels (user_id, guild_id, xp, level)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, guild_id)
+            DO UPDATE SET xp = $3, level = $4;
+            """
+            await db.execute(query, user_id, guild_id, new_xp, new_level)
+
+            await interaction.followup.send(
+                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}."
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
+
+    @give_levels.error
+    async def give_levels_error(self, interaction: discord.Interaction,
+                                error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.errors.MissingPermissions):
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "You don't have permission to use this command. 'Manage Roles' permission is required.",
+                    ephemeral=True)
+            else:
+                await interaction.followup.send(
+                    "You don't have permission to use this command. 'Manage Roles' permission is required.",
+                    ephemeral=True)
+        else:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"An error occurred: {str(error)}", ephemeral=True)
+            else:
+                await interaction.followup.send(
+                    f"An error occurred: {str(error)}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Leveling(bot))
