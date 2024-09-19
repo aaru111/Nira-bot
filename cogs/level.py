@@ -257,20 +257,43 @@ class Leveling(commands.Cog):
             self, interaction: discord.Interaction, new_level: int,
             guild_settings: Dict[str, int | bool | Optional[int]],
             awarded_roles: list):
+        user_id, guild_id = interaction.user.id, interaction.guild_id
+
+        # Get updated XP and rank
+        query = """
+        SELECT xp, 
+               (SELECT COUNT(*) FROM user_levels ul2 
+                WHERE ul2.guild_id = $2 AND ul2.xp > ul1.xp) + 1 AS rank
+        FROM user_levels ul1
+        WHERE user_id = $1 AND guild_id = $2;
+        """
+        result = await db.fetch(query, user_id, guild_id)
+        if not result:
+            return  # User not found in database
+
+        xp, rank = result[0]['xp'], result[0]['rank']
+
+        # Create rank card
+        rank_card = await self.create_rank_card(interaction.user, xp,
+                                                new_level, rank)
+
         role_rewards_text = f"You've earned the following role(s): {', '.join([role.name for role in awarded_roles])}" if awarded_roles else ""
         level_up_message = guild_settings['level_up_message'].format(
             user_mention=interaction.user.mention,
             new_level=new_level,
             role_rewards=role_rewards_text)
 
+        file = discord.File(rank_card, filename="rank_card.png")
+
         if guild_settings['announcement_channel']:
             channel = self.bot.get_channel(
                 guild_settings['announcement_channel'])
             if channel:
-                await channel.send(level_up_message)
+                await channel.send(content=level_up_message, file=file)
         else:
             # Only send in the interaction channel if no announcement channel is set
-            await interaction.followup.send(level_up_message)
+            await interaction.followup.send(content=level_up_message,
+                                            file=file)
 
     async def create_tables(self):
         queries = [
