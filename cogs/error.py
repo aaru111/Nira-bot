@@ -4,11 +4,13 @@ import traceback
 import aiohttp
 import asyncio
 from difflib import get_close_matches
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from loguru import logger
 import sys
 import ipdb
 from discord.ext.commands import CommandInvokeError
+from collections import defaultdict
+import time
 
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
 DEFAULT_EMBED_COLOR: int = 0x2f3131  # Default embed color
@@ -53,11 +55,8 @@ class Errors(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-
-    async def cog_unload(self):
-        """Cleanup resources when the cog is unloaded."""
-        await self.session.close()
+        self.error_counts: Dict[str, int] = defaultdict(int)
+        self.rate_limit_history: Dict[str, List[float]] = defaultdict(list)
 
     async def send_error_embed(self, ctx: commands.Context, title: str,
                                description: str,
@@ -120,6 +119,12 @@ class Errors(commands.Cog):
                            title: str) -> None:
         """Handle sending an error embed based on the error type."""
         button_color, _ = self.get_error_style(title)
+
+        # Implement point 18: Error Grouping
+        self.error_counts[title] += 1
+        if self.error_counts[title] > 5:
+            description += f"\n\nThis error has occurred {self.error_counts[title]} times recently."
+
         await self.send_error_embed(ctx, title, description, button_color)
 
         if not isinstance(error,
@@ -156,7 +161,6 @@ class Errors(commands.Cog):
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context,
                                error: commands.CommandError) -> None:
-        logger.error(f"Error occurred in command {ctx.command}: {error}")
         """Handle errors that occur during command execution."""
         if hasattr(ctx.command, 'on_error'):
             return  # Don't interfere with custom error handlers
@@ -173,6 +177,12 @@ class Errors(commands.Cog):
         command_signature: str = getattr(ctx.command, 'signature',
                                          '') if ctx.command else ""
 
+        if not isinstance(error,
+                          (commands.CommandNotFound, commands.UserInputError,
+                           commands.CheckFailure)):
+            logger.debug(
+                f"Handling error in {command_name}: {type(error).__name__}")
+
         title, description = self.get_error_title_and_description(
             ctx, error, command_name, command_signature)
         await self.handle_error(ctx, error, description, title)
@@ -182,35 +192,37 @@ class Errors(commands.Cog):
 
     async def handle_rate_limit(self, ctx: commands.Context,
                                 error: discord.HTTPException) -> None:
-        retry_after: float = float(error.response.headers.get(
-            "Retry-After", 5))
-        base_retry_time: float = retry_after
-        for attempt in range(MAX_RETRIES):
-            await ctx.send(
-                f"Rate limit hit! Retrying after {format_cooldown(retry_after)}... (Attempt {attempt + 1}/{MAX_RETRIES})",
-                delete_after=DELETE_AFTER)
-            await asyncio.sleep(retry_after)
+        # Implement point 20: Adaptive Rate Limiting
+        now = time.time()
+        self.rate_limit_history[ctx.command.name].append(now)
 
-            try:
-                await ctx.reinvoke()
-                return
-            except discord.HTTPException as e:
-                if e.status == 429:
-                    retry_after = min(base_retry_time * (2**attempt),
-                                      600)  # Cap at 10 minutes
-                    logger.warning(
-                        f"Rate limit hit again. Retrying in {format_cooldown(retry_after)}."
-                    )
-                else:
-                    await self.handle_error(ctx, e, str(e), "HTTP Exception")
-                    return
+        # Remove old entries
+        self.rate_limit_history[ctx.command.name] = [
+            t for t in self.rate_limit_history[ctx.command.name]
+            if now - t < 60
+        ]
 
-        logger.error(
-            f"Command failed after {MAX_RETRIES} attempts due to rate limiting."
-        )
+        rate_limit_count = len(self.rate_limit_history[ctx.command.name])
+
+        if rate_limit_count > 5:
+            retry_after = 60  # Increased cooldown
+        else:
+            retry_after = float(error.response.headers.get("Retry-After", 5))
+
         await ctx.send(
-            f"Command failed after {MAX_RETRIES} attempts due to rate limiting. Please try again later.",
+            f"Rate limit hit! Retrying after {format_cooldown(retry_after)}... (Recent rate limits: {rate_limit_count})",
             delete_after=DELETE_AFTER)
+        await asyncio.sleep(retry_after)
+
+        try:
+            await ctx.reinvoke()
+        except discord.HTTPException as e:
+            if e.status == 429:
+                logger.warning(
+                    f"Rate limit hit again. Command: {ctx.command.name}")
+                await self.handle_rate_limit(ctx, e)
+            else:
+                await self.handle_error(ctx, e, str(e), "HTTP Exception")
 
     def get_error_title_and_description(
             self, ctx: commands.Context, error: commands.CommandError,
@@ -316,7 +328,13 @@ class Errors(commands.Cog):
 
         error_type = type(error)
         if error_type in error_handlers:
-            return error_handlers[error_type](error)
+            title, description = error_handlers[error_type](error)
+
+            # Implement point 17: Command Usage Hints
+            if hasattr(ctx.command, 'usage') and ctx.command.usage:
+                description += f"\n\nUsage example: {ctx.prefix}{ctx.command.name} {ctx.command.usage}"
+
+            return title, description
         else:
             tb_str = traceback.format_exception(type(error), error,
                                                 error.__traceback__)
@@ -327,13 +345,22 @@ class Errors(commands.Cog):
 
     def get_command_not_found_description(self, ctx: commands.Context) -> str:
         attempted_command = ctx.message.content.split()[0][len(ctx.prefix):]
-        similar_commands: List[str] = get_close_matches(
-            attempted_command, [cmd.name for cmd in self.bot.commands],
-            n=1,
-            cutoff=0.6)
+
+        # Implement point 11: Command Suggestion Improvements
+        all_commands = set()
+        for command in self.bot.commands:
+            all_commands.add(command.name)
+            all_commands.update(command.aliases)
+
+        similar_commands: List[str] = get_close_matches(attempted_command,
+                                                        all_commands,
+                                                        n=3,
+                                                        cutoff=0.6)
+
         if similar_commands:
-            suggestion: str = similar_commands[0]
-            return f"Command not found. Did you mean `{ctx.prefix}{suggestion}`?"
+            suggestions = "\n".join(
+                [f"• {ctx.prefix}{cmd}" for cmd in similar_commands])
+            return f"Command not found. Did you mean one of these?\n{suggestions}"
         else:
             return "Command not found. Please check your command and try again."
 
