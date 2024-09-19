@@ -19,9 +19,8 @@ logger.add(
     sys.stderr,
     format=
     "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-    backtrace=True,  # Enabling backtrace to catch more detailed error messages
-    diagnose=True  # Captures internal variables for better context
-)
+    backtrace=True,
+    diagnose=True)
 
 # Enable/disable interactive debugging
 DEBUG_MODE = False
@@ -37,16 +36,23 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
+def format_cooldown(seconds: float) -> str:
+    """Format cooldown time into a more readable string."""
+    if seconds < 60:
+        return f"{seconds:.1f} seconds"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.1f} minutes"
+    else:
+        hours = seconds / 3600
+        return f"{hours:.1f} hours"
+
+
 class Errors(commands.Cog):
     """Cog to handle and report errors during command execution."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
-        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
-
-    async def cog_unload(self) -> None:
-        """Clean up resources when the cog is unloaded."""
-        await self.session.close()
 
     async def send_error_embed(self, ctx: commands.Context, title: str,
                                description: str,
@@ -65,14 +71,29 @@ class Errors(commands.Cog):
                                                       view=view,
                                                       ephemeral=True)
             view.message = message
-            await message.delete(delay=DELETE_AFTER)
-        except discord.errors.NotFound:
-            logger.warning(
-                "Failed to send or delete an error embed: message or channel not found."
-            )
-        except discord.errors.Forbidden:
-            logger.warning(
-                "Failed to delete the error embed: insufficient permissions.")
+            await self.delete_message_with_retry(message)
+        except discord.HTTPException as e:
+            logger.warning(f"Failed to send or delete an error embed: {e}")
+
+    async def delete_message_with_retry(self,
+                                        message: discord.Message,
+                                        max_retries: int = 3) -> None:
+        """Attempt to delete a message with retries."""
+        for attempt in range(max_retries):
+            try:
+                await asyncio.sleep(DELETE_AFTER)
+                await message.delete()
+                return
+            except discord.NotFound:
+                logger.info("Message already deleted.")
+                return
+            except discord.HTTPException as e:
+                if attempt == max_retries - 1:
+                    logger.warning(
+                        f"Failed to delete message after {max_retries} attempts: {e}"
+                    )
+                else:
+                    await asyncio.sleep(2**attempt)  # Exponential backoff
 
     async def handle_error(self, ctx: commands.Context,
                            error: commands.CommandError, description: str,
@@ -145,34 +166,30 @@ class Errors(commands.Cog):
         if isinstance(error, commands.CommandInvokeError):
             error = error.original  # Get the original error
 
-        if isinstance(error,
-                      discord.errors.HTTPException) and error.status == 429:
+        if isinstance(error, discord.HTTPException) and error.status == 429:
             retry_after: float = float(
                 error.response.headers.get("Retry-After", 5))
-            # We are not using the base_retry_time variable for now
-            # base_retry_time = retry_after
+            base_retry_time: float = retry_after
             for attempt in range(MAX_RETRIES):
                 await ctx.send(
-                    f"Rate limit hit! Retrying after {retry_after:.2f} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})",
+                    f"Rate limit hit! Retrying after {format_cooldown(retry_after)}... (Attempt {attempt + 1}/{MAX_RETRIES})",
                     delete_after=DELETE_AFTER)
                 await asyncio.sleep(retry_after)
 
                 try:
-                    await ctx.reinvoke(
-                    )  # Try re-running the command after the delay
-                    return  # Exit the method if successful
-                except discord.errors.HTTPException as e:
+                    await ctx.reinvoke()
+                    return
+                except discord.HTTPException as e:
                     if e.status == 429:
-                        retry_after = float(
-                            e.response.headers.get("Retry-After",
-                                                   retry_after * 2))
+                        retry_after = min(base_retry_time * (2**attempt),
+                                          600)  # Cap at 10 minutes
                         logger.warning(
-                            f"Rate limit hit again. Retrying in {retry_after:.2f} seconds."
+                            f"Rate limit hit again. Retrying in {format_cooldown(retry_after)}."
                         )
                     else:
                         await self.handle_error(ctx, e, str(e),
                                                 "HTTP Exception")
-                        return  # Exit if a non-429 error occurs
+                        return
 
             logger.error(
                 f"Command failed after {MAX_RETRIES} attempts due to rate limiting."
@@ -220,7 +237,7 @@ class Errors(commands.Cog):
             commands.CommandOnCooldown:
             lambda e:
             ("Command on Cooldown",
-             f"This command is on cooldown. Try again after {e.retry_after:.2f} seconds."
+             f"This command is on cooldown. Try again after {format_cooldown(e.retry_after)}."
              ),
             commands.NotOwner:
             lambda e:
@@ -231,7 +248,7 @@ class Errors(commands.Cog):
              "This command cannot be used in private messages. Please use it in a server channel."
              ),
             commands.BadArgument:
-            lambda e: ("Bad Argument", str(e)),
+            lambda e: ("Bad Argument", f"Invalid argument provided: {str(e)}"),
             commands.CheckFailure:
             lambda e: ("Check Failure",
                        "You do not have permission to execute this command."),
@@ -239,23 +256,32 @@ class Errors(commands.Cog):
             lambda e:
             ("Disabled Command", "This command is currently disabled."),
             commands.UserInputError:
-            lambda e: ("User Input Error", str(e)),
+            lambda e: ("User Input Error",
+                       f"There was an error processing your input: {str(e)}"),
             commands.InvalidEndOfQuotedStringError:
-            lambda e: ("Invalid End of Quoted String", str(e)),
+            lambda e:
+            ("Invalid End of Quoted String",
+             f"There was an issue with quotes in your command: {str(e)}"),
             commands.ExpectedClosingQuoteError:
-            lambda e: ("Expected Closing Quote", str(e)),
+            lambda e: ("Expected Closing Quote",
+                       f"A closing quote was expected: {str(e)}"),
             commands.MaxConcurrencyReached:
             lambda e:
             ("Max Concurrency Reached",
-             f"This command can only be used {e.number} times concurrently."),
+             f"This command can only be used {e.number} times concurrently. Please wait and try again."
+             ),
             commands.UnexpectedQuoteError:
-            lambda e: ("Unexpected Quote", str(e)),
+            lambda e:
+            ("Unexpected Quote", f"An unexpected quote was found: {str(e)}"),
             discord.Forbidden:
-            lambda e: ("Forbidden", "I do not have permission to do that."),
+            lambda e:
+            ("Forbidden", f"I do not have permission to do that: {str(e)}"),
             discord.NotFound:
-            lambda e: ("Not Found", "The requested resource was not found."),
+            lambda e:
+            ("Not Found", f"The requested resource was not found: {str(e)}"),
             discord.HTTPException:
-            lambda e: ("HTTP Exception", "An HTTP exception occurred."),
+            lambda e:
+            ("HTTP Exception", f"An HTTP exception occurred: {str(e)}"),
             CommandInvokeError:
             lambda e:
             ("Command Error", self.get_command_invoke_error_description(e)),
@@ -280,9 +306,11 @@ class Errors(commands.Cog):
             lambda e: ("Bad Argument",
                        f"Could not parse argument: {e.param.name}. {str(e)}"),
             commands.ArgumentParsingError:
-            lambda e: ("Argument Parsing Error", str(e)),
+            lambda e: ("Argument Parsing Error",
+                       f"There was an error parsing your command: {str(e)}"),
             commands.FlagError:
-            lambda e: ("Flag Error", str(e)),
+            lambda e:
+            ("Flag Error", f"There was an issue with command flags: {str(e)}"),
         }
 
         error_type = type(error)
@@ -325,16 +353,15 @@ class Errors(commands.Cog):
 class HelpView(discord.ui.View):
 
     def __init__(self):
-        super().__init__(timeout=60)  # Set your desired timeout
-        self.message = None  # Initialize the message attribute
+        super().__init__(timeout=60)
+        self.message = None
 
     async def on_timeout(self):
-        # This method will be called when the view times out
-        if self.message:  # Check if message is set
+        if self.message:
             try:
-                await self.message.delete()
-            except discord.errors.NotFound:
-                logger.warning("Message not found for timeout handling.")
+                await self.message.edit(view=None)
+            except discord.HTTPException:
+                pass
 
 
 class HelpButton(discord.ui.Button):
@@ -364,7 +391,7 @@ class HelpButton(discord.ui.Button):
             "Bot Missing Permissions":
             "The bot does not have the necessary permissions to execute this command. Please ensure the bot has the correct permissions.",
             "Command on Cooldown":
-            "This command is on cooldown. Please wait a few moments and try again.",
+            "This command is on cooldown. Please wait for the specified time and try again.",
             "Not Owner":
             "Only the bot owner can use this command.",
             "No Private Message":
@@ -390,11 +417,11 @@ class HelpButton(discord.ui.Button):
             "NSFW Channel Required":
             "This command can only be used in NSFW channels.",
             "Forbidden":
-            "The bot does not have permission to perform this action.",
+            "The bot does not have permission to perform this action. Please check the bot's roles and permissions.",
             "Not Found":
-            "The requested resource was not found.",
+            "The requested resource was not found. This could be due to a deleted message, channel, or user.",
             "HTTP Exception":
-            "An HTTP exception occurred. Please try again later.",
+            "An HTTP exception occurred. This might be due to Discord API issues. Please try again later.",
             "Member Not Found":
             "The specified member could not be found. Please check the member name or ID and try again.",
             "Role Not Found":
@@ -402,7 +429,7 @@ class HelpButton(discord.ui.Button):
             "Channel Not Found":
             "The specified channel could not be found. Please check the channel name or ID and try again.",
             "Channel Not Readable":
-            "The bot doesn't have permission to read messages in the specified channel.",
+            "The bot doesn't have permission to read messages in the specified channel. Please check the channel permissions.",
             "Bad Union Argument":
             "There was an issue parsing one of the command arguments. Please check the command syntax and try again.",
             "Argument Parsing Error":
@@ -410,7 +437,7 @@ class HelpButton(discord.ui.Button):
             "Flag Error":
             "There was an issue with the command flags. Please check the command syntax and try again.",
             "Unexpected Error":
-            "An unexpected error occurred. Please report the issue to the developers."
+            "An unexpected error occurred. This is likely a bug and should be reported to the bot developers."
         }
 
         return help_messages.get(
