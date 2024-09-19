@@ -331,7 +331,7 @@ class Leveling(commands.Cog):
 
         if leveled_up:
             new_level = await self.get_level(user_id, guild_id)
-            await self.send_level_up_message(message.author, new_level,
+            await self.send_level_up_message(message, new_level,
                                              guild_settings)
 
     async def add_xp(self, user_id: int, guild_id: int, xp: int) -> bool:
@@ -367,23 +367,21 @@ class Leveling(commands.Cog):
         result = await db.fetch(query, user_id, guild_id)
         return result[0]['level'] if result else 0
 
-    async def send_level_up_message(self, user: discord.Member, new_level: int,
-                                    guild_settings: Dict[str, int | bool
-                                                         | Optional[int]]):
-        message = guild_settings['level_up_message'].format(
-            user_mention=user.mention, new_level=new_level)
+    async def send_level_up_message(
+            self, message: discord.Message, new_level: int,
+            guild_settings: Dict[str, int | bool | Optional[int]]):
+        level_up_message = guild_settings['level_up_message'].format(
+            user_mention=message.author.mention, new_level=new_level)
 
         if guild_settings['announcement_channel']:
             channel = self.bot.get_channel(
                 guild_settings['announcement_channel'])
             if channel:
-                await channel.send(message)
+                await channel.send(level_up_message)
                 return
 
-        try:
-            await user.send(message)
-        except discord.Forbidden:
-            pass
+        # If no announcement channel is set, send the message in the channel where the user leveled up
+        await message.channel.send(level_up_message)
 
     level_group = app_commands.Group(name="level",
                                      description="Leveling system commands")
@@ -601,7 +599,7 @@ class Leveling(commands.Cog):
 
         timeout = await view.wait()
         if timeout:
-            await interaction.edit_original_message(
+            await interaction.edit_original_response(
                 content="⏱️ Setup wizard timed out. No changes were made.",
                 embed=None,
                 view=None)
@@ -650,10 +648,10 @@ class Leveling(commands.Cog):
                 value=f"```{view.level_up_message}```",
                 inline=False)
 
-            await interaction.edit_original_message(embed=confirmation_embed,
-                                                    view=None)
+            await interaction.edit_original_response(embed=confirmation_embed,
+                                                     view=None)
         else:
-            await interaction.edit_original_message(
+            await interaction.edit_original_response(
                 content="❌ Setup cancelled. No changes were made.",
                 embed=None,
                 view=None)
@@ -662,12 +660,21 @@ class Leveling(commands.Cog):
     async def setup_wizard_error(self, interaction: discord.Interaction,
                                  error: app_commands.AppCommandError):
         if isinstance(error, app_commands.errors.MissingPermissions):
-            await interaction.response.send_message(
-                "You don't have permission to use this command. Administrator permission is required.",
-                ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "You don't have permission to use this command. Administrator permission is required.",
+                    ephemeral=True)
+            else:
+                await interaction.followup.send(
+                    "You don't have permission to use this command. Administrator permission is required.",
+                    ephemeral=True)
         else:
-            await interaction.response.send_message(
-                f"An error occurred: {str(error)}", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"An error occurred: {str(error)}", ephemeral=True)
+            else:
+                await interaction.followup.send(
+                    f"An error occurred: {str(error)}", ephemeral=True)
 
     @level_group.command(name="leaderboard")
     async def leaderboard(self,
