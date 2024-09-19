@@ -53,6 +53,11 @@ class Errors(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        """Cleanup resources when the cog is unloaded."""
+        await self.session.close()
 
     async def send_error_embed(self, ctx: commands.Context, title: str,
                                description: str,
