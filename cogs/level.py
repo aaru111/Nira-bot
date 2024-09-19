@@ -7,7 +7,6 @@ import io
 from typing import Optional, Dict
 from database import db
 import time
-import colorsys
 
 
 class XPRateSelect(discord.ui.Select):
@@ -658,6 +657,17 @@ class Leveling(commands.Cog):
                 content="❌ Setup cancelled. No changes were made.",
                 embed=None,
                 view=None)
+
+    @setup_wizard.error
+    async def setup_wizard_error(self, interaction: discord.Interaction,
+                                 error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.errors.MissingPermissions):
+            await interaction.response.send_message(
+                "You don't have permission to use this command. Administrator permission is required.",
+                ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"An error occurred: {str(error)}", ephemeral=True)
 
     @level_group.command(name="leaderboard")
     async def leaderboard(self,
