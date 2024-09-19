@@ -20,7 +20,7 @@ logger.add(
     format=
     "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
     backtrace=True,  # Enabling backtrace to catch more detailed error messages
-    diagnose=True    # Captures internal variables for better context
+    diagnose=True  # Captures internal variables for better context
 )
 
 # Enable/disable interactive debugging
@@ -137,6 +137,7 @@ class Errors(commands.Cog):
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context,
                                error: commands.CommandError) -> None:
+        logger.error(f"Error occurred in command {ctx.command}: {error}")
         """Handle errors that occur during command execution."""
         if hasattr(ctx.command, 'on_error'):
             return  # Don't interfere with custom error handlers
@@ -148,8 +149,8 @@ class Errors(commands.Cog):
                       discord.errors.HTTPException) and error.status == 429:
             retry_after: float = float(
                 error.response.headers.get("Retry-After", 5))
-            base_retry_time = retry_after
-
+            # We are not using the base_retry_time variable for now
+            # base_retry_time = retry_after
             for attempt in range(MAX_RETRIES):
                 await ctx.send(
                     f"Rate limit hit! Retrying after {retry_after:.2f} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})",
