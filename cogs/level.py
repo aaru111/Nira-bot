@@ -603,6 +603,52 @@ class Leveling(commands.Cog):
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
 
+    def create_setup_embed(self,
+                           settings: dict,
+                           role_rewards: dict,
+                           is_confirmation: bool = False) -> discord.Embed:
+        """Create an embed for the setup wizard or confirmation"""
+        title = "✅ Leveling System Setup Complete!" if is_confirmation else "🛠️ Leveling System Setup Wizard"
+        color = discord.Color.green(
+        ) if is_confirmation else discord.Color.blue()
+
+        embed = discord.Embed(title=title, color=color)
+        embed.add_field(
+            name="Status",
+            value="🟢 Enabled" if settings['enabled'] else "🔴 Disabled",
+            inline=False)
+        embed.add_field(name="XP Range",
+                        value=f"{settings['xp_min']}-{settings['xp_max']}",
+                        inline=True)
+        embed.add_field(name="XP Cooldown",
+                        value=f"{settings['xp_cooldown']} seconds",
+                        inline=True)
+        embed.add_field(name="Announcement Channel",
+                        value=f"<#{settings['announcement_channel']}>"
+                        if settings['announcement_channel'] else "Not set",
+                        inline=False)
+        embed.add_field(name="Level Up Message",
+                        value=f"```{settings['level_up_message']}```",
+                        inline=False)
+
+        # Add role rewards fields
+        sorted_rewards = sorted(role_rewards.items())
+        for i in range(0, len(sorted_rewards), 6):
+            chunk = sorted_rewards[i:i + 6]
+            value = "\n".join(
+                [f"Level {level}: <@&{role_id}>" for level, role_id in chunk])
+            embed.add_field(name=f"Role Rewards {i//6 + 1}",
+                            value=value or "No rewards set",
+                            inline=True)
+
+        if not is_confirmation:
+            embed.set_footer(
+                text=
+                "Use the buttons and dropdowns below to configure the leveling system."
+            )
+
+        return embed
+
     @level_group.command(name="setup")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_wizard(self, interaction: discord.Interaction):
@@ -621,44 +667,7 @@ class Leveling(commands.Cog):
         role_rewards = self.role_rewards.get(interaction.guild_id, {})
 
         view = SetupView(guild_settings, role_rewards)
-        embed = discord.Embed(title="🛠️ Leveling System Setup Wizard",
-                              color=discord.Color.blue())
-        embed.add_field(
-            name="Status",
-            value="🟢 Enabled" if guild_settings['enabled'] else "🔴 Disabled",
-            inline=False)
-        embed.add_field(
-            name="XP Range",
-            value=f"{guild_settings['xp_min']}-{guild_settings['xp_max']}",
-            inline=True)
-        embed.add_field(name="XP Cooldown",
-                        value=f"{guild_settings['xp_cooldown']} seconds",
-                        inline=True)
-        embed.add_field(
-            name="Announcement Channel",
-            value=f"<#{guild_settings['announcement_channel']}>"
-            if guild_settings.get('announcement_channel') else "Not set",
-            inline=False)
-        embed.add_field(
-            name="Level Up Message",
-            value=
-            f"```{guild_settings.get('level_up_message', self.default_level_up_message)}```",
-            inline=False)
-
-        # Add role rewards fields
-        sorted_rewards = sorted(role_rewards.items())
-        for i in range(0, len(sorted_rewards), 6):
-            chunk = sorted_rewards[i:i + 6]
-            value = "\n".join(
-                [f"Level {level}: <@&{role_id}>" for level, role_id in chunk])
-            embed.add_field(name=f"Role Rewards {i//6 + 1}",
-                            value=value or "No rewards set",
-                            inline=True)
-
-        embed.set_footer(
-            text=
-            "Use the buttons and dropdowns below to configure the leveling system."
-        )
+        embed = self.create_setup_embed(guild_settings, role_rewards)
 
         await interaction.response.send_message(embed=embed,
                                                 view=view,
@@ -673,7 +682,7 @@ class Leveling(commands.Cog):
             return
 
         if view.confirmed:
-            self.leveling_settings[interaction.guild_id] = {
+            new_settings = {
                 'enabled': view.is_enabled,
                 'xp_min': view.xp_min,
                 'xp_max': view.xp_max,
@@ -681,6 +690,7 @@ class Leveling(commands.Cog):
                 'announcement_channel': view.announcement_channel,
                 'level_up_message': view.level_up_message
             }
+            self.leveling_settings[interaction.guild_id] = new_settings
 
             query = """
             INSERT INTO guild_leveling_settings (guild_id, enabled, xp_min, xp_max, xp_cooldown, announcement_channel, level_up_message)
@@ -692,29 +702,9 @@ class Leveling(commands.Cog):
                              view.xp_min, view.xp_max, view.xp_cooldown,
                              view.announcement_channel, view.level_up_message)
 
-            confirmation_embed = discord.Embed(
-                title="✅ Leveling System Setup Complete!",
-                color=discord.Color.green())
-            confirmation_embed.add_field(
-                name="Status",
-                value="🟢 Enabled" if view.is_enabled else "🔴 Disabled",
-                inline=False)
-            confirmation_embed.add_field(name="XP Range",
-                                         value=f"{view.xp_min}-{view.xp_max}",
-                                         inline=True)
-            confirmation_embed.add_field(name="XP Cooldown",
-                                         value=f"{view.xp_cooldown} seconds",
-                                         inline=True)
-            confirmation_embed.add_field(
-                name="Announcement Channel",
-                value=f"<#{view.announcement_channel}>"
-                if view.announcement_channel else "Not set",
-                inline=False)
-            confirmation_embed.add_field(
-                name="Level Up Message",
-                value=f"```{view.level_up_message}```",
-                inline=False)
-
+            confirmation_embed = self.create_setup_embed(new_settings,
+                                                         view.role_rewards,
+                                                         is_confirmation=True)
             await interaction.edit_original_response(embed=confirmation_embed,
                                                      view=None)
         else:
