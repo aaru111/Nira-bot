@@ -5,7 +5,7 @@ import aiohttp
 import asyncio
 import io
 import time
-from discord import app_commands
+from discord import Interaction, app_commands
 from discord.ext.commands import Context
 import platform
 
@@ -368,19 +368,45 @@ class Moderation(commands.Cog):
                            ephemeral=True)
             return
 
-        try:
-            deleted = await ctx.channel.purge(limit=amount)
-            await ctx.send(f"Deleted {len(deleted)} messages.",
-                           ephemeral=True,
-                           delete_after=5)
-        except discord.Forbidden:
-            await ctx.send(
-                "I don't have the required permissions to delete messages in this channel.",
-                ephemeral=True)
-        except discord.HTTPException as e:
-            await ctx.send(
-                f"An error occurred while trying to delete messages: {str(e)}",
-                ephemeral=True)
+        is_slash = ctx.interaction is not None
+
+        if is_slash:
+            await ctx.defer(ephemeral=True)
+
+        max_messages = 100  # Discord API limit
+        remaining = amount
+        total_deleted = 0
+
+        while remaining > 0:
+            try:
+                batch_size = min(remaining, max_messages)
+                deleted = await ctx.channel.purge(limit=batch_size)
+                total_deleted += len(deleted)
+                remaining -= len(deleted)
+
+                if len(deleted) < batch_size:
+                    # No more messages to delete
+                    break
+
+                # Add a small delay to avoid rate limiting
+                await asyncio.sleep(1)
+
+            except discord.errors.HTTPException as e:
+                if e.status == 429:  # Rate limit error
+                    retry_after = e.retry_after
+                    await asyncio.sleep(retry_after)
+                else:
+                    error_message = f"An error occurred while trying to delete messages: {str(e)}"
+                    await ctx.send(error_message, ephemeral=True)
+                    return
+
+        completion_message = f"Deleted {total_deleted} messages."
+
+        if is_slash:
+            await ctx.interaction.followup.send(completion_message,
+                                                ephemeral=True)
+        else:
+            await ctx.send(completion_message, delete_after=5)
 
     @commands.hybrid_command()
     @commands.has_permissions(ban_members=True)
