@@ -360,16 +360,27 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(name="purge")
     @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True)
     async def purge(self, ctx: commands.Context, amount: int = 2):
         """Delete messages."""
         if not isinstance(ctx.channel, discord.TextChannel):
             await ctx.send("This command can only be used in a text channel.",
                            ephemeral=True)
             return
-        deleted = await ctx.channel.purge(limit=amount)
-        await ctx.send(f"Deleted {len(deleted)} messages.",
-                       ephemeral=True,
-                       delete_after=5)
+
+        try:
+            deleted = await ctx.channel.purge(limit=amount)
+            await ctx.send(f"Deleted {len(deleted)} messages.",
+                           ephemeral=True,
+                           delete_after=5)
+        except discord.Forbidden:
+            await ctx.send(
+                "I don't have the required permissions to delete messages in this channel.",
+                ephemeral=True)
+        except discord.HTTPException as e:
+            await ctx.send(
+                f"An error occurred while trying to delete messages: {str(e)}",
+                ephemeral=True)
 
     @commands.hybrid_command()
     @commands.has_permissions(ban_members=True)
