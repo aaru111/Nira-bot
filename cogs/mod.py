@@ -53,67 +53,84 @@ async def _create_new_channel(guild: discord.Guild,
     return new_channel
 
 
-async def _recreate_channel_data(new_channel: discord.TextChannel,
-                                 webhooks: List[discord.Webhook],
-                                 invites: List[discord.Invite],
-                                 pinned_messages: List[discord.Message]):
+async def _recreate_channel_data(
+    new_channel: discord.TextChannel, webhooks: List[discord.Webhook],
+    invites: List[discord.Invite], pinned_messages: List[discord.Message]
+) -> Tuple[Optional[discord.Invite], Optional[discord.Webhook]]:
     """Recreate webhooks, invites, and pinned messages in the new channel."""
-    for webhook in webhooks:
-        avatar = None
-        if webhook.avatar:
-            avatar = await webhook.avatar.read()
-        await new_channel.create_webhook(name=webhook.name, avatar=avatar)
+    new_invite = None
+    new_webhook = None
 
-    for invite in invites:
-        await new_channel.create_invite(
-            max_age=invite.max_age if invite.max_age != 0 else None,
-            max_uses=invite.max_uses if invite.max_uses != 0 else None,
-            temporary=invite.temporary,
-            unique=invite.unique)
-
-    pinned_messages.sort(key=lambda m: m.created_at)
-    for message in pinned_messages:
-        content = message.content
-        embeds = [embed for embed in message.embeds if embed.type == 'rich']
-        files = []
-        for attachment in message.attachments:
+    # Recreate webhooks
+    if webhooks:
+        for webhook in webhooks:
             try:
-                file_data = await attachment.read()
-                file = discord.File(io.BytesIO(file_data),
-                                    filename=attachment.filename)
-                files.append(file)
-            except discord.HTTPException:
-                continue
+                avatar = await webhook.avatar.read(
+                ) if webhook.avatar else None
+                new_webhook = await new_channel.create_webhook(
+                    name=webhook.name, avatar=avatar)
+                break  # We only need one webhook for demonstration
+            except Exception as e:
+                print(f"Error recreating webhook: {e}")
 
-        try:
-            if content or embeds or files:
-                new_message = await new_channel.send(content=content or None,
-                                                     embeds=embeds,
-                                                     files=files)
-                await new_message.pin()
-                await asyncio.sleep(0.5)
-                if files:
-                    await asyncio.sleep(1)
-            else:
-                print("Skipping empty message")
-        except discord.HTTPException as e:
-            if e.code == 429:  # Rate limit error
-                retry_after = e.retry_after
-                await asyncio.sleep(retry_after)
-                try:
-                    if content or embeds or files:
-                        new_message = await new_channel.send(content=content
-                                                             or None,
-                                                             embeds=embeds,
-                                                             files=files)
-                        await new_message.pin()
-                except discord.HTTPException as e2:
-                    print(f"Failed to send message after rate limit: {e2}")
-            else:
-                print(f"Error recreating message: {e}")
-        for file in files:
-            file.close()
-        files.clear()
+    # Recreate invites
+    if invites:
+        for invite in invites:
+            try:
+                new_invite = await new_channel.create_invite(
+                    max_age=invite.max_age if invite.max_age != 0 else None,
+                    max_uses=invite.max_uses if invite.max_uses != 0 else None,
+                    temporary=invite.temporary)
+                break  # We only need one invite for demonstration
+            except Exception as e:
+                print(f"Error recreating invite: {e}")
+
+    # Recreate pinned messages
+    if pinned_messages:
+        for message in sorted(pinned_messages, key=lambda m: m.created_at):
+            try:
+                content = message.content
+                embeds = [
+                    embed for embed in message.embeds if embed.type == 'rich'
+                ]
+                files = []
+                for attachment in message.attachments:
+                    try:
+                        file_data = await attachment.read()
+                        file = discord.File(io.BytesIO(file_data),
+                                            filename=attachment.filename)
+                        files.append(file)
+                    except Exception:
+                        print(
+                            f"Error reading attachment: {attachment.filename}")
+
+                if content or embeds or files:
+                    new_message = await new_channel.send(content=content
+                                                         or None,
+                                                         embeds=embeds,
+                                                         files=files)
+                    await new_message.pin()
+                    await asyncio.sleep(0.5)
+                    if files:
+                        await asyncio.sleep(1)
+                else:
+                    print("Skipping empty message")
+
+            except discord.HTTPException as e:
+                if e.code == 429:  # Rate limit error
+                    print(f"Rate limited. Waiting {e.retry_after} seconds.")
+                    await asyncio.sleep(e.retry_after)
+                else:
+                    print(f"Error recreating message: {e}")
+            except Exception as e:
+                print(f"Unexpected error recreating message: {e}")
+
+            finally:
+                for file in files:
+                    file.close()
+                files.clear()
+
+    return new_invite, new_webhook
 
 
 class RoleInfoView(discord.ui.View):
@@ -195,7 +212,6 @@ class AvatarView(discord.ui.View):
 
 
 class ConfirmationView(discord.ui.View):
-    """View for confirmation prompts."""
 
     def __init__(self, ctx: commands.Context, channel: discord.TextChannel):
         super().__init__(timeout=30)  # 30 seconds to respond
@@ -486,14 +502,6 @@ class Moderation(commands.Cog):
                    ctx: commands.Context,
                    channel: Optional[discord.TextChannel] = None):
         """Delete and recreate a channel, with confirmation."""
-        # Check cooldown
-        retry_after = self.nuke_cooldowns.update_rate_limit(ctx.message)
-        if retry_after:
-            await ctx.send(
-                f"You need to wait {retry_after:.1f} seconds before using the nuke command again.",
-                ephemeral=True)
-            return
-
         channel = channel or ctx.channel
         if not isinstance(channel, discord.TextChannel):
             await ctx.send("This command can only be used in a text channel.",
@@ -502,13 +510,10 @@ class Moderation(commands.Cog):
 
         confirmation_view = ConfirmationView(ctx, channel)
         confirmation_message = await ctx.send(
-            f"Are you sure you want to nuke {channel.mention if channel else 'this channel'}? This action cannot be undone.",
+            f"Are you sure you want to nuke {channel.mention}? This action cannot be undone.",
             view=confirmation_view)
-        timeout = await confirmation_view.wait()
 
-        for child in confirmation_view.children:
-            child.disabled = True
-        await confirmation_message.edit(view=confirmation_view)
+        await confirmation_view.wait()
 
         if confirmation_view.value is None:
             await ctx.send("Nuke command timed out. No action was taken.",
@@ -524,21 +529,43 @@ class Moderation(commands.Cog):
             await ctx.typing()
 
         properties = await _get_channel_properties(channel)
-        webhooks, invites, pinned_messages = await _fetch_channel_data(channel)
+
+        try:
+            webhooks = await channel.webhooks()
+        except Exception:
+            webhooks = []
+
+        try:
+            invites = await channel.invites()
+        except Exception:
+            invites = []
+
+        try:
+            pinned_messages = await channel.pins()
+        except Exception:
+            pinned_messages = []
+
         await channel.delete(reason=f"Channel nuked by {ctx.author}")
         new_channel = await _create_new_channel(ctx.guild, properties)
-        await _recreate_channel_data(new_channel, webhooks, invites,
-                                     pinned_messages)
+        new_invite, new_webhook = await _recreate_channel_data(
+            new_channel, webhooks, invites, pinned_messages)
 
-        message_content = (
-            f"Channel has been nuked by {ctx.author.mention}\n"
-            f"Channel {new_channel.mention} has been nuked and recreated.")
+        message_content = f"Channel has been nuked by {ctx.author.mention}\n"
+        message_content += f"New channel: {new_channel.mention}\n"
+
+        if new_invite:
+            message_content += f"New invite link: {new_invite.url}\n"
+
+        if new_webhook:
+            message_content += f"New webhook URL: {new_webhook.url}\n"
+
         try:
             await new_channel.send(message_content)
         except discord.Forbidden:
             await ctx.author.send(
                 f"Nuke operation completed, but the bot couldn't send a message to {new_channel.mention} due to missing permissions."
             )
+
         try:
             if ctx.interaction:
                 await ctx.interaction.followup.send(
