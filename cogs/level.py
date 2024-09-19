@@ -142,7 +142,8 @@ class ConfirmView(discord.ui.View):
 
 class SetupView(discord.ui.View):
 
-    def __init__(self, guild_settings: Dict[str, int | bool | Optional[int]]):
+    def __init__(self, guild_settings: Dict[str, int | bool | Optional[int]],
+                 role_rewards: Dict[int, int]):
         super().__init__()
         self.xp_min: int = guild_settings['xp_min']
         self.xp_max: int = guild_settings['xp_max']
@@ -155,6 +156,7 @@ class SetupView(discord.ui.View):
             "Congratulations {user_mention}! You've reached level {new_level}!"
         )
         self.confirmed: bool = False
+        self.role_rewards: Dict[int, int] = role_rewards
 
         self.add_item(ToggleButton(self.is_enabled))
         self.add_item(XPRateSelect(self.xp_min, self.xp_max))
@@ -221,6 +223,17 @@ class SetupView(discord.ui.View):
         embed.add_field(name="Level Up Message",
                         value=f"```{self.level_up_message}```",
                         inline=False)
+
+        # Add role rewards fields
+        sorted_rewards = sorted(self.role_rewards.items())
+        for i in range(0, len(sorted_rewards), 6):
+            chunk = sorted_rewards[i:i + 6]
+            value = "\n".join(
+                [f"Level {level}: <@&{role_id}>" for level, role_id in chunk])
+            embed.add_field(name=f"Role Rewards {i//6 + 1}",
+                            value=value or "No rewards set",
+                            inline=True)
+
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -604,7 +617,10 @@ class Leveling(commands.Cog):
                 'level_up_message': self.default_level_up_message
             })
 
-        view = SetupView(guild_settings)
+        # Fetch role rewards for the guild
+        role_rewards = self.role_rewards.get(interaction.guild_id, {})
+
+        view = SetupView(guild_settings, role_rewards)
         embed = discord.Embed(title="🛠️ Leveling System Setup Wizard",
                               color=discord.Color.blue())
         embed.add_field(
@@ -628,6 +644,17 @@ class Leveling(commands.Cog):
             value=
             f"```{guild_settings.get('level_up_message', self.default_level_up_message)}```",
             inline=False)
+
+        # Add role rewards fields
+        sorted_rewards = sorted(role_rewards.items())
+        for i in range(0, len(sorted_rewards), 6):
+            chunk = sorted_rewards[i:i + 6]
+            value = "\n".join(
+                [f"Level {level}: <@&{role_id}>" for level, role_id in chunk])
+            embed.add_field(name=f"Role Rewards {i//6 + 1}",
+                            value=value or "No rewards set",
+                            inline=True)
+
         embed.set_footer(
             text=
             "Use the buttons and dropdowns below to configure the leveling system."
@@ -864,6 +891,15 @@ class Leveling(commands.Cog):
             await interaction.followup.send(
                 f"Successfully set `@{role.name}` as the reward for reaching level {level}."
             )
+
+            # Update the setup wizard if it's open
+            for view in self.bot.persistent_views:
+                if isinstance(
+                        view, SetupView
+                ) and view.message.guild.id == interaction.guild_id:
+                    view.role_rewards = self.role_rewards[interaction.guild_id]
+                    await view.update_embed(interaction)
+                    break
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}",
