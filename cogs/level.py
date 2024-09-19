@@ -23,12 +23,20 @@ class XPRateSelect(discord.ui.Select):
                                  description='Faster progression',
                                  value='15,25')
         ]
-        super().__init__(placeholder=f'XP Rate: {current_min}-{current_max}',
-                         options=options)
+        current_option = next((opt for opt in options
+                               if opt.value == f"{current_min},{current_max}"),
+                              None)
+        placeholder = f'XP Rate: {current_min}-{current_max}'
+        if current_option:
+            placeholder = f'XP Rate: {current_option.label}'
+        super().__init__(placeholder=placeholder, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         self.view.xp_min, self.view.xp_max = map(int,
                                                  self.values[0].split(','))
+        selected_option = next(opt for opt in self.options
+                               if opt.value == self.values[0])
+        self.placeholder = f'XP Rate: {selected_option.label}'
         await self.view.update_embed(interaction)
 
 
@@ -46,11 +54,19 @@ class XPCooldownSelect(discord.ui.Select):
                                  description='Less frequent XP gains',
                                  value='120')
         ]
-        super().__init__(placeholder=f'XP Cooldown: {current_cooldown}s',
-                         options=options)
+        current_option = next(
+            (opt for opt in options if opt.value == str(current_cooldown)),
+            None)
+        placeholder = f'XP Cooldown: {current_cooldown}s'
+        if current_option:
+            placeholder = f'XP Cooldown: {current_option.label}'
+        super().__init__(placeholder=placeholder, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         self.view.xp_cooldown = int(self.values[0])
+        selected_option = next(opt for opt in self.options
+                               if opt.value == self.values[0])
+        self.placeholder = f'XP Cooldown: {selected_option.label}'
         await self.view.update_embed(interaction)
 
 
