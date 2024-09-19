@@ -157,11 +157,18 @@ class SetupView(discord.ui.View):
         )
         self.confirmed: bool = False
         self.role_rewards: Dict[int, int] = role_rewards
+        self.message = None
 
         self.add_item(ToggleButton(self.is_enabled))
         self.add_item(XPRateSelect(self.xp_min, self.xp_max))
         self.add_item(XPCooldownSelect(self.xp_cooldown))
         self.add_item(AnnouncementChannelSelect(self.announcement_channel))
+
+    async def on_timeout(self):
+        if self.message:
+            for item in self.children:
+                item.disabled = True
+            await self.message.edit(view=self)
 
     @discord.ui.button(label='Edit Level Up Message',
                        style=discord.ButtonStyle.blurple)
@@ -198,11 +205,6 @@ class SetupView(discord.ui.View):
                                                 view=None,
                                                 embed=None)
         self.stop()
-
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
-        await self.message.edit(view=self)
 
     async def update_embed(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🛠️ Leveling System Configuration",
