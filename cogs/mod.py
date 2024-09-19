@@ -143,6 +143,38 @@ class RoleInfoView(discord.ui.View):
                             inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @discord.ui.button(label="Show Permissions",
+                       style=discord.ButtonStyle.primary)
+    async def show_permissions(self, interaction: discord.Interaction,
+                               button: discord.ui.Button):
+        permissions = self.role.permissions
+        enabled_perms = [
+            perm[0].replace('_', ' ').title() for perm in permissions
+            if perm[1]
+        ]
+
+        if not enabled_perms:
+            await interaction.response.send_message(
+                "This role has no enabled permissions.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"Enabled Permissions for {self.role.name}",
+            color=self.role.color)
+
+        # Split permissions into chunks of 20
+        chunks = [
+            enabled_perms[i:i + 20] for i in range(0, len(enabled_perms), 20)
+        ]
+
+        # Add fields for each chunk, making them inline
+        for i, chunk in enumerate(chunks, 1):
+            embed.add_field(name=f"Permissions {i}",
+                            value=" ".join(chunk),
+                            inline=True)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 class CustomButton(discord.ui.Button):
     """Custom button for Discord UI."""
