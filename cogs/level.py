@@ -232,10 +232,12 @@ class Leveling(commands.Cog):
                                           int | bool | Optional[int]]] = {}
         self.cooldowns: Dict[int, Dict[int, float]] = {}
         self.default_level_up_message: str = "Congratulations {user_mention}! You've reached level {new_level}!"
+        self.role_rewards: Dict[int, Dict[int, int]] = {}
 
     async def cog_load(self):
         await self.create_tables()
         await self.load_settings()
+        await self.load_role_rewards()
 
     async def create_tables(self):
         queries = [
@@ -256,6 +258,13 @@ class Leveling(commands.Cog):
                 xp_cooldown INT DEFAULT 60,
                 announcement_channel BIGINT,
                 level_up_message TEXT
+            );
+            """, """
+            CREATE TABLE IF NOT EXISTS level_role_rewards (
+                guild_id BIGINT,
+                level INT,
+                role_id BIGINT,
+                PRIMARY KEY (guild_id, level)
             );
             """
         ]
@@ -321,6 +330,15 @@ class Leveling(commands.Cog):
                 row.get('level_up_message') or self.default_level_up_message
             }
 
+    async def load_role_rewards(self):
+        query = "SELECT * FROM level_role_rewards;"
+        results = await db.fetch(query)
+        for row in results:
+            guild_id = row['guild_id']
+            if guild_id not in self.role_rewards:
+                self.role_rewards[guild_id] = {}
+            self.role_rewards[guild_id][row['level']] = row['role_id']
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -364,6 +382,32 @@ class Leveling(commands.Cog):
         new_level = self.calculate_level(new_xp)
         if new_level > current_level:
             await self.update_level(user_id, guild_id, new_level)
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                member = guild.get_member(user_id)
+                if member:
+                    awarded_role = await self.check_and_award_role(
+                        member, new_level)
+                    if awarded_role:
+                        guild_settings = self.leveling_settings.get(guild_id)
+                        if guild_settings and guild_settings[
+                                'announcement_channel']:
+                            channel = self.bot.get_channel(
+                                guild_settings['announcement_channel'])
+                            if channel:
+                                # Store the original mentionable status
+                                original_mentionable = awarded_role.mentionable
+                                try:
+                                    # Make the role unmentionable
+                                    await awarded_role.edit(mentionable=False)
+                                    # Send the announcement without pinging the role
+                                    await channel.send(
+                                        f"Congratulations {member.mention}! You've reached level {new_level} and earned the `@{awarded_role.name}` role!"
+                                    )
+                                finally:
+                                    # Restore the original mentionable status
+                                    await awarded_role.edit(
+                                        mentionable=original_mentionable)
             return True
         return False
 
@@ -803,6 +847,79 @@ class Leveling(commands.Cog):
             else:
                 await interaction.followup.send(
                     f"An error occurred: {str(error)}", ephemeral=True)
+
+    @level_group.command(name="set_role_reward")
+    @app_commands.checks.has_permissions(manage_roles=True)
+    async def set_role_reward(self, interaction: discord.Interaction,
+                              level: int, role: discord.Role):
+        """Set a role reward for reaching a specific level"""
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
+
+            if level <= 0:
+                return await interaction.followup.send(
+                    "Please specify a positive level number.", ephemeral=True)
+
+            # Check if the bot can manage the role
+            if role >= interaction.guild.me.top_role:
+                return await interaction.followup.send(
+                    "I cannot manage this role as it's higher than or equal to my highest role.",
+                    ephemeral=True)
+
+            # Update database
+            query = """
+            INSERT INTO level_role_rewards (guild_id, level, role_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (guild_id, level)
+            DO UPDATE SET role_id = $3;
+            """
+            await db.execute(query, interaction.guild_id, level, role.id)
+
+            # Update local cache
+            if interaction.guild_id not in self.role_rewards:
+                self.role_rewards[interaction.guild_id] = {}
+            self.role_rewards[interaction.guild_id][level] = role.id
+
+            await interaction.followup.send(
+                f"Successfully set `@{role.name}` as the reward for reaching level {level}."
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
+
+    @set_role_reward.error
+    async def set_role_reward_error(self, interaction: discord.Interaction,
+                                    error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.errors.MissingPermissions):
+            await interaction.response.send_message(
+                "You don't have permission to use this command. 'Manage Roles' permission is required.",
+                ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"An error occurred: {str(error)}", ephemeral=True)
+
+    async def check_and_award_role(self, member: discord.Member,
+                                   new_level: int):
+        guild_id = member.guild.id
+        if guild_id in self.role_rewards:
+            for level, role_id in self.role_rewards[guild_id].items():
+                if new_level >= level:
+                    role = member.guild.get_role(role_id)
+                    if role and role not in member.roles:
+                        try:
+                            await member.add_roles(role)
+                            return role
+                        except discord.Forbidden:
+                            print(
+                                f"Failed to add role `@{role.name}` to {member.mention} due to insufficient permissions."
+                            )
+        return None
 
 
 async def setup(bot: commands.Bot) -> None:
