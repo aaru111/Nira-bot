@@ -105,7 +105,8 @@ class LevelUpMessageModal(discord.ui.Modal, title='Edit Level Up Message'):
     message = discord.ui.TextInput(
         label='New Level Up Message',
         style=discord.TextStyle.paragraph,
-        placeholder='Enter the new level up message...',
+        placeholder=
+        'Enter the new level up message... Use {user_mention}, {new_level}, and {role_rewards} as placeholders.',
         required=True,
         max_length=1000)
 
@@ -231,13 +232,32 @@ class Leveling(commands.Cog):
                                      Dict[str,
                                           int | bool | Optional[int]]] = {}
         self.cooldowns: Dict[int, Dict[int, float]] = {}
-        self.default_level_up_message: str = "Congratulations {user_mention}! You've reached level {new_level}!"
+        self.default_level_up_message: str = "Congratulations {user_mention}! You've reached level {new_level}! {role_rewards}"
         self.role_rewards: Dict[int, Dict[int, int]] = {}
 
     async def cog_load(self):
         await self.create_tables()
         await self.load_settings()
         await self.load_role_rewards()
+
+    async def send_level_up_message(
+            self, interaction: discord.Interaction, new_level: int,
+            guild_settings: Dict[str, int | bool | Optional[int]],
+            awarded_roles: list):
+        role_rewards_text = f"You've earned the following role(s): {', '.join([role.name for role in awarded_roles])}" if awarded_roles else ""
+        level_up_message = guild_settings['level_up_message'].format(
+            user_mention=interaction.user.mention,
+            new_level=new_level,
+            role_rewards=role_rewards_text)
+
+        if guild_settings['announcement_channel']:
+            channel = self.bot.get_channel(
+                guild_settings['announcement_channel'])
+            if channel:
+                await channel.send(level_up_message)
+        else:
+            # Only send in the interaction channel if no announcement channel is set
+            await interaction.followup.send(level_up_message)
 
     async def create_tables(self):
         queries = [
@@ -360,15 +380,17 @@ class Leveling(commands.Cog):
 
         xp_gained = random.randint(guild_settings['xp_min'],
                                    guild_settings['xp_max'])
-        leveled_up = await self.add_xp(user_id, guild_id, xp_gained)
+        leveled_up, new_level = await self.add_xp(user_id, guild_id, xp_gained)
         self.cooldowns[guild_id][user_id] = current_time
 
         if leveled_up:
-            new_level = await self.get_level(user_id, guild_id)
+            awarded_roles = await self.check_and_award_role(
+                message.author, new_level)
             await self.send_level_up_message(message, new_level,
-                                             guild_settings)
+                                             guild_settings, awarded_roles)
 
-    async def add_xp(self, user_id: int, guild_id: int, xp: int) -> bool:
+    async def add_xp(self, user_id: int, guild_id: int,
+                     xp: int) -> tuple[bool, int]:
         query = """
         INSERT INTO user_levels (user_id, guild_id, xp, level)
         VALUES ($1, $2, $3, 0)
@@ -382,34 +404,8 @@ class Leveling(commands.Cog):
         new_level = self.calculate_level(new_xp)
         if new_level > current_level:
             await self.update_level(user_id, guild_id, new_level)
-            guild = self.bot.get_guild(guild_id)
-            if guild:
-                member = guild.get_member(user_id)
-                if member:
-                    awarded_role = await self.check_and_award_role(
-                        member, new_level)
-                    if awarded_role:
-                        guild_settings = self.leveling_settings.get(guild_id)
-                        if guild_settings and guild_settings[
-                                'announcement_channel']:
-                            channel = self.bot.get_channel(
-                                guild_settings['announcement_channel'])
-                            if channel:
-                                # Store the original mentionable status
-                                original_mentionable = awarded_role.mentionable
-                                try:
-                                    # Make the role unmentionable
-                                    await awarded_role.edit(mentionable=False)
-                                    # Send the announcement without pinging the role
-                                    await channel.send(
-                                        f"Congratulations {member.mention}! You've reached level {new_level} and earned the `@{awarded_role.name}` role!"
-                                    )
-                                finally:
-                                    # Restore the original mentionable status
-                                    await awarded_role.edit(
-                                        mentionable=original_mentionable)
-            return True
-        return False
+            return True, new_level
+        return False, current_level
 
     def calculate_level(self, xp: int) -> int:
         return int((xp // 100)**0.5)
@@ -426,22 +422,6 @@ class Leveling(commands.Cog):
         query = "SELECT level FROM user_levels WHERE user_id = $1 AND guild_id = $2;"
         result = await db.fetch(query, user_id, guild_id)
         return result[0]['level'] if result else 0
-
-    async def send_level_up_message(
-            self, message: discord.Message, new_level: int,
-            guild_settings: Dict[str, int | bool | Optional[int]]):
-        level_up_message = guild_settings['level_up_message'].format(
-            user_mention=message.author.mention, new_level=new_level)
-
-        if guild_settings['announcement_channel']:
-            channel = self.bot.get_channel(
-                guild_settings['announcement_channel'])
-            if channel:
-                await channel.send(level_up_message)
-                return
-
-        # If no announcement channel is set, send the message in the channel where the user leveled up
-        await message.channel.send(level_up_message)
 
     level_group = app_commands.Group(name="level",
                                      description="Leveling system commands")
@@ -782,7 +762,6 @@ class Leveling(commands.Cog):
     @app_commands.checks.has_permissions(manage_roles=True)
     async def give_levels(self, interaction: discord.Interaction,
                           member: discord.Member, levels: int):
-        """Give a specified number of levels to a member"""
         await interaction.response.defer()
         try:
             guild_settings = self.leveling_settings.get(interaction.guild_id)
@@ -820,41 +799,30 @@ class Leveling(commands.Cog):
             """
             await db.execute(query, user_id, guild_id, new_xp, new_level)
 
-            # Check and award roles
-            awarded_roles = await self.check_and_award_role(member, new_level)
+            # Check and award roles for all levels up to and including the new level
+            awarded_roles = []
+            for level in range(current_level + 1, new_level + 1):
+                awarded_roles.extend(await
+                                     self.check_and_award_role(member, level))
+
+            # Remove duplicates while preserving order
+            unique_awarded_roles = list(dict.fromkeys(awarded_roles))
 
             # Announce level up and role rewards
-            await self.announce_level_up(member, new_level, awarded_roles)
+            await self.send_level_up_message(interaction, new_level,
+                                             guild_settings,
+                                             unique_awarded_roles)
 
-            role_text = ", ".join([role.name for role in awarded_roles
-                                   ]) if awarded_roles else "no new roles"
+            role_text = ", ".join([
+                role.name for role in unique_awarded_roles
+            ]) if unique_awarded_roles else "no new roles"
             await interaction.followup.send(
-                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}. They were awarded: {role_text}."
+                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}. They were awarded: `{role_text}`."
             )
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
-
-    @give_levels.error
-    async def give_levels_error(self, interaction: discord.Interaction,
-                                error: app_commands.AppCommandError):
-        if isinstance(error, app_commands.errors.MissingPermissions):
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "You don't have permission to use this command. 'Manage Roles' permission is required.",
-                    ephemeral=True)
-            else:
-                await interaction.followup.send(
-                    "You don't have permission to use this command. 'Manage Roles' permission is required.",
-                    ephemeral=True)
-        else:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    f"An error occurred: {str(error)}", ephemeral=True)
-            else:
-                await interaction.followup.send(
-                    f"An error occurred: {str(error)}", ephemeral=True)
 
     @level_group.command(name="set_role_reward")
     @app_commands.checks.has_permissions(manage_roles=True)
@@ -929,33 +897,6 @@ class Leveling(commands.Cog):
                                 f"Failed to add role {role.name} to {member.name} due to insufficient permissions."
                             )
         return awarded_roles
-
-    async def announce_level_up(self, member: discord.Member, new_level: int,
-                                awarded_roles: list):
-        guild_id = member.guild.id
-        guild_settings = self.leveling_settings.get(guild_id)
-        if guild_settings and guild_settings['announcement_channel']:
-            channel = self.bot.get_channel(
-                guild_settings['announcement_channel'])
-            if channel:
-                role_mentions = []
-                for role in awarded_roles:
-                    original_mentionable = role.mentionable
-                    try:
-                        await role.edit(mentionable=False)
-                        role_mentions.append(role.name)
-                    finally:
-                        await role.edit(mentionable=original_mentionable)
-
-                role_text = ", ".join(role_mentions)
-                if role_text:
-                    await channel.send(
-                        f"Congratulations {member.mention}! You've reached level {new_level} and earned the following role(s): {role_text}!"
-                    )
-                else:
-                    await channel.send(
-                        f"Congratulations {member.mention}! You've reached level {new_level}!"
-                    )
 
 
 async def setup(bot: commands.Bot) -> None:
