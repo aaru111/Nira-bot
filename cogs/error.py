@@ -156,8 +156,15 @@ class Errors(commands.Cog):
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context,
                                error: commands.CommandError) -> None:
-        logger.error(f"Error occurred in command {ctx.command}: {error}")
-        """Handle errors that occur during command execution."""
+        # List of error types that should not be logged
+        non_logging_errors = (commands.MissingRequiredArgument,
+                              commands.CommandNotFound,
+                              commands.UserInputError, commands.CheckFailure)
+
+        if not isinstance(error, non_logging_errors):
+            logger.error(f"Error occurred in command {ctx.command}: {error}")
+
+        # Rest of the error handling logic...
         if hasattr(ctx.command, 'on_error'):
             return  # Don't interfere with custom error handlers
 
