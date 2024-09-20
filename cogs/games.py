@@ -18,7 +18,7 @@ from typing import Optional, Dict
 from modules.tetrismod import TetrisGame
 from modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from modules.triviamod import TriviaView
-from modules.memorymod import MemoryGameView
+from modules.memorymod import MemoryGameView, RematchView
 
 
 class Games(commands.Cog):
@@ -243,11 +243,10 @@ class Games(commands.Cog):
             ctx.channel if isinstance(ctx, Context) else ctx.channel)
 
     # Memory Game Command and Methods
-    @commands.command(name="memorygame")
-    async def memorygame(self,
-                         ctx: commands.Context,
-                         time_limit: int = 5) -> None:
-        """Starts a 5x5 memory game with custom server emojis. Optionally set a time limit (1-6 minutes)."""
+    @commands.hybrid_command(name="memory")
+    @app_commands.describe(time_limit="Time limit for the game (1-6 minutes)")
+    async def memory(self, ctx: commands.Context, time_limit: int = 5) -> None:
+        """Start a 5x5 memory game with custom server emojis."""
         if ctx.author.id in self.memory_games:
             await ctx.send(
                 "You already have an ongoing game. Please finish it before starting a new one."
@@ -264,6 +263,13 @@ class Games(commands.Cog):
             await game.start_game()
         except ValueError as e:
             await ctx.send(str(e))
+
+    @memory.error
+    async def memory_error(self, ctx: commands.Context,
+                           error: Exception) -> None:
+        if isinstance(error, commands.BadArgument):
+            await ctx.send(
+                "Invalid time limit. Please provide a number between 1 and 6.")
 
     # Shared event listener for reactions (handling Tetris and Memory game)
     @commands.Cog.listener()
@@ -331,8 +337,10 @@ class Games(commands.Cog):
                         f"{user.mention}, only the player who started the game can use hints.",
                         delete_after=5)
                 else:
-                    await reaction.remove(user)
-                    await game.show_hint()
+                    # Check if the reaction is from the bot running the game
+                    if reaction.me and reaction.count == 2:
+                        await reaction.remove(user)
+                        await game.show_hint()
 
     async def show_help(self, channel: Messageable) -> None:
         help_embed: Embed = discord.Embed(title="Tetris Help", color=0x0000ff)
