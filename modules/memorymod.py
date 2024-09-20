@@ -206,7 +206,8 @@ class MemoryGameView(discord.ui.View):
         await self.message.edit(content="Game ended due to inactivity.",
                                 view=None)
         self.game_started = False
-        self.cog.end_game(self.ctx.author.id)
+        await self.remove_hint_reaction()
+        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
 
     async def end_game_timeout(self):
         if self.inactivity_task:
@@ -215,7 +216,8 @@ class MemoryGameView(discord.ui.View):
             child.disabled = True
         await self.message.edit(content="Time's up! Game over.", view=None)
         self.game_started = False
-        self.cog.end_game(self.ctx.author.id)
+        await self.remove_hint_reaction()
+        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
 
     async def end_game(self, interaction: discord.Interaction):
         if self.inactivity_task:
@@ -248,7 +250,14 @@ class MemoryGameView(discord.ui.View):
             await self.ctx.send(embed=embed, view=rematch_view)
 
         self.game_started = False
-        self.cog.end_game(self.ctx.author.id)
+        await self.remove_hint_reaction()
+        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
+
+    async def remove_hint_reaction(self):
+        try:
+            await self.message.clear_reaction("💡")
+        except discord.errors.HTTPException:
+            pass  # If the reaction is already removed or we don't have permission, just continue
 
     async def show_hint(self):
         if self.hints_remaining > 0 and self.hint_cooldown == 0:
@@ -281,15 +290,22 @@ class MemoryGameView(discord.ui.View):
                 except discord.errors.NotFound:
                     pass
             else:
-                await self.ctx.send(
+                hint_message = await self.ctx.send(
                     "No more hints available. All pairs are either revealed or found.",
                     ephemeral=True)
+                await asyncio.sleep(4)
+                await hint_message.delete()
         elif self.hint_cooldown > 0:
-            await self.ctx.send(
+            cooldown_message = await self.ctx.send(
                 f"Hint is on cooldown. Please wait {self.hint_cooldown} seconds.",
                 ephemeral=True)
+            await asyncio.sleep(4)
+            await cooldown_message.delete()
         else:
-            await self.ctx.send("No more hints remaining.", ephemeral=True)
+            no_hints_message = await self.ctx.send("No more hints remaining.",
+                                                   ephemeral=True)
+            await asyncio.sleep(4)
+            await no_hints_message.delete()
 
 
 class RematchView(discord.ui.View):
@@ -312,7 +328,7 @@ class RematchView(discord.ui.View):
         await interaction.response.defer()
         new_game = MemoryGameView(self.ctx, 5,
                                   self.cog)  # Default to 5 minutes for rematch
-        self.cog.start_game(self.ctx.author.id, new_game)
+        self.cog.start_game(self.ctx.author.id, self.ctx.guild.id, new_game)
         await new_game.start_game(self.message)
 
     async def on_timeout(self):
