@@ -9,7 +9,7 @@ import time
 from typing import Optional, Dict, Union, List
 import os
 from discord import SelectOption
-from discord.ui import Select, View
+import base64
 
 
 class XPRateSelect(discord.ui.Select):
@@ -259,6 +259,11 @@ class Leveling(commands.Cog):
         await self.load_settings()
         await self.load_role_rewards()
 
+    async def is_premium(self, user_id: int) -> bool:
+        query = "SELECT is_premium FROM users WHERE user_id = $1;"
+        result = await db.fetch(query, user_id)
+        return bool(result) and result[0]['is_premium']
+
     async def send_level_up_message(
             self, context: Union[discord.Interaction, discord.Message],
             new_level: int, guild_settings: Dict[str,
@@ -498,14 +503,18 @@ class Leveling(commands.Cog):
 
         query = "SELECT background FROM user_backgrounds WHERE user_id = $1 AND guild_id = $2;"
         result = await db.fetch(query, member.id, member.guild.id)
-        background_file = result[0]['background'] if result else None
+        background_data = result[0]['background'] if result else None
 
-        if background_file and os.path.exists(
-                os.path.join("backgrounds", background_file)):
-            card = Image.open(os.path.join("backgrounds",
-                                           background_file)).convert('RGBA')
-            card = card.resize((card_width, card_height),
-                               Image.Resampling.LANCZOS)
+        if background_data:
+            try:
+                image_data = base64.b64decode(background_data)
+                card = Image.open(io.BytesIO(image_data)).convert('RGBA')
+                card = card.resize((card_width, card_height),
+                                   Image.Resampling.LANCZOS)
+            except:
+                # If there's an error with the custom background, fall back to default
+                card = Image.new('RGBA', (card_width, card_height),
+                                 (0, 0, 0, 0))
         else:
             card = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
 
@@ -534,7 +543,7 @@ class Leveling(commands.Cog):
 
             card = Image.alpha_composite(card, gradient)
 
-        # Rest of the function remains the same
+        # Avatar
         avatar_size = 100
         avatar_url = member.display_avatar.replace(format='png', size=128)
         avatar_data = io.BytesIO(await avatar_url.read())
@@ -548,6 +557,7 @@ class Leveling(commands.Cog):
 
         card.paste(avatar_image, (20, 25), mask)
 
+        # Text
         draw = ImageDraw.Draw(card)
 
         try:
@@ -572,6 +582,7 @@ class Leveling(commands.Cog):
                   font=text_font,
                   fill=(255, 255, 255, 255))
 
+        # XP Bar
         xp_to_next_level = (level + 1)**2 * 100
         progress = xp / xp_to_next_level
         bar_width, bar_height = 200, 20
@@ -1080,41 +1091,88 @@ class Leveling(commands.Cog):
                             )
         return removed_roles
 
-    @level_group.command(name="set_card_bg")
-    async def set_card_bg(self, interaction: discord.Interaction):
+    @level_group.command(name="card")
+    async def card(self,
+                   interaction: discord.Interaction,
+                   image: discord.Attachment = None):
         """Set the background for your rank card"""
-        await interaction.response.defer()
+        try:
+            if image:
+                is_premium = await self.is_premium(interaction.user.id)
+                if not is_premium:
+                    await interaction.response.send_message(
+                        "Custom image backgrounds are only available for premium users. You can still choose from pre-configured backgrounds, by running the `/level card` command again without using a custom picture.",
+                        ephemeral=True)
+                    return
 
-        backgrounds_dir = "backgrounds"
-        background_files = [
-            f for f in os.listdir(backgrounds_dir)
-            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
-        ]
+                if not image.content_type.startswith('image/'):
+                    await interaction.response.send_message(
+                        "Please upload a valid image file.", ephemeral=True)
+                    return
 
-        if not background_files:
-            return await interaction.followup.send(
-                "No background options are available at the moment.")
+                image_data = await image.read()
+                image_base64 = base64.b64encode(image_data).decode('utf-8')
 
-        options = [
-            SelectOption(label=bg.split('.')[0], value=bg)
-            for bg in background_files
-        ]
+                query = """
+                INSERT INTO user_backgrounds (user_id, guild_id, background)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id, guild_id)
+                DO UPDATE SET background = $3;
+                """
+                await db.execute(query, interaction.user.id,
+                                 interaction.guild_id, image_base64)
 
-        view = BackgroundView(options)
-        await interaction.followup.send(
-            "Choose a background for your rank card:", view=view)
+                await interaction.response.send_message(
+                    "Your rank card background has been updated with your custom image."
+                )
+            else:
+                backgrounds_dir = "backgrounds"
+                background_files = [
+                    f for f in os.listdir(backgrounds_dir)
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
+                ]
+
+                if not background_files:
+                    await interaction.response.send_message(
+                        "No background options are available at the moment.")
+                    return
+
+                options = [
+                    discord.SelectOption(label=bg.split('.')[0], value=bg)
+                    for bg in background_files
+                ]
+
+                view = BackgroundView(options, interaction.user.id,
+                                      interaction.guild_id)
+                await interaction.response.send_message(
+                    "Choose a background for your rank card:", view=view)
+        except Exception as e:
+            await interaction.response.send_message(
+                f"An error occurred: {str(e)}", ephemeral=True)
+
+    @card.error
+    async def card_error(self, interaction: discord.Interaction,
+                         error: app_commands.AppCommandError):
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                f"An error occurred: {str(error)}", ephemeral=True)
 
 
 class BackgroundSelect(discord.ui.Select):
 
-    def __init__(self, options: List[SelectOption]):
+    def __init__(self, options: List[discord.SelectOption], user_id: int,
+                 guild_id: int):
         super().__init__(placeholder="Choose a background", options=options)
+        self.user_id = user_id
+        self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        user_id = interaction.user.id
-        guild_id = interaction.guild_id
         background = self.values[0]
+
+        with open(os.path.join("backgrounds", background), "rb") as image_file:
+            image_data = image_file.read()
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
 
         query = """
         INSERT INTO user_backgrounds (user_id, guild_id, background)
@@ -1122,7 +1180,7 @@ class BackgroundSelect(discord.ui.Select):
         ON CONFLICT (user_id, guild_id)
         DO UPDATE SET background = $3;
         """
-        await db.execute(query, user_id, guild_id, background)
+        await db.execute(query, self.user_id, self.guild_id, image_base64)
 
         await interaction.followup.send(
             f"Your rank card background has been updated to {background}.")
@@ -1130,9 +1188,10 @@ class BackgroundSelect(discord.ui.Select):
 
 class BackgroundView(discord.ui.View):
 
-    def __init__(self, options: List[SelectOption]):
+    def __init__(self, options: List[discord.SelectOption], user_id: int,
+                 guild_id: int):
         super().__init__()
-        self.add_item(BackgroundSelect(options))
+        self.add_item(BackgroundSelect(options, user_id, guild_id))
 
 
 async def setup(bot: commands.Bot) -> None:
