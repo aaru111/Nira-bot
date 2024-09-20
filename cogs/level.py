@@ -822,11 +822,6 @@ class Leveling(commands.Cog):
                     "Leveling system is not enabled in this server.",
                     ephemeral=True)
 
-            if levels <= 0:
-                return await interaction.followup.send(
-                    "Please specify a positive number of levels to give.",
-                    ephemeral=True)
-
             user_id, guild_id = member.id, interaction.guild_id
 
             # Get current XP and level
@@ -839,7 +834,8 @@ class Leveling(commands.Cog):
                 current_xp, current_level = result[0]['xp'], result[0]['level']
 
             # Calculate new level and XP
-            new_level = current_level + levels
+            new_level = max(0, current_level +
+                            levels)  # Ensure level doesn't go below 0
             new_xp = new_level**2 * 100  # Ensure XP is at least the minimum for the new level
 
             # Update database
@@ -851,25 +847,36 @@ class Leveling(commands.Cog):
             """
             await db.execute(query, user_id, guild_id, new_xp, new_level)
 
-            # Check and award roles for all levels up to and including the new level
             awarded_roles = []
-            for level in range(current_level + 1, new_level + 1):
-                awarded_roles.extend(await
-                                     self.check_and_award_role(member, level))
+            removed_roles = []
+
+            if levels > 0:
+                # Check and award roles for all levels up to and including the new level
+                for level in range(current_level + 1, new_level + 1):
+                    awarded_roles.extend(await self.check_and_award_role(
+                        member, level))
+            elif levels < 0:
+                # Remove roles that the user no longer qualifies for
+                for level in range(current_level, new_level, -1):
+                    removed_roles.extend(await self.check_and_remove_role(
+                        member, level))
 
             # Remove duplicates while preserving order
             unique_awarded_roles = list(dict.fromkeys(awarded_roles))
+            unique_removed_roles = list(dict.fromkeys(removed_roles))
 
-            # Announce level up and role rewards
-            await self.send_level_up_message(interaction, new_level,
-                                             guild_settings,
-                                             unique_awarded_roles)
+            if levels > 0:
+                # Announce level up and role rewards
+                await self.send_level_up_message(interaction, new_level,
+                                                 guild_settings,
+                                                 unique_awarded_roles)
 
-            role_text = ", ".join([
-                role.name for role in unique_awarded_roles
-            ]) if unique_awarded_roles else "no new roles"
+            awarded_text = f"They were awarded: `{', '.join([role.name for role in unique_awarded_roles])}`." if unique_awarded_roles else ""
+            removed_text = f"They lost the following roles: `{', '.join([role.name for role in unique_removed_roles])}`." if unique_removed_roles else ""
+
+            level_change_text = "increased" if levels > 0 else "decreased"
             await interaction.followup.send(
-                f"Successfully gave {levels} levels to {member.mention}. Their new level is {new_level}. They were awarded: `{role_text}`."
+                f"Successfully {level_change_text} {member.mention}'s level by {abs(levels)}. Their new level is {new_level}. {awarded_text} {removed_text}"
             )
 
         except Exception as e:
@@ -958,6 +965,88 @@ class Leveling(commands.Cog):
                                 f"Failed to add role {role.name} to {member.name} due to insufficient permissions."
                             )
         return awarded_roles
+
+    @level_group.command(name="reset")
+    @app_commands.checks.has_permissions(manage_roles=True)
+    async def reset_user(self, interaction: discord.Interaction,
+                         member: discord.Member):
+        """Reset the level and XP of a specific user"""
+        await interaction.response.defer()
+        try:
+            guild_settings = self.leveling_settings.get(interaction.guild_id)
+            if not guild_settings or not guild_settings['enabled']:
+                return await interaction.followup.send(
+                    "Leveling system is not enabled in this server.",
+                    ephemeral=True)
+
+            user_id, guild_id = member.id, interaction.guild_id
+
+            # Get current level
+            query = "SELECT level FROM user_levels WHERE user_id = $1 AND guild_id = $2;"
+            result = await db.fetch(query, user_id, guild_id)
+
+            if not result:
+                return await interaction.followup.send(
+                    f"{member.mention} has no levels to reset.",
+                    ephemeral=True)
+
+            current_level = result[0]['level']
+
+            # Reset user's XP and level
+            query = """
+            UPDATE user_levels
+            SET xp = 0, level = 0
+            WHERE user_id = $1 AND guild_id = $2;
+            """
+            await db.execute(query, user_id, guild_id)
+
+            # Remove all level-based roles
+            removed_roles = []
+            for level in range(1, current_level + 1):
+                removed_roles.extend(await
+                                     self.check_and_remove_role(member, level))
+
+            # Remove duplicates while preserving order
+            unique_removed_roles = list(dict.fromkeys(removed_roles))
+
+            removed_text = f"They lost the following roles: `{', '.join([role.name for role in unique_removed_roles])}`." if unique_removed_roles else ""
+
+            await interaction.followup.send(
+                f"Successfully reset {member.mention}'s level and XP to 0. {removed_text}"
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
+
+    @reset_user.error
+    async def reset_user_error(self, interaction: discord.Interaction,
+                               error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.errors.MissingPermissions):
+            await interaction.response.send_message(
+                "You don't have permission to use this command. 'Manage Roles' permission is required.",
+                ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"An error occurred: {str(error)}", ephemeral=True)
+
+    async def check_and_remove_role(self, member: discord.Member, level: int):
+        guild_id = member.guild.id
+        removed_roles = []
+        if guild_id in self.role_rewards:
+            for reward_level, role_id in sorted(
+                    self.role_rewards[guild_id].items(), reverse=True):
+                if level <= reward_level:
+                    role = member.guild.get_role(role_id)
+                    if role and role in member.roles:
+                        try:
+                            await member.remove_roles(role)
+                            removed_roles.append(role)
+                        except discord.Forbidden:
+                            print(
+                                f"Failed to remove role {role.name} from {member.name} due to insufficient permissions."
+                            )
+        return removed_roles
 
 
 async def setup(bot: commands.Bot) -> None:
