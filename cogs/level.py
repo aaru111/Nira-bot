@@ -251,6 +251,7 @@ class Leveling(commands.Cog):
         self.role_rewards: Dict[int, Dict[int, int]] = {}
 
     async def cog_load(self):
+        await db.initialize()
         await self.create_tables()
         await self.load_settings()
         await self.load_role_rewards()
@@ -380,32 +381,39 @@ class Leveling(commands.Cog):
             print("Database tables and columns checked/created successfully.")
 
     async def load_settings(self):
-        query = "SELECT * FROM guild_leveling_settings;"
-        results = await db.fetch(query)
-        for row in results:
-            self.leveling_settings[row['guild_id']] = {
-                'enabled':
-                row['enabled'],
-                'xp_min':
-                row['xp_min'],
-                'xp_max':
-                row['xp_max'],
-                'xp_cooldown':
-                row['xp_cooldown'],
-                'announcement_channel':
-                row.get('announcement_channel'),
-                'level_up_message':
-                row.get('level_up_message') or self.default_level_up_message
-            }
+        try:
+            query = "SELECT * FROM guild_leveling_settings;"
+            results = await db.fetch(query)
+            for row in results:
+                self.leveling_settings[row['guild_id']] = {
+                    'enabled':
+                    row['enabled'],
+                    'xp_min':
+                    row['xp_min'],
+                    'xp_max':
+                    row['xp_max'],
+                    'xp_cooldown':
+                    row['xp_cooldown'],
+                    'announcement_channel':
+                    row.get('announcement_channel'),
+                    'level_up_message':
+                    row.get('level_up_message')
+                    or self.default_level_up_message
+                }
+        except Exception as e:
+            print(f"Error loading settings: {e}")
 
     async def load_role_rewards(self):
-        query = "SELECT * FROM level_role_rewards;"
-        results = await db.fetch(query)
-        for row in results:
-            guild_id = row['guild_id']
-            if guild_id not in self.role_rewards:
-                self.role_rewards[guild_id] = {}
-            self.role_rewards[guild_id][row['level']] = row['role_id']
+        try:
+            query = "SELECT * FROM level_role_rewards;"
+            results = await db.fetch(query)
+            for row in results:
+                guild_id = row['guild_id']
+                if guild_id not in self.role_rewards:
+                    self.role_rewards[guild_id] = {}
+                self.role_rewards[guild_id][row['level']] = row['role_id']
+        except Exception as e:
+            print(f"Error loading role rewards: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
