@@ -6,7 +6,10 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import io
 from database import db
 import time
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List
+import os
+from discord import SelectOption
+from discord.ui import Select, View
 
 
 class XPRateSelect(discord.ui.Select):
@@ -335,6 +338,13 @@ class Leveling(commands.Cog):
                 role_id BIGINT,
                 PRIMARY KEY (guild_id, level)
             );
+            """, """
+            CREATE TABLE IF NOT EXISTS user_backgrounds (
+                user_id BIGINT,
+                guild_id BIGINT,
+                background TEXT,
+                PRIMARY KEY (user_id, guild_id)
+            );
             """
         ]
 
@@ -485,8 +495,46 @@ class Leveling(commands.Cog):
     async def create_rank_card(self, member: discord.Member, xp: int,
                                level: int, rank: int) -> io.BytesIO:
         card_width, card_height = 400, 150
-        card = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
 
+        query = "SELECT background FROM user_backgrounds WHERE user_id = $1 AND guild_id = $2;"
+        result = await db.fetch(query, member.id, member.guild.id)
+        background_file = result[0]['background'] if result else None
+
+        if background_file and os.path.exists(
+                os.path.join("backgrounds", background_file)):
+            card = Image.open(os.path.join("backgrounds",
+                                           background_file)).convert('RGBA')
+            card = card.resize((card_width, card_height),
+                               Image.Resampling.LANCZOS)
+        else:
+            card = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
+
+            gradient = Image.new('RGBA', (card_width, card_height),
+                                 (0, 0, 0, 0))
+            gradient_draw = ImageDraw.Draw(gradient)
+
+            avatar_size = 100
+            avatar_url = member.display_avatar.replace(format='png', size=128)
+            avatar_data = io.BytesIO(await avatar_url.read())
+            avatar_image = Image.open(avatar_data).convert('RGBA')
+            avatar_image = avatar_image.resize((avatar_size, avatar_size),
+                                               Image.Resampling.LANCZOS)
+
+            try:
+                avatar_colors = avatar_image.getcolors(avatar_image.size[0] *
+                                                       avatar_image.size[1])
+                dominant_color = max(avatar_colors, key=lambda x: x[0])[1][:3]
+            except:
+                dominant_color = (100, 100, 100)
+
+            for y in range(card_height):
+                alpha = int(255 * (1 - y / card_height))
+                gradient_draw.line([(0, y), (card_width, y)],
+                                   fill=dominant_color + (alpha, ))
+
+            card = Image.alpha_composite(card, gradient)
+
+        # Rest of the function remains the same
         avatar_size = 100
         avatar_url = member.display_avatar.replace(format='png', size=128)
         avatar_data = io.BytesIO(await avatar_url.read())
@@ -498,23 +546,6 @@ class Leveling(commands.Cog):
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
 
-        gradient = Image.new('RGBA', (card_width, card_height), (0, 0, 0, 0))
-        gradient_draw = ImageDraw.Draw(gradient)
-
-        try:
-            avatar_colors = avatar_image.getcolors(avatar_image.size[0] *
-                                                   avatar_image.size[1])
-            dominant_color = max(avatar_colors, key=lambda x: x[0])[1][:3]
-        except:
-            dominant_color = (100, 100, 100)
-
-        for y in range(card_height):
-            alpha = int(255 * (1 - y / card_height))
-            gradient_draw.line([(0, y), (card_width, y)],
-                               fill=dominant_color + (alpha, ))
-
-        card = Image.alpha_composite(card, gradient)
-
         card.paste(avatar_image, (20, 25), mask)
 
         draw = ImageDraw.Draw(card)
@@ -522,8 +553,7 @@ class Leveling(commands.Cog):
         try:
             title_font = ImageFont.truetype("fonts/ndot47.ttf", 30)
             text_font = ImageFont.truetype("fonts/InterVariable.ttf", 20)
-            xp_font = ImageFont.truetype("fonts/InterVariable.ttf",
-                                         14)  # Smaller font for XP text
+            xp_font = ImageFont.truetype("fonts/InterVariable.ttf", 14)
         except IOError:
             title_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
@@ -555,16 +585,13 @@ class Leveling(commands.Cog):
                                    fill=(255, 255, 255, 255))
             return rect
 
-        # Background of XP bar
         bar_bg = rounded_rectangle((bar_width, bar_height), bar_height // 2)
         bar_bg = ImageEnhance.Brightness(bar_bg).enhance(0.2)
         card.paste(bar_bg, (bar_x, bar_y), bar_bg)
 
-        # Generate purple gradient colors
-        start_color = (138, 43, 226)  # Light purple
-        end_color = (75, 0, 130)  # Dark purple
+        start_color = (138, 43, 226)
+        end_color = (75, 0, 130)
 
-        # Create progress gradient
         progress_width = int(bar_width * progress)
         progress_bar = Image.new('RGBA', (progress_width, bar_height),
                                  (0, 0, 0, 0))
@@ -578,7 +605,6 @@ class Leveling(commands.Cog):
                     (x / progress_width))
             progress_draw.line([(x, 0), (x, bar_height)], fill=(r, g, b, 255))
 
-        # Apply rounded corners to progress bar
         progress_mask = rounded_rectangle((progress_width, bar_height),
                                           bar_height // 2)
         card.paste(progress_bar, (bar_x, bar_y), progress_mask)
@@ -588,10 +614,8 @@ class Leveling(commands.Cog):
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         text_x = bar_x + (bar_width - text_width) // 2
-        text_y = bar_y + (bar_height -
-                          text_height) // 2 - 1  # Moved up by 1 pixel
+        text_y = bar_y + (bar_height - text_height) // 2 - 1
 
-        # Draw the XP text
         draw.text((text_x, text_y),
                   xp_text,
                   font=xp_font,
@@ -1055,6 +1079,60 @@ class Leveling(commands.Cog):
                                 f"Failed to remove role {role.name} from {member.name} due to insufficient permissions."
                             )
         return removed_roles
+
+    @level_group.command(name="set_card_bg")
+    async def set_card_bg(self, interaction: discord.Interaction):
+        """Set the background for your rank card"""
+        await interaction.response.defer()
+
+        backgrounds_dir = "backgrounds"
+        background_files = [
+            f for f in os.listdir(backgrounds_dir)
+            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
+        ]
+
+        if not background_files:
+            return await interaction.followup.send(
+                "No background options are available at the moment.")
+
+        options = [
+            SelectOption(label=bg.split('.')[0], value=bg)
+            for bg in background_files
+        ]
+
+        view = BackgroundView(options)
+        await interaction.followup.send(
+            "Choose a background for your rank card:", view=view)
+
+
+class BackgroundSelect(discord.ui.Select):
+
+    def __init__(self, options: List[SelectOption]):
+        super().__init__(placeholder="Choose a background", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        user_id = interaction.user.id
+        guild_id = interaction.guild_id
+        background = self.values[0]
+
+        query = """
+        INSERT INTO user_backgrounds (user_id, guild_id, background)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, guild_id)
+        DO UPDATE SET background = $3;
+        """
+        await db.execute(query, user_id, guild_id, background)
+
+        await interaction.followup.send(
+            f"Your rank card background has been updated to {background}.")
+
+
+class BackgroundView(discord.ui.View):
+
+    def __init__(self, options: List[SelectOption]):
+        super().__init__()
+        self.add_item(BackgroundSelect(options))
 
 
 async def setup(bot: commands.Bot) -> None:
