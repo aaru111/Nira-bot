@@ -1123,8 +1123,8 @@ class Leveling(commands.Cog):
                                  interaction.guild_id, image_base64)
 
                 await interaction.response.send_message(
-                    "Your rank card background has been updated with your custom image."
-                )
+                    "Your rank card background has been updated with your custom image.",
+                    ephemeral=True)
             else:
                 backgrounds_dir = "backgrounds"
                 background_files = [
@@ -1134,7 +1134,8 @@ class Leveling(commands.Cog):
 
                 if not background_files:
                     await interaction.response.send_message(
-                        "No background options are available at the moment.")
+                        "No background options are available at the moment.",
+                        ephemeral=True)
                     return
 
                 options = [
@@ -1145,7 +1146,9 @@ class Leveling(commands.Cog):
                 view = BackgroundView(options, interaction.user.id,
                                       interaction.guild_id)
                 await interaction.response.send_message(
-                    "Choose a background for your rank card:", view=view)
+                    "Choose a background for your rank card:",
+                    view=view,
+                    ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(
                 f"An error occurred: {str(e)}", ephemeral=True)
@@ -1167,7 +1170,7 @@ class BackgroundSelect(discord.ui.Select):
         self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         background = self.values[0]
 
         with open(os.path.join("backgrounds", background), "rb") as image_file:
@@ -1183,7 +1186,8 @@ class BackgroundSelect(discord.ui.Select):
         await db.execute(query, self.user_id, self.guild_id, image_base64)
 
         await interaction.followup.send(
-            f"Your rank card background has been updated to {background}.")
+            f"Your rank card background has been updated to {background}.",
+            ephemeral=True)
 
 
 class BackgroundView(discord.ui.View):
