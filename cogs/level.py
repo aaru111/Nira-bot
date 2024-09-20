@@ -4,9 +4,9 @@ from discord.ext import commands
 import random
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import io
-from typing import Optional, Dict
 from database import db
 import time
+from typing import Optional, Dict, Union
 
 
 class XPRateSelect(discord.ui.Select):
@@ -256,10 +256,18 @@ class Leveling(commands.Cog):
         await self.load_role_rewards()
 
     async def send_level_up_message(
-            self, interaction: discord.Interaction, new_level: int,
-            guild_settings: Dict[str, int | bool | Optional[int]],
+            self, context: Union[discord.Interaction, discord.Message],
+            new_level: int, guild_settings: Dict[str,
+                                                 int | bool | Optional[int]],
             awarded_roles: list):
-        user_id, guild_id = interaction.user.id, interaction.guild_id
+        if isinstance(context, discord.Interaction):
+            user = context.user
+            guild_id = context.guild_id
+        else:  # discord.Message
+            user = context.author
+            guild_id = context.guild.id
+
+        user_id = user.id
 
         # Get updated XP and rank
         query = """
@@ -276,12 +284,11 @@ class Leveling(commands.Cog):
         xp, rank = result[0]['xp'], result[0]['rank']
 
         # Create rank card
-        rank_card = await self.create_rank_card(interaction.user, xp,
-                                                new_level, rank)
+        rank_card = await self.create_rank_card(user, xp, new_level, rank)
 
         role_rewards_text = f"You've earned the following role(s): {', '.join([role.name for role in awarded_roles])}" if awarded_roles else ""
         level_up_message = guild_settings['level_up_message'].format(
-            user_mention=interaction.user.mention,
+            user_mention=user.mention,
             new_level=new_level,
             role_rewards=role_rewards_text)
 
@@ -293,9 +300,12 @@ class Leveling(commands.Cog):
             if channel:
                 await channel.send(content=level_up_message, file=file)
         else:
-            # Only send in the interaction channel if no announcement channel is set
-            await interaction.followup.send(content=level_up_message,
+            # Send in the original channel if no announcement channel is set
+            if isinstance(context, discord.Interaction):
+                await context.followup.send(content=level_up_message,
                                             file=file)
+            else:
+                await context.channel.send(content=level_up_message, file=file)
 
     async def create_tables(self):
         queries = [
