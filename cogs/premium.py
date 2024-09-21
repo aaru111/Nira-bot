@@ -12,6 +12,7 @@ class Premium(commands.Cog):
         self.db: Database = db
 
     async def cog_load(self) -> None:
+        await db.initialize()
         await self.create_tables()
 
     async def create_tables(self) -> None:
