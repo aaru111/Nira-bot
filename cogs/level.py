@@ -8,7 +8,6 @@ from database import db
 import time
 from typing import Optional, Dict, Union, List
 import os
-from discord import SelectOption
 import base64
 
 
@@ -1094,19 +1093,20 @@ class Leveling(commands.Cog):
     @level_group.command(name="card")
     async def card(self,
                    interaction: discord.Interaction,
-                   image: discord.Attachment = None):
+                   image: Optional[discord.Attachment] = None):
         """Set the background for your rank card"""
+        await interaction.response.defer(ephemeral=True)
         try:
             if image:
                 is_premium = await self.is_premium(interaction.user.id)
                 if not is_premium:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         "Custom image backgrounds are only available for premium users. You can still choose from pre-configured backgrounds, by running the `/level card` command again without using a custom picture.",
                         ephemeral=True)
                     return
 
                 if not image.content_type.startswith('image/'):
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         "Please upload a valid image file.", ephemeral=True)
                     return
 
@@ -1122,7 +1122,7 @@ class Leveling(commands.Cog):
                 await db.execute(query, interaction.user.id,
                                  interaction.guild_id, image_base64)
 
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Your rank card background has been updated with your custom image.",
                     ephemeral=True)
             else:
@@ -1133,7 +1133,7 @@ class Leveling(commands.Cog):
                 ]
 
                 if not background_files:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         "No background options are available at the moment.",
                         ephemeral=True)
                     return
@@ -1145,13 +1145,13 @@ class Leveling(commands.Cog):
 
                 view = BackgroundView(options, interaction.user.id,
                                       interaction.guild_id)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Choose a background for your rank card:",
                     view=view,
                     ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(
-                f"An error occurred: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
 
     @card.error
     async def card_error(self, interaction: discord.Interaction,
@@ -1159,6 +1159,9 @@ class Leveling(commands.Cog):
         if not interaction.response.is_done():
             await interaction.response.send_message(
                 f"An error occurred: {str(error)}", ephemeral=True)
+        else:
+            await interaction.followup.send(f"An error occurred: {str(error)}",
+                                            ephemeral=True)
 
 
 class BackgroundSelect(discord.ui.Select):
