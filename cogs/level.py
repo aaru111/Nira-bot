@@ -507,9 +507,31 @@ class Leveling(commands.Cog):
         if background_data:
             try:
                 image_data = base64.b64decode(background_data)
-                card = Image.open(io.BytesIO(image_data)).convert('RGBA')
-                card = card.resize((card_width, card_height),
-                                   Image.Resampling.LANCZOS)
+                background = Image.open(io.BytesIO(image_data)).convert('RGBA')
+
+                # Calculate scaling factor to cover the card while maintaining aspect ratio
+                bg_ratio = background.width / background.height
+                card_ratio = card_width / card_height
+
+                if bg_ratio > card_ratio:  # Background is wider
+                    new_height = card_height
+                    new_width = int(new_height * bg_ratio)
+                else:  # Background is taller
+                    new_width = card_width
+                    new_height = int(new_width / bg_ratio)
+
+                background = background.resize((new_width, new_height),
+                                               Image.Resampling.LANCZOS)
+
+                # Crop to fit
+                left = (background.width - card_width) // 2
+                top = (background.height - card_height) // 2
+                background = background.crop(
+                    (left, top, left + card_width, top + card_height))
+
+                card = Image.new('RGBA', (card_width, card_height),
+                                 (0, 0, 0, 0))
+                card.paste(background, (0, 0), background)
             except:
                 # If there's an error with the custom background, fall back to default
                 card = Image.new('RGBA', (card_width, card_height),
