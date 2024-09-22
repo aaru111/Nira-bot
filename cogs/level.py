@@ -513,10 +513,10 @@ class Leveling(commands.Cog):
                 bg_ratio = background.width / background.height
                 card_ratio = card_width / card_height
 
-                if bg_ratio > card_ratio:  # Background is wider
+                if bg_ratio > card_ratio:
                     new_height = card_height
                     new_width = int(new_height * bg_ratio)
-                else:  # Background is taller
+                else:
                     new_width = card_width
                     new_height = int(new_width / bg_ratio)
 
@@ -543,9 +543,8 @@ class Leveling(commands.Cog):
                                  (0, 0, 0, 0))
             gradient_draw = ImageDraw.Draw(gradient)
 
-            avatar_size = 150  # Increased avatar size
-            avatar_url = member.display_avatar.replace(
-                format='png', size=256)  # Increased avatar resolution
+            avatar_size = 150
+            avatar_url = member.display_avatar.replace(format='png', size=256)
             avatar_data = io.BytesIO(await avatar_url.read())
             avatar_image = Image.open(avatar_data).convert('RGBA')
             avatar_image = avatar_image.resize((avatar_size, avatar_size),
@@ -566,9 +565,8 @@ class Leveling(commands.Cog):
             card = Image.alpha_composite(card, gradient)
 
         # Avatar
-        avatar_size = 150  # Increased avatar size
-        avatar_url = member.display_avatar.replace(
-            format='png', size=256)  # Increased avatar resolution
+        avatar_size = 150
+        avatar_url = member.display_avatar.replace(format='png', size=256)
         avatar_data = io.BytesIO(await avatar_url.read())
         avatar_image = Image.open(avatar_data).convert('RGBA')
         avatar_image = avatar_image.resize((avatar_size, avatar_size),
@@ -578,44 +576,38 @@ class Leveling(commands.Cog):
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
 
-        card.paste(avatar_image, (25, 25), mask)  # Adjusted position
+        card.paste(avatar_image, (25, 25), mask)
 
         # Text
         draw = ImageDraw.Draw(card)
 
         try:
-            title_font = ImageFont.truetype("fonts/ndot47.ttf",
-                                            40)  # Increased font size
-            text_font = ImageFont.truetype("fonts/InterVariable.ttf",
-                                           28)  # Increased font size
-            xp_font = ImageFont.truetype("fonts/InterVariable.ttf",
-                                         20)  # Increased font size
+            title_font = ImageFont.truetype("fonts/ndot47.ttf", 40)
+            text_font = ImageFont.truetype("fonts/InterVariable.ttf", 28)
+            xp_font = ImageFont.truetype("fonts/InterVariable.ttf", 20)
         except IOError:
             title_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
             xp_font = ImageFont.load_default()
 
-        draw.text(
-            (200, 30),  # Adjusted position
-            member.display_name,
-            font=title_font,
-            fill=(255, 255, 255, 255))
-        draw.text(
-            (200, 80),  # Adjusted position
-            f"Rank: #{rank}",
-            font=text_font,
-            fill=(255, 255, 255, 255))
-        draw.text(
-            (200, 120),  # Adjusted position
-            f"Level: {level}",
-            font=text_font,
-            fill=(255, 255, 255, 255))
+        draw.text((200, 13),
+                  member.display_name,
+                  font=title_font,
+                  fill=(255, 255, 255, 255))
+        draw.text((200, 71),
+                  f"Rank: #{rank}",
+                  font=text_font,
+                  fill=(255, 255, 255, 255))
+        draw.text((200, 111),
+                  f"Level: {level}",
+                  font=text_font,
+                  fill=(255, 255, 255, 255))
 
         # XP Bar
         xp_to_next_level = (level + 1)**2 * 100
         progress = xp / xp_to_next_level
-        bar_width, bar_height = 500, 30  # Increased bar size
-        bar_x, bar_y = 200, 160  # Adjusted position
+        bar_width, bar_height = 500, 30
+        bar_x, bar_y = 200, 151
 
         def rounded_rectangle(size, radius):
             rect = Image.new('RGBA', size, (0, 0, 0, 0))
