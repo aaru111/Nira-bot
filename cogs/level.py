@@ -598,7 +598,7 @@ class Leveling(commands.Cog):
                   f"Rank: #{rank}",
                   font=text_font,
                   fill=(255, 255, 255, 255))
-        draw.text((200, 111),
+        draw.text((200, 107),
                   f"Level: {level}",
                   font=text_font,
                   fill=(255, 255, 255, 255))
