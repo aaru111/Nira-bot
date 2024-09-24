@@ -16,11 +16,7 @@ class WelcomeCmds(commands.Cog):
     async def cog_unload(self):
         await self.db.close()
 
-    welcome = app_commands.Group(name="welcome",
-                                description="Welcome commands",
-                                guild_only=True)
-
-    @welcome.command(name="channel", description="Set the welcome channel")
+    @app_commands.command(name="welcome-channel", description="Set the welcome channel")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_channel(self, interaction: discord.Interaction,
                           channel: discord.TextChannel):
@@ -39,7 +35,7 @@ class WelcomeCmds(commands.Cog):
         await interaction.followup.send(
             f"Set welcome channel to {channel.mention}")
 
-    @welcome.command(name="message", description="Set the welcome message")
+    @app_commands.command(name="welcome-message", description="Set the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_message(self, interaction: discord.Interaction, *,
                           message: str):
@@ -70,7 +66,7 @@ class WelcomeCmds(commands.Cog):
         await interaction.followup.send(
             f"Set welcome message to: {message}")
 
-    @welcome.command(name="test", description="Test the welcome message")
+    @app_commands.command(name="welcome-test", description="Test the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def test(self,
                    interaction: discord.Interaction,
