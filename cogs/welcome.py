@@ -122,24 +122,24 @@ class WelcomeCmds(commands.Cog):
              f"ID: {placeholders['user.id']}\n\n"
              "We hope you enjoy your stay!"),
             color=discord.Color.green())
-        default_embed.set_thumbnail(url=member.display_avatar.url)
 
         # Format the message with placeholders if a custom message is set
         if message:
             embed = discord.Embed(description=message.format(**placeholders),
                                   color=discord.Color.green())
-            embed.set_thumbnail(url=member.display_avatar.url)
         else:
             embed = default_embed
 
+        if welcome_card:
+            welcome_card.seek(0)
+            file = discord.File(welcome_card, filename="welcome.png")
+            embed.set_image(url="attachment://welcome.png")
+        else:
+            file = None
+            embed.set_thumbnail(url=member.display_avatar.url)
+
         try:
-            if welcome_card:
-                await channel.send(
-                    embed=embed,
-                    file=discord.File(welcome_card, filename="welcome.png"),
-                )
-            else:
-                await channel.send(embed=embed)
+            await channel.send(embed=embed, file=file)
         except discord.errors.Forbidden:
             pass  # Bot doesn't have permission to send messages in the channel
         except Exception:
