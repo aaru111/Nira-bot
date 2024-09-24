@@ -6,7 +6,6 @@ from database import Database
 
 
 class WelcomeCmds(commands.Cog):
-
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db = Database()
@@ -18,8 +17,8 @@ class WelcomeCmds(commands.Cog):
         await self.db.close()
 
     welcome = app_commands.Group(name="welcome",
-                                 description="Welcome commands",
-                                 guild_only=True)
+                                description="Welcome commands",
+                                guild_only=True)
 
     @welcome.command(name="channel", description="Set the welcome channel")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -31,12 +30,13 @@ class WelcomeCmds(commands.Cog):
         Parameters:
         - channel: The text channel to set as the welcome channel.
         """
+        await interaction.response.defer()
         await self.db.execute(
             "INSERT INTO welcome (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET channel_id = $2",
             interaction.guild.id,
             channel.id,
         )
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Set welcome channel to {channel.mention}")
 
     @welcome.command(name="message", description="Set the welcome message")
@@ -56,17 +56,18 @@ class WelcomeCmds(commands.Cog):
         Parameters:
         - message: The custom welcome message to set.
         """
+        await interaction.response.defer()
         check = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", interaction.guild.id)
         if not check:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Please set a welcome channel first!")
         await self.db.execute(
             "UPDATE welcome SET message = $1 WHERE guild_id = $2",
             message,
             interaction.guild.id,
         )
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Set welcome message to: {message}")
 
     @welcome.command(name="test", description="Test the welcome message")
@@ -80,9 +81,10 @@ class WelcomeCmds(commands.Cog):
         Parameters:
         - user: The user to simulate as a new member (optional, defaults to the command user).
         """
+        await interaction.response.defer()
         user = user or interaction.user
         await self.on_member_join(user)
-        return await interaction.response.send_message(
+        return await interaction.followup.send(
             "Sent test welcome message!")
 
     @commands.Cog.listener()
@@ -114,13 +116,14 @@ class WelcomeCmds(commands.Cog):
         # Default embed message using all placeholders
         default_embed = discord.Embed(
             title=f"Welcome to {placeholders['guild.name']}!",
-            description=
-            (f"Hello {placeholders['user.mention']}! Welcome to our community.\n\n"
-             f"You are our {placeholders['guild.member_count']}th member!\n\n"
-             f"Your Details:\n"
-             f"Name: {placeholders['user.name']}\n"
-             f"ID: {placeholders['user.id']}\n\n"
-             "We hope you enjoy your stay!"),
+            description=(
+                f"Hello {placeholders['user.mention']}! Welcome to our community.\n\n"
+                f"You are our {placeholders['guild.member_count']}th member!\n\n"
+                f"Your Details:\n"
+                f"Name: {placeholders['user.name']}\n"
+                f"ID: {placeholders['user.id']}\n\n"
+                "We hope you enjoy your stay!"
+            ),
             color=discord.Color.green())
 
         # Format the message with placeholders if a custom message is set
