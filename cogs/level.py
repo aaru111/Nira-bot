@@ -258,6 +258,9 @@ class Leveling(commands.Cog):
         await self.load_settings()
         await self.load_role_rewards()
 
+    async def cog_unload(self):
+        await self.db.close()
+
     async def is_premium(self, user_id: int) -> bool:
         query = "SELECT is_premium FROM users WHERE user_id = $1;"
         result = await db.fetch(query, user_id)

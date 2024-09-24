@@ -15,6 +15,9 @@ class Premium(commands.Cog):
         await db.initialize()
         await self.create_tables()
 
+    async def cog_unload(self):
+        await self.db.close()
+
     async def create_tables(self) -> None:
         query: str = """
         CREATE TABLE IF NOT EXISTS users (
