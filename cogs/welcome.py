@@ -5,6 +5,23 @@ from utils.wel import get_welcome_card
 from database import Database
 
 
+class WelcomeModal(discord.ui.Modal, title="Set Welcome Message"):
+    message = discord.ui.TextInput(
+        label="Welcome Message",
+        style=discord.TextStyle.long,
+        placeholder="Enter your custom welcome message here...",
+        max_length=2000,
+        required=True)
+
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        await self.cog.set_message_callback(interaction, str(self.message))
+
+
 class WelcomeCmds(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
@@ -39,45 +56,42 @@ class WelcomeCmds(commands.Cog):
         Parameters:
         - channel: The text channel to set as the welcome channel.
         """
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         await self.db.execute(
             "INSERT INTO welcome (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET channel_id = $2",
             interaction.guild.id,
             channel.id,
         )
         await interaction.followup.send(
-            f"Set welcome channel to {channel.mention}")
+            f"Set welcome channel to {channel.mention}", ephemeral=True)
 
     @app_commands.command(name="welcome-message",
                           description="Set the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def set_message(self, interaction: discord.Interaction, *,
-                          message: str):
+    async def set_message(self, interaction: discord.Interaction):
         """
-        Set the custom welcome message for new members.
-
-        Available placeholders:
-        {user.mention} - Mentions the new member
-        {user.name} - The username of the new member
-        {user.id} - The ID of the new member
-        {guild.name} - The name of the server
-        {guild.member_count} - The current member count of the server
-
-        Parameters:
-        - message: The custom welcome message to set.
+        Open a modal to set the custom welcome message for new members.
         """
-        await interaction.response.defer()
         check = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", interaction.guild.id)
         if not check:
-            return await interaction.followup.send(
-                "Please set a welcome channel first!")
+            await interaction.response.send_message(
+                "Please set a welcome channel first!", ephemeral=True)
+            return
+
+        modal = WelcomeModal(self)
+        await interaction.response.send_modal(modal)
+
+    async def set_message_callback(self, interaction: discord.Interaction,
+                                   message: str):
+        """Callback for the welcome message modal submission"""
         await self.db.execute(
             "UPDATE welcome SET message = $1 WHERE guild_id = $2",
             message,
             interaction.guild.id,
         )
-        await interaction.followup.send(f"Set welcome message to: {message}")
+        await interaction.followup.send(f"Set welcome message to: {message}",
+                                        ephemeral=True)
 
     @app_commands.command(name="welcome-test",
                           description="Test the welcome message")
@@ -91,22 +105,27 @@ class WelcomeCmds(commands.Cog):
         Parameters:
         - user: The user to simulate as a new member (optional, defaults to the command user).
         """
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         user = user or interaction.user
-        await self.on_member_join(user)
-        return await interaction.followup.send("Sent test welcome message!")
+        sent = await self.on_member_join(user)
+        if sent:
+            await interaction.followup.send("Sent test welcome message!",
+                                            ephemeral=True)
+        else:
+            await interaction.followup.send(
+                "Failed to send test welcome message. Please check your welcome channel and message settings.",
+                ephemeral=True)
 
-    @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         record = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
         if not record:
-            return  # No welcome settings for this guild
+            return False  # No welcome settings for this guild
         channel_id = record[0]['channel_id']
         message = record[0].get('message')
         channel = member.guild.get_channel(channel_id)
         if not channel:
-            return  # Channel not found
+            return False  # Channel not found
 
         try:
             welcome_card = await get_welcome_card(member)
@@ -142,8 +161,13 @@ class WelcomeCmds(commands.Cog):
 
         # Format the message with placeholders if a custom message is set
         if message:
-            embed = discord.Embed(description=message.format(**placeholders),
-                                  color=discord.Color.blue())
+            try:
+                formatted_message = message.format(**placeholders)
+                embed = discord.Embed(description=formatted_message,
+                                      color=discord.Color.blue())
+            except KeyError:
+                # If there's an error with placeholders, fall back to the default embed
+                embed = default_embed
         else:
             embed = default_embed
 
@@ -157,10 +181,11 @@ class WelcomeCmds(commands.Cog):
 
         try:
             await channel.send(content=member.mention, embed=embed, file=file)
+            return True
         except discord.errors.Forbidden:
-            pass  # Bot doesn't have permission to send messages in the channel
+            return False  # Bot doesn't have permission to send messages in the channel
         except Exception:
-            pass  # Error sending welcome message
+            return False  # Error sending welcome message
 
 
 async def setup(bot: commands.Bot):
