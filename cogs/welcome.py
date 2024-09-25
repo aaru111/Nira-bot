@@ -10,6 +10,10 @@ class WelcomeModal(discord.ui.Modal, title="Set Welcome Message"):
         label="Welcome Message",
         style=discord.TextStyle.long,
         placeholder="Enter your custom welcome message here...",
+        default=("Welcome {user} to {server}!\n\n"
+                 "You're our {membercount}th member.\n"
+                 "Your username is {username} and your ID is {userid}.\n\n"
+                 "We hope you enjoy your stay!"),
         max_length=2000,
         required=True)
 
