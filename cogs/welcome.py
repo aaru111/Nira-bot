@@ -42,6 +42,42 @@ class TestButton(discord.ui.Button):
                 ephemeral=True)
 
 
+class PlaceholderButton(discord.ui.Button):
+
+    def __init__(self, cog):
+        super().__init__(style=discord.ButtonStyle.secondary,
+                         label="Show Placeholders")
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="Available Placeholders",
+                              color=discord.Color.blue())
+
+        placeholders = list(self.cog.valid_placeholders)
+
+        # First field with 5 placeholders
+        embed.add_field(name="User Placeholders",
+                        value="\n".join(
+                            [f"`{{{p}}}`" for p in placeholders[:5]]),
+                        inline=True)
+
+        # Second field with next 5 placeholders (or remaining if less than 5)
+        if len(placeholders) > 5:
+            embed.add_field(name="Server Placeholders",
+                            value="\n".join(
+                                [f"`{{{p}}}`" for p in placeholders[5:10]]),
+                            inline=True)
+
+        # Third field with remaining placeholders
+        if len(placeholders) > 10:
+            embed.add_field(name="Other Placeholders",
+                            value="\n".join(
+                                [f"`{{{p}}}`" for p in placeholders[10:]]),
+                            inline=True)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class WelcomeCmds(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
@@ -245,6 +281,7 @@ class WelcomeCmds(commands.Cog):
 
         view = discord.ui.View()
         view.add_item(TestButton(self))
+        view.add_item(PlaceholderButton(self))
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     def validate_placeholders(self, message):
@@ -338,5 +375,5 @@ class WelcomeCmds(commands.Cog):
         return sent
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(WelcomeCmds(bot))
