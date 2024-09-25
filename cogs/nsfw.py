@@ -64,24 +64,16 @@ class NSFW(commands.Cog):
             post = random.choice(data)
             image_url = f"https://realbooru.com/images/{post['directory']}/{post['image']}"
 
-            embed: discord.Embed = discord.Embed(
-                title=f"Realbooru - {tags}",
-                color=ctx.author.color,
-                url=
-                f"https://realbooru.com/index.php?page=post&s=view&id={post['id']}"
-            )
-            embed.set_image(url=image_url)
-            embed.set_footer(
-                text=
-                f"ID: {post['id']} | Score: {post['score']} | Tags: {post['tags'][:100]}..."
-            )
-
             try:
                 await msg.delete()
             except NotFound:
                 print("Message was already deleted.")
 
-            await ctx.send(embed=embed)
+            image_info = f"""```python
+Realbooru - {tags}
+ID: {post['id']} | Score: {post['score']} | Tags: {post['tags'][:100]}...
+```"""
+            await ctx.send(f"{image_info}\n{image_url}")
         except HTTPException as e:
             if e.status == 429:
                 retry_after: Union[str, None] = e.response.headers.get(
@@ -121,25 +113,14 @@ class NSFW(commands.Cog):
 
             artist: str = doujin.artist[
                 0].name if doujin.artist else "No artist"
-            embeds: List[discord.Embed] = []
+
             for num, url in enumerate(doujin.image_urls, start=1):
-                embed: discord.Embed = discord.Embed(
-                    title=f'{doujin.title(Format.Pretty)} (Sauce: {doujin.id})',
-                    color=ctx.author.color,
-                    url=doujin.url)
-                embed.set_image(url=url)
-                embed.set_footer(
-                    text=
-                    f"Artist: {artist} | Upload date: {doujin.upload_date} | Page {num} of {len(doujin.image_urls)}"
-                )
-                embeds.append(embed)
+                image_info = f"""```python
+{doujin.title(Format.Pretty)} (Sauce: {doujin.id})
+Artist: {artist} | Upload date: {doujin.upload_date} | Page {num} of {len(doujin.image_urls)}
+```"""
+                await ctx.send(f"{image_info}\n{url}")
 
-            paginator: DiscordUtils.Pagination.CustomEmbedPaginator = DiscordUtils.Pagination.CustomEmbedPaginator(
-                ctx, remove_reactions=True)
-            paginator.add_reaction('⏪', "back")
-            paginator.add_reaction('⏩', "next")
-
-            await paginator.run(embeds)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}", delete_after=3)
 
@@ -163,9 +144,10 @@ class NSFW(commands.Cog):
                                   tags=query if query else "")
                 if images:
                     finalimg: Rule34.Image = random.choice(images)
-                    await ctx.send(
-                        f"Rule34 image (ID: {finalimg.id}, Score: {finalimg.score}):\n{finalimg.file_url}"
-                    )
+                    image_info = f"""```python
+Rule34 image (ID: {finalimg.id}, Score: {finalimg.score})
+```"""
+                    await ctx.send(f"{image_info}\n{finalimg.file_url}")
                     return True
                 return False
             except Exception as e:
