@@ -22,7 +22,6 @@ class NSFW(commands.Cog):
         self.client: Bot = client
 
     async def handle_rate_limit(self, response: discord.Message) -> None:
-        """Handles the rate-limit response from Discord."""
         if isinstance(response,
                       discord.Message) and response.content.startswith(
                           'You are being rate limited'):
@@ -32,11 +31,19 @@ class NSFW(commands.Cog):
             print(f"Rate limited. Retrying after {retry_after} seconds.")
             await asyncio.sleep(retry_after)
 
-    async def fetch_realbooru_post(self, tags: str, ctx: Context) -> None:
-        """Fetches a random post from Realbooru and sends it as an embed."""
+    async def fetch_realbooru_post(self,
+                                   tags: str,
+                                   ctx: Context,
+                                   gif_only: bool = False) -> None:
         msg: discord.Message = await ctx.send(
             "Getting your content from Realbooru...", delete_after=3)
         try:
+            if gif_only:
+                tags += " gif"
+            else:
+                file_type = random.choice(['gif', 'jpg', 'png', 'jpeg'])
+                tags += f" {file_type}"
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                         f'https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=100&tags={tags}'
@@ -55,8 +62,6 @@ class NSFW(commands.Cog):
                 return
 
             post = random.choice(data)
-
-            # Construct the full image URL
             image_url = f"https://realbooru.com/images/{post['directory']}/{post['image']}"
 
             embed: discord.Embed = discord.Embed(
@@ -89,7 +94,6 @@ class NSFW(commands.Cog):
             await ctx.send(f"An error occurred: {e}", delete_after=3)
 
     async def check_nsfw_channel(self, ctx: Context) -> bool:
-        """Checks if the command is invoked in an NSFW channel."""
         if not ctx.channel.is_nsfw():
             await ctx.send("This command can only be used in NSFW channels.",
                            delete_after=3)
@@ -97,9 +101,10 @@ class NSFW(commands.Cog):
         return True
 
     @commands.command(
+        aliases=["nhentai", "doujin"],
         description="Use a sauce code to find a hentai comic from nhentai.net."
     )
-    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.cooldown(1, 3, commands.BucketType.user)
     @commands.is_nsfw()
     async def sauce(self, ctx: Context, id: Optional[str] = None) -> None:
         await ctx.defer()
@@ -139,14 +144,11 @@ class NSFW(commands.Cog):
             await ctx.send(f"An error occurred: {e}", delete_after=3)
 
     @commands.command(
-        aliases=["r34"],
+        aliases=["rule34"],
         description="Get Rule34 images! [query] value is optional.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.cooldown(1, 3, commands.BucketType.user)
     @commands.is_nsfw()
-    async def rule34(self,
-                     ctx: Context,
-                     *,
-                     query: Optional[str] = None) -> None:
+    async def r34(self, ctx: Context, *, query: Optional[str] = None) -> None:
         await ctx.defer()
         if not await self.check_nsfw_channel(ctx):
             return
@@ -183,6 +185,88 @@ class NSFW(commands.Cog):
                 await ctx.send(f"An error occurred: {e}", delete_after=3)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}", delete_after=3)
+
+    @commands.command(aliases=["lesbian", "lesbians"],
+                      description="Get real life lesbian images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def rllesbian(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("real_life lesbian",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["mom", "mother"],
+                      description="Get MILF images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def milf(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("milf", ctx, gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["tits", "breasts"],
+                      description="Get boobs images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def boobs(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("breasts",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["butt", "booty"],
+                      description="Get ass images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def ass(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("ass", ctx, gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["vagina", "cunt"],
+                      description="Get pussy images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def pussy(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("pussy", ctx, gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["bj", "oral"],
+                      description="Get blowjob images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def blowjob(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("blowjob",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["3some", "orgy"],
+                      description="Get threesome images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def threesome(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("threesome",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["butt_stuff", "backdoor"],
+                      description="Get anal images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def anal(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("anal", ctx, gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["facial", "cum"],
+                      description="Get cumshot images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def cumshot(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("cumshot",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
+
+    @commands.command(aliases=["bdsm", "tied"],
+                      description="Get bondage images or GIFs")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.is_nsfw()
+    async def bondage(self, ctx: Context, gif: Optional[str] = None):
+        await self.fetch_realbooru_post("bondage",
+                                        ctx,
+                                        gif_only=(gif == "gif"))
 
 
 async def setup(bot: Bot) -> None:
