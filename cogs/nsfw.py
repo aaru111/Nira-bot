@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord.ext.commands import Bot, Context
-import asyncpraw
 import os
 import random
 from typing import List, Optional, TypeVar, Union
@@ -10,19 +9,9 @@ import DiscordUtils
 from rule34 import Rule34
 import asyncio
 from discord.errors import NotFound, HTTPException
+import aiohttp
 
 rule34 = Rule34()
-
-# Load secrets from environment variables
-REDDIT_CLIENT_ID = os.environ['redditid']
-REDDIT_CLIENT_SECRET = os.environ['redditsecret']
-REDDIT_PASSWORD = os.environ['redditpassword']
-
-reddit = asyncpraw.Reddit(client_id=REDDIT_CLIENT_ID,
-                          client_secret=REDDIT_CLIENT_SECRET,
-                          username="aaru101",
-                          password=REDDIT_PASSWORD,
-                          user_agent="nira")
 
 T = TypeVar('T')
 
@@ -43,40 +32,43 @@ class NSFW(commands.Cog):
             print(f"Rate limited. Retrying after {retry_after} seconds.")
             await asyncio.sleep(retry_after)
 
-    async def fetch_reddit_post(self, subreddit_name: str,
-                                ctx: Context) -> None:
-        """Fetches a random top post from a subreddit and sends it as an embed."""
-        msg: discord.Message = await ctx.send("Getting your content...",
-                                              delete_after=3)
+    async def fetch_realbooru_post(self, tags: str, ctx: Context) -> None:
+        """Fetches a random post from Realbooru and sends it as an embed."""
+        msg: discord.Message = await ctx.send(
+            "Getting your content from Realbooru...", delete_after=3)
         try:
-            subreddit: asyncpraw.models.Subreddit = await reddit.subreddit(
-                subreddit_name)
-            top: asyncpraw.models.listing.generator.ListingGenerator = subreddit.top(
-                limit=50)
-            all_subs: List[asyncpraw.models.Submission] = [
-                submission async for submission in top
-            ]
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                        f'https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=100&tags={tags}'
+                ) as resp:
+                    if resp.status != 200:
+                        await ctx.send(
+                            f"An error occurred while fetching from Realbooru: {resp.status}",
+                            delete_after=3)
+                        return
+                    data = await resp.json()
 
-            if not all_subs:
-                await ctx.send(f"No posts found in r/{subreddit_name}.",
-                               delete_after=3)
-                return
-
-            ransub: asyncpraw.models.Submission = random.choice(all_subs)
-
-            if not ransub.url:
+            if not data:
                 await ctx.send(
-                    "The fetched post does not contain a valid URL.",
+                    f"No posts found on Realbooru with the tags: {tags}.",
                     delete_after=3)
                 return
 
-            embed: discord.Embed = discord.Embed(title=ransub.title,
-                                                 color=ctx.author.color,
-                                                 url=ransub.url)
-            embed.set_image(url=ransub.url)
+            post = random.choice(data)
+
+            # Construct the full image URL
+            image_url = f"https://realbooru.com/images/{post['directory']}/{post['image']}"
+
+            embed: discord.Embed = discord.Embed(
+                title=f"Realbooru - {tags}",
+                color=ctx.author.color,
+                url=
+                f"https://realbooru.com/index.php?page=post&s=view&id={post['id']}"
+            )
+            embed.set_image(url=image_url)
             embed.set_footer(
                 text=
-                f"Posted by {ransub.author} on Reddit. | ❤ {ransub.ups} | 💬 {ransub.num_comments}"
+                f"ID: {post['id']} | Score: {post['score']} | Tags: {post['tags'][:100]}..."
             )
 
             try:
@@ -148,9 +140,7 @@ class NSFW(commands.Cog):
 
     @commands.command(
         aliases=["r34"],
-        description=
-        "Get Rule34 images! [query] value is optional - defaults to r/rule34 when none."
-    )
+        description="Get Rule34 images! [query] value is optional.")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.is_nsfw()
     async def rule34(self,
@@ -160,47 +150,39 @@ class NSFW(commands.Cog):
         await ctx.defer()
         if not await self.check_nsfw_channel(ctx):
             return
-        if query is None:
-            await self.fetch_reddit_post('rule34', ctx)
-        else:
-            query = query.replace(" ", "_")
-            msg: discord.Message = await ctx.send("Grabbing your content...",
-                                                  delete_after=3)
+
+        msg: discord.Message = await ctx.send("Grabbing your content...",
+                                              delete_after=3)
+
+        async def fetch_rule34():
             try:
                 images: Union[List[Rule34.Image],
-                              None] = await rule34.getImages(tags=query)
-                if images is None or not images:
+                              None] = await rule34.getImages(
+                                  tags=query if query else "")
+                if images:
+                    finalimg: Rule34.Image = random.choice(images)
                     await ctx.send(
-                        f"No images were found on Rule34 with the tag `{query}`",
-                        delete_after=3)
-                    return
-
-                total: List[Rule34.Image] = list(images)
-                finalimg: Rule34.Image = random.choice(total)
-
-                embed: discord.Embed = discord.Embed(
-                    title=f'ID: {finalimg.id}',
-                    color=ctx.author.color,
-                    url=finalimg.file_url,
-                )
-                embed.set_image(url=finalimg.file_url)
-                embed.set_footer(
-                    text=
-                    f"Posted by {finalimg.creator_ID} on Rule 34. | Score: {finalimg.score}"
-                )
-
-                await ctx.send(embed=embed)
-            except HTTPException as e:
-                if e.status == 429:
-                    retry_after: Union[str, None] = e.response.headers.get(
-                        'Retry-After')
-                    print(
-                        f"Rate limited. Retrying after {retry_after} seconds.")
-                    await asyncio.sleep(int(retry_after) if retry_after else 0)
-                else:
-                    await ctx.send(f"An error occurred: {e}", delete_after=3)
+                        f"Rule34 image (ID: {finalimg.id}, Score: {finalimg.score}):\n{finalimg.file_url}"
+                    )
+                    return True
+                return False
             except Exception as e:
+                print(f"Error fetching from Rule34: {e}")
+                return False
+
+        try:
+            if not await fetch_rule34():
+                await self.fetch_realbooru_post(query if query else "", ctx)
+        except HTTPException as e:
+            if e.status == 429:
+                retry_after: Union[str, None] = e.response.headers.get(
+                    'Retry-After')
+                print(f"Rate limited. Retrying after {retry_after} seconds.")
+                await asyncio.sleep(int(retry_after) if retry_after else 0)
+            else:
                 await ctx.send(f"An error occurred: {e}", delete_after=3)
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}", delete_after=3)
 
 
 async def setup(bot: Bot) -> None:
