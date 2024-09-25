@@ -52,14 +52,16 @@ class Bot(commands.Bot, BotBase):
         self.default_prefix = command_prefix if isinstance(
             command_prefix, str) else "."
         self.status_list = itertools.cycle([
+            discord.Activity(
+                type=discord.ActivityType.streaming,
+                name="Anime 🎥",
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            discord.Activity(
+                type=discord.ActivityType.streaming,
+                name="Cat Videos 🐱",
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
             discord.Activity(type=discord.ActivityType.streaming,
-                             name="Anime",
-                             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            discord.Activity(type=discord.ActivityType.streaming,
-                             name="Cat Videos",
-                             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            discord.Activity(type=discord.ActivityType.streaming,
-                             name="Call Of Duty",
+                             name="Call Of Duty 🎮",
                              url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         ])
 
@@ -111,7 +113,7 @@ class Bot(commands.Bot, BotBase):
 
     @tasks.loop(seconds=30)
     async def change_status(self):
-        """Change the bot's status every 15 seconds."""
+        """Change the bot's status every 30 seconds."""
         await self.change_presence(activity=next(self.status_list))
 
     @change_status.before_loop
