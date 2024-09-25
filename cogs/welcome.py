@@ -6,6 +6,7 @@ from database import Database
 
 
 class WelcomeCmds(commands.Cog):
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db = Database()
@@ -19,19 +20,19 @@ class WelcomeCmds(commands.Cog):
 
     async def create_welcome_table(self):
         """Create the 'welcome' table if it doesn't exist"""
-        await self.db.execute(
-            """
+        await self.db.execute("""
             CREATE TABLE IF NOT EXISTS welcome (
                 guild_id BIGINT PRIMARY KEY,
                 channel_id BIGINT,
                 message TEXT
             )
-            """
-        )
+            """)
 
-    @app_commands.command(name="welcome-channel", description="Set the welcome channel")
+    @app_commands.command(name="welcome-channel",
+                          description="Set the welcome channel")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def set_channel(self, interaction: discord.Interaction,
+                          channel: discord.TextChannel):
         """
         Set the channel where welcome messages will be sent.
 
@@ -44,11 +45,14 @@ class WelcomeCmds(commands.Cog):
             interaction.guild.id,
             channel.id,
         )
-        await interaction.followup.send(f"Set welcome channel to {channel.mention}")
+        await interaction.followup.send(
+            f"Set welcome channel to {channel.mention}")
 
-    @app_commands.command(name="welcome-message", description="Set the welcome message")
+    @app_commands.command(name="welcome-message",
+                          description="Set the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def set_message(self, interaction: discord.Interaction, *, message: str):
+    async def set_message(self, interaction: discord.Interaction, *,
+                          message: str):
         """
         Set the custom welcome message for new members.
 
@@ -63,9 +67,11 @@ class WelcomeCmds(commands.Cog):
         - message: The custom welcome message to set.
         """
         await interaction.response.defer()
-        check = await self.db.fetch("SELECT * FROM welcome WHERE guild_id = $1", interaction.guild.id)
+        check = await self.db.fetch(
+            "SELECT * FROM welcome WHERE guild_id = $1", interaction.guild.id)
         if not check:
-            return await interaction.followup.send("Please set a welcome channel first!")
+            return await interaction.followup.send(
+                "Please set a welcome channel first!")
         await self.db.execute(
             "UPDATE welcome SET message = $1 WHERE guild_id = $2",
             message,
@@ -73,9 +79,12 @@ class WelcomeCmds(commands.Cog):
         )
         await interaction.followup.send(f"Set welcome message to: {message}")
 
-    @app_commands.command(name="welcome-test", description="Test the welcome message")
+    @app_commands.command(name="welcome-test",
+                          description="Test the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def test(self, interaction: discord.Interaction, user: discord.Member = None):
+    async def test(self,
+                   interaction: discord.Interaction,
+                   user: discord.Member = None):
         """
         Test the welcome message by simulating a new member join.
 
@@ -89,7 +98,8 @@ class WelcomeCmds(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        record = await self.db.fetch("SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
+        record = await self.db.fetch(
+            "SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
         if not record:
             return  # No welcome settings for this guild
         channel_id = record[0]['channel_id']
@@ -112,23 +122,28 @@ class WelcomeCmds(commands.Cog):
             "guild.member_count": member.guild.member_count,
         }
 
-        # Default embed message using all placeholders
+        # Default embed message using all placeholders and markdown
         default_embed = discord.Embed(
-            title=f"Welcome to {placeholders['guild.name']}!",
-            description=(
-                f"Hello {placeholders['user.mention']}! Welcome to our community.\n\n"
-                f"You are our {placeholders['guild.member_count']}th member!\n\n"
-                f"Your Details:\n"
-                f"Name: {placeholders['user.name']}\n"
-                f"ID: {placeholders['user.id']}\n\n"
-                "We hope you enjoy your stay!"
-            ),
-            color=discord.Color.green(),
+            title=f"Welcome to {placeholders['guild.name']}! 🎉",
+            description=
+            (f"**Hello {placeholders['user.mention']}!**\n\n"
+             f"Welcome to our vibrant community. We're thrilled to have you join us as our **{placeholders['guild.member_count']}th** member!\n\n"
+             "🔹 **Your Details:**\n"
+             f"• Name: `{placeholders['user.name']}`\n"
+             f"• ID: `{placeholders['user.id']}`\n\n"
+             "🔹 **Getting Started:**\n"
+             "• Check out our rules and guidelines\n"
+             "• Introduce yourself in the introductions channel\n"
+             "• Explore our various topic-specific channels\n\n"
+             "If you have any questions, feel free to ask our friendly community or moderators.\n\n"
+             "We hope you have a fantastic time here! 🌟"),
+            color=discord.Color.blue(),
         )
 
         # Format the message with placeholders if a custom message is set
         if message:
-            embed = discord.Embed(description=message.format(**placeholders), color=discord.Color.green())
+            embed = discord.Embed(description=message.format(**placeholders),
+                                  color=discord.Color.blue())
         else:
             embed = default_embed
 
@@ -141,7 +156,7 @@ class WelcomeCmds(commands.Cog):
             embed.set_thumbnail(url=member.display_avatar.url)
 
         try:
-            await channel.send(embed=embed, file=file)
+            await channel.send(content=member.mention, embed=embed, file=file)
         except discord.errors.Forbidden:
             pass  # Bot doesn't have permission to send messages in the channel
         except Exception:
