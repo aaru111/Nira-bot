@@ -9,7 +9,6 @@ from hentai import Hentai, Format, Utils
 import DiscordUtils
 from rule34 import Rule34
 import asyncio
-import time
 from discord.errors import NotFound, HTTPException
 
 rule34 = Rule34()
@@ -33,21 +32,30 @@ class NSFW(commands.Cog):
     def __init__(self, client: Bot) -> None:
         self.client: Bot = client
 
-    async def handle_rate_limit(self, response: discord.HTTPResponse) -> None:
+    async def handle_rate_limit(self, response: discord.Message) -> None:
         """Handles the rate-limit response from Discord."""
-        if response.status == 429:
-            retry_after: int = int(response.headers.get('Retry-After', 0))
+        if isinstance(response,
+                      discord.Message) and response.content.startswith(
+                          'You are being rate limited'):
+            retry_after = int(
+                response.content.split('Try again in ')[1].split(' seconds')
+                [0])
             print(f"Rate limited. Retrying after {retry_after} seconds.")
             await asyncio.sleep(retry_after)
 
     async def fetch_reddit_post(self, subreddit_name: str,
                                 ctx: Context) -> None:
         """Fetches a random top post from a subreddit and sends it as an embed."""
-        msg: discord.Message = await ctx.send("Getting your content...", delete_after=3)
+        msg: discord.Message = await ctx.send("Getting your content...",
+                                              delete_after=3)
         try:
-            subreddit: asyncpraw.models.Subreddit = await reddit.subreddit(subreddit_name)
-            top: asyncpraw.models.listing.generator.ListingGenerator = subreddit.top(limit=50)
-            all_subs: List[asyncpraw.models.Submission] = [submission async for submission in top]
+            subreddit: asyncpraw.models.Subreddit = await reddit.subreddit(
+                subreddit_name)
+            top: asyncpraw.models.listing.generator.ListingGenerator = subreddit.top(
+                limit=50)
+            all_subs: List[asyncpraw.models.Submission] = [
+                submission async for submission in top
+            ]
 
             if not all_subs:
                 await ctx.send(f"No posts found in r/{subreddit_name}.",
@@ -63,34 +71,30 @@ class NSFW(commands.Cog):
                 return
 
             embed: discord.Embed = discord.Embed(title=ransub.title,
-                                  color=ctx.author.color,
-                                  url=ransub.url)
+                                                 color=ctx.author.color,
+                                                 url=ransub.url)
             embed.set_image(url=ransub.url)
             embed.set_footer(
                 text=
                 f"Posted by {ransub.author} on Reddit. | ❤ {ransub.ups} | 💬 {ransub.num_comments}"
             )
 
-            # Safely delete the message and handle 404 error
             try:
-                pass
+                await msg.delete()
             except NotFound:
                 print("Message was already deleted.")
 
             await ctx.send(embed=embed)
         except HTTPException as e:
             if e.status == 429:
-                retry_after: Union[str, None] = e.response.headers.get('Retry-After')
+                retry_after: Union[str, None] = e.response.headers.get(
+                    'Retry-After')
                 print(f"Rate limited. Retrying after {retry_after} seconds.")
                 await asyncio.sleep(int(retry_after) if retry_after else 0)
             else:
                 await ctx.send(f"An error occurred: {e}", delete_after=3)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}", delete_after=3)
-            try:
-                pass
-            except NotFound:
-                pass
 
     async def check_nsfw_channel(self, ctx: Context) -> bool:
         """Checks if the command is invoked in an NSFW channel."""
@@ -105,24 +109,23 @@ class NSFW(commands.Cog):
     )
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.is_nsfw()
-    async def sauce(self,
-                    ctx: Context,
-                    id: Optional[str] = None) -> None:
+    async def sauce(self, ctx: Context, id: Optional[str] = None) -> None:
         await ctx.defer()
         if not await self.check_nsfw_channel(ctx):
             return
         await ctx.send("Getting your content...", delete_after=3)
         try:
-            doujin: Hentai = Utils.get_random_hentai() if id is None else Hentai(id)
+            doujin: Hentai = Utils.get_random_hentai(
+            ) if id is None else Hentai(id)
 
             if not Hentai.exists(doujin.id):
                 await ctx.send("Nothing found.", delete_after=3)
                 return
 
-            artist: str = doujin.artist[0].name if doujin.artist else "No artist"
+            artist: str = doujin.artist[
+                0].name if doujin.artist else "No artist"
             embeds: List[discord.Embed] = []
             for num, url in enumerate(doujin.image_urls, start=1):
-                # Update the title to show the sauce code next to the title
                 embed: discord.Embed = discord.Embed(
                     title=f'{doujin.title(Format.Pretty)} (Sauce: {doujin.id})',
                     color=ctx.author.color,
@@ -161,17 +164,15 @@ class NSFW(commands.Cog):
             await self.fetch_reddit_post('rule34', ctx)
         else:
             query = query.replace(" ", "_")
-            msg: discord.Message = await ctx.send("Grabbing your content...", delete_after=3)
+            msg: discord.Message = await ctx.send("Grabbing your content...",
+                                                  delete_after=3)
             try:
-                images: Union[List[Rule34.Image], None] = await rule34.getImages(tags=query)
+                images: Union[List[Rule34.Image],
+                              None] = await rule34.getImages(tags=query)
                 if images is None or not images:
                     await ctx.send(
                         f"No images were found on Rule34 with the tag `{query}`",
                         delete_after=3)
-                    try:
-                        pass
-                    except NotFound:
-                        pass
                     return
 
                 total: List[Rule34.Image] = list(images)
@@ -188,15 +189,11 @@ class NSFW(commands.Cog):
                     f"Posted by {finalimg.creator_ID} on Rule 34. | Score: {finalimg.score}"
                 )
 
-                try:
-                    pass
-                except NotFound:
-                    pass
-
                 await ctx.send(embed=embed)
             except HTTPException as e:
                 if e.status == 429:
-                    retry_after: Union[str, None] = e.response.headers.get('Retry-After')
+                    retry_after: Union[str, None] = e.response.headers.get(
+                        'Retry-After')
                     print(
                         f"Rate limited. Retrying after {retry_after} seconds.")
                     await asyncio.sleep(int(retry_after) if retry_after else 0)
@@ -204,10 +201,6 @@ class NSFW(commands.Cog):
                     await ctx.send(f"An error occurred: {e}", delete_after=3)
             except Exception as e:
                 await ctx.send(f"An error occurred: {e}", delete_after=3)
-                try:
-                    pass
-                except NotFound:
-                    pass
 
 
 async def setup(bot: Bot) -> None:

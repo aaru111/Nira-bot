@@ -2,12 +2,13 @@ import os
 from typing import List, Union, Any, Callable, Protocol, runtime_checkable
 import asyncio
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from aiohttp import ClientSession
 from webserver import keep_alive
 from abc import ABC, abstractmethod
 from glob import glob
 from loguru import logger
+import itertools
 
 
 @runtime_checkable
@@ -43,18 +44,31 @@ class BotBase(ABC):
 class Bot(commands.Bot, BotBase):
 
     def __init__(self, command_prefix: Callable, intents: discord.Intents,
-                 session: ClientSession, **kwargs: Any) -> None:
+                 **kwargs: Any) -> None:
         super().__init__(command_prefix=command_prefix,
                          intents=intents,
                          **kwargs)
-        self.session = session
+        self.session: ClientSession = None
         self.default_prefix = command_prefix if isinstance(
             command_prefix, str) else "."
+        self.status_list = itertools.cycle([
+            discord.Activity(type=discord.ActivityType.streaming,
+                             name="Anime",
+                             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            discord.Activity(type=discord.ActivityType.streaming,
+                             name="Cat Videos",
+                             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            discord.Activity(type=discord.ActivityType.streaming,
+                             name="Call Of Duty",
+                             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        ])
 
     async def setup_hook(self) -> None:
         """Sets up necessary extensions and cogs."""
+        self.session = ClientSession()
         await self.load_extension("jishaku")
         await self.load_all_cogs()
+        self.change_status.start()
 
     async def load_all_cogs(self) -> None:
         """Loads all cogs from the cogs directory and its subdirectories."""
@@ -95,6 +109,23 @@ class Bot(commands.Bot, BotBase):
         """Handles errors raised in event methods."""
         logger.exception(f'Unhandled exception in {event_method}')
 
+    @tasks.loop(seconds=30)
+    async def change_status(self):
+        """Change the bot's status every 15 seconds."""
+        await self.change_presence(activity=next(self.status_list))
+
+    @change_status.before_loop
+    async def before_change_status(self):
+        """Wait until the bot is ready before starting the status loop."""
+        await self.wait_until_ready()
+
+    async def close(self) -> None:
+        """Close the bot and its aiohttp client session."""
+        logger.info("Closing bot and cleaning up resources...")
+        if self.session:
+            await self.session.close()
+        await super().close()
+
 
 async def get_prefix(bot: Bot,
                      message: discord.Message) -> Union[List[str], str]:
@@ -115,21 +146,18 @@ async def main() -> None:
         logger.error("DISCORD_BOT_TOKEN environment variable not set.")
         return
 
-    async with ClientSession() as session:
-        bot = Bot(command_prefix=get_prefix,
-                  case_insensitive=True,
-                  intents=intents,
-                  session=session)
-        try:
-            await bot.start(token)
-        except discord.LoginFailure:
-            logger.error("Invalid bot token provided.")
-        except Exception:
-            logger.exception("An error occurred during bot startup")
-        finally:
-            if not bot.is_closed():
-                await bot.close()
-            await session.close()  # Ensure the session is closed properly
+    bot = Bot(command_prefix=get_prefix,
+              case_insensitive=True,
+              intents=intents)
+
+    try:
+        await bot.start(token)
+    except discord.LoginFailure:
+        logger.error("Invalid bot token provided.")
+    except Exception:
+        logger.exception("An error occurred during bot startup")
+    finally:
+        await bot.close()
 
 
 if __name__ == "__main__":
