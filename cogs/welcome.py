@@ -308,6 +308,8 @@ class WelcomeCmds(commands.Cog):
             if word.startswith('{') and word.endswith('}'))
         return used_placeholders.issubset(self.valid_placeholders)
 
+    @commands.Cog.listener()
+
     async def on_member_join(self, member: discord.Member):
         record = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
