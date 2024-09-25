@@ -18,8 +18,8 @@ T = TypeVar('T')
 
 class NSFW(commands.Cog):
 
-    def __init__(self, client: Bot) -> None:
-        self.client: Bot = client
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot: commands.Bot = bot
 
     async def handle_rate_limit(self, response: discord.Message) -> None:
         if isinstance(response,
