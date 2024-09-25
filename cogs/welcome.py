@@ -53,26 +53,44 @@ class PlaceholderButton(discord.ui.Button):
         embed = discord.Embed(title="Available Placeholders",
                               color=discord.Color.blue())
 
-        placeholders = list(self.cog.valid_placeholders)
+        # Define placeholders as a dictionary with descriptions
+        placeholders = {
+            "user": "Mentions the user",
+            "username": "Shows the username",
+            "userid": "Shows the user ID",
+            "server": "Shows the server name",
+            "membercount": "Shows the server's member count",
+            "joindate": "Shows the user's join date",
+            "servercreation": "Shows the server's creation date"
+        }
+
+        # Create a list of placeholders for easier iteration
+        placeholder_list = list(placeholders.keys())
 
         # First field with 5 placeholders
         embed.add_field(name="User Placeholders",
-                        value="\n".join(
-                            [f"`{{{p}}}`" for p in placeholders[:5]]),
+                        value="\n".join([
+                            f"`{{{p}}}`\n ╰> \"{placeholders[p]}\""
+                            for p in placeholder_list[:5]
+                        ]),
                         inline=True)
 
         # Second field with next 5 placeholders (or remaining if less than 5)
-        if len(placeholders) > 5:
+        if len(placeholder_list) > 5:
             embed.add_field(name="Server Placeholders",
-                            value="\n".join(
-                                [f"`{{{p}}}`" for p in placeholders[5:10]]),
+                            value="\n".join([
+                                f"`{{{p}}}`\n ╰> \"{placeholders[p]}\""
+                                for p in placeholder_list[5:10]
+                            ]),
                             inline=True)
 
         # Third field with remaining placeholders
-        if len(placeholders) > 10:
+        if len(placeholder_list) > 10:
             embed.add_field(name="Other Placeholders",
-                            value="\n".join(
-                                [f"`{{{p}}}`" for p in placeholders[10:]]),
+                            value="\n".join([
+                                f"`{{{p}}}`\n ╰> \"{placeholders[p]}\""
+                                for p in placeholder_list[10:]
+                            ]),
                             inline=True)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
