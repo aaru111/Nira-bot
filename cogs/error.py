@@ -60,22 +60,17 @@ class Errors(commands.Cog):
         await self.session.close()
 
     async def send_error_embed(self, ctx: commands.Context, title: str,
-                               description: str,
-                               button_color: discord.ButtonStyle) -> None:
+                               description: str) -> None:
         """Send an embed with error information to the context channel."""
-        button_color, embed_color = self.get_error_style(title)
+        _, embed_color = self.get_error_style(title)
         embed: discord.Embed = discord.Embed(
             title=title,
             description=f"```py\n{description}```",
             color=embed_color)
-        view: HelpView = HelpView()
-        view.add_item(HelpButton(ctx, title, description, button_color))
 
         try:
             message: discord.Message = await ctx.send(embed=embed,
-                                                      view=view,
                                                       ephemeral=True)
-            view.message = message
             await self.delete_message_with_retry(message)
         except discord.NotFound:
             logger.warning(
@@ -119,8 +114,7 @@ class Errors(commands.Cog):
                            error: commands.CommandError, description: str,
                            title: str) -> None:
         """Handle sending an error embed based on the error type."""
-        button_color, _ = self.get_error_style(title)
-        await self.send_error_embed(ctx, title, description, button_color)
+        await self.send_error_embed(ctx, title, description)
 
         if not isinstance(error,
                           (commands.CommandNotFound, commands.UserInputError,
@@ -356,102 +350,6 @@ class Errors(commands.Cog):
             logger.error(
                 f"Error in command {error.__cause__}: {simplified_tb}")
             return f"An error occurred: {simplified_tb}"
-
-
-class HelpView(discord.ui.View):
-
-    def __init__(self):
-        super().__init__(timeout=60)
-        self.message = None
-
-    async def on_timeout(self):
-        if self.message:
-            try:
-                await self.message.edit(view=None)
-            except discord.HTTPException:
-                pass
-
-
-class HelpButton(discord.ui.Button):
-
-    def __init__(self, ctx: commands.Context, title: str, description: str,
-                 button_color: discord.ButtonStyle) -> None:
-        super().__init__(label='Help', emoji='❓', style=button_color)
-        self.ctx: commands.Context = ctx
-        self.title: str = title
-        self.description: str = description
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        help_message: str = self.get_help_message(self.title)
-        embed: discord.Embed = discord.Embed(title=f'Help: {self.title}',
-                                             description=help_message,
-                                             color=DEFAULT_EMBED_COLOR)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    def get_help_message(self, error_title: str) -> str:
-        help_messages: dict[str, str] = {
-            "Missing Required Argument":
-            "You missed a required argument for the command. Please check the command syntax and try again.",
-            "Command Not Found":
-            "The command you entered was not found. Please check the command and try again.",
-            "Missing Permissions":
-            "You do not have the necessary permissions to execute this command. Please contact a server administrator if you believe this is an error.",
-            "Bot Missing Permissions":
-            "The bot does not have the necessary permissions to execute this command. Please ensure the bot has the correct permissions.",
-            "Command on Cooldown":
-            "This command is on cooldown. Please wait for the specified time and try again.",
-            "Not Owner":
-            "Only the bot owner can use this command.",
-            "No Private Message":
-            "This command cannot be used in private messages. Please use it in a server channel.",
-            "Bad Argument":
-            "There was an issue with the arguments you provided. Please check the command syntax and try again.",
-            "Check Failure":
-            "You do not meet the requirements to use this command.",
-            "Disabled Command":
-            "This command is currently disabled.",
-            "User Input Error":
-            "There was an error with the input you provided. Please check the command syntax and try again.",
-            "Invalid End of Quoted String":
-            "There was an issue with the quoted string in your command. Please check the command syntax and try again.",
-            "Expected Closing Quote":
-            "A closing quote was expected but not found. Please check the command syntax and try again.",
-            "Max Concurrency Reached":
-            "This command can only be used a limited number of times concurrently. Please wait and try again.",
-            "Unexpected Quote":
-            "An unexpected quote was found in your command. Please check the command syntax and try again.",
-            "Invalid Argument":
-            "An invalid argument was provided. Please check the command syntax and try again.",
-            "NSFW Channel Required":
-            "This command can only be used in NSFW channels.",
-            "Forbidden":
-            "The bot does not have permission to perform this action. Please check the bot's roles and permissions.",
-            "Not Found":
-            "The requested resource was not found. This could be due to a deleted message, channel, or user.",
-            "HTTP Exception":
-            "An HTTP exception occurred. This might be due to Discord API issues. Please try again later.",
-            "Member Not Found":
-            "The specified member could not be found. Please check the member name or ID and try again.",
-            "Role Not Found":
-            "The specified role could not be found. Please check the role name or ID and try again.",
-            "Channel Not Found":
-            "The specified channel could not be found. Please check the channel name or ID and try again.",
-            "Channel Not Readable":
-            "The bot doesn't have permission to read messages in the specified channel. Please check the channel permissions.",
-            "Bad Union Argument":
-            "There was an issue parsing one of the command arguments. Please check the command syntax and try again.",
-            "Argument Parsing Error":
-            "There was an error parsing the command arguments. Please check the command syntax and try again.",
-            "Flag Error":
-            "There was an issue with the command flags. Please check the command syntax and try again.",
-            "Unexpected Error":
-            "An unexpected error occurred. This is likely a bug and should be reported to the bot developers."
-        }
-
-        return help_messages.get(
-            error_title,
-            "This error cannot be fixed by the user. Please report the issue to the developers."
-        )
 
 
 async def setup(bot: commands.Bot) -> None:
