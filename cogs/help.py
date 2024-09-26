@@ -113,10 +113,10 @@ class HelpView(discord.ui.View):
             description=
             "Welcome to the help menu! Select a category from the dropdown to view commands.",
             color=self.cog.embed_color)
-        for category, commands in self.categories.items():
+        for category, commands_list in self.categories.items():
             if category not in ["Home", "HelpCog"]:
                 embed.add_field(name=f"**{category}**",
-                                value=f"`{len(commands)}` commands",
+                                value=f"`{len(commands_list)}` commands",
                                 inline=True)
         embed.set_footer(text=self.cog.embed_footer.format(
             prefix=self.get_prefix()))
@@ -166,8 +166,8 @@ class HelpView(discord.ui.View):
 
 class HelpCog(commands.Cog):
 
-    def __init__(self, bot: BotT):
-        self.bot: BotT = bot
+    def __init__(self, bot: commands.Bot):
+        self.bot: commands.Bot = bot
         self._original_help_command: Optional[
             commands.HelpCommand] = bot.help_command
         bot.help_command = None

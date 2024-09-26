@@ -226,13 +226,13 @@ class Errors(commands.Cog):
             case commands.MissingPermissions():
                 return (
                     "Missing Permissions",
-                    f'You need the following permissions to execute this command: "{',
-                    '.join(error.missing_permissions)}"')
+                    f"You need the following permissions to execute this command: {', '.join(error.missing_permissions)}"
+                )
             case commands.BotMissingPermissions():
                 return (
                     "Bot Missing Permissions",
-                    f'I need the following permissions to execute this command: "{',
-                    '.join(error.missing_permissions)}"')
+                    f"I need the following permissions to execute this command: {', '.join(error.missing_permissions)}"
+                )
             case commands.CommandOnCooldown():
                 return (
                     "Command on Cooldown",
