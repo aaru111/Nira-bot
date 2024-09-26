@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Literal, List, Optional, Union
+from typing import Literal, List, Optional
 
 
 class AutoMod(commands.Cog):
