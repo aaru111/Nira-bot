@@ -129,25 +129,15 @@ class Errors(commands.Cog):
 
     def get_error_style(self, title: str) -> Tuple[discord.ButtonStyle, int]:
         """Determine button color and embed color based on the error severity."""
-        if title in {
-                "Missing Required Argument", "Command Not Found",
-                "User Input Error", "Invalid End of Quoted String",
-                "Expected Closing Quote", "Unexpected Quote", "Bad Argument"
-        }:
-            return discord.ButtonStyle.success, 0x57F287  # Green
-        elif title in {
-                "Missing Permissions", "Bot Missing Permissions",
-                "Command on Cooldown", "No Private Message", "Check Failure",
-                "Disabled Command", "NSFW Channel Required"
-        }:
-            return discord.ButtonStyle.primary, 0x5865F2  # Blue
-        elif title in {
-                "Not Owner", "Forbidden", "Not Found", "HTTP Exception",
-                "Max Concurrency Reached", "Unexpected Error"
-        }:
-            return discord.ButtonStyle.danger, 0xED4245  # Red
-        else:
-            return discord.ButtonStyle.secondary, DEFAULT_EMBED_COLOR  # Default Grey
+        match title:
+            case "Missing Required Argument" | "Command Not Found" | "User Input Error" | "Invalid End of Quoted String" | "Expected Closing Quote" | "Unexpected Quote" | "Bad Argument":
+                return discord.ButtonStyle.success, 0x57F287  # Green
+            case "Missing Permissions" | "Bot Missing Permissions" | "Command on Cooldown" | "No Private Message" | "Check Failure" | "Disabled Command" | "NSFW Channel Required":
+                return discord.ButtonStyle.primary, 0x5865F2  # Blue
+            case "Not Owner" | "Forbidden" | "Not Found" | "HTTP Exception" | "Max Concurrency Reached" | "Unexpected Error":
+                return discord.ButtonStyle.danger, 0xED4245  # Red
+            case _:
+                return discord.ButtonStyle.secondary, DEFAULT_EMBED_COLOR  # Default Grey
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context,
@@ -224,114 +214,118 @@ class Errors(commands.Cog):
             self, ctx: commands.Context, error: commands.CommandError,
             command_name: str, command_signature: str) -> Tuple[str, str]:
         """Get the title and description for the error embed based on the error type."""
-        error_handlers = {
-            commands.MissingRequiredArgument:
-            lambda e:
-            ("Missing Required Argument",
-             f"Argument: '{e.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
-             ),
-            commands.CommandNotFound:
-            lambda e:
-            ("Command Not Found", self.get_command_not_found_description(ctx)),
-            commands.MissingPermissions:
-            lambda e:
-            ("Missing Permissions",
-             f"You need the following permissions to execute this command: {', '.join(e.missing_permissions)}"
-             ),
-            commands.BotMissingPermissions:
-            lambda e:
-            ("Bot Missing Permissions",
-             f"I need the following permissions to execute this command: {', '.join(e.missing_permissions)}"
-             ),
-            commands.CommandOnCooldown:
-            lambda e:
-            ("Command on Cooldown",
-             f"This command is on cooldown. Try again after {format_cooldown(e.retry_after)}."
-             ),
-            commands.NotOwner:
-            lambda e:
-            ("Not Owner", "Only the bot owner can use this command."),
-            commands.NoPrivateMessage:
-            lambda e:
-            ("No Private Message",
-             "This command cannot be used in private messages. Please use it in a server channel."
-             ),
-            commands.BadArgument:
-            lambda e: ("Bad Argument", f"Invalid argument provided: {str(e)}"),
-            commands.CheckFailure:
-            lambda e: ("Check Failure",
-                       "You do not have permission to execute this command."),
-            commands.DisabledCommand:
-            lambda e:
-            ("Disabled Command", "This command is currently disabled."),
-            commands.UserInputError:
-            lambda e: ("User Input Error",
-                       f"There was an error processing your input: {str(e)}"),
-            commands.InvalidEndOfQuotedStringError:
-            lambda e:
-            ("Invalid End of Quoted String",
-             f"There was an issue with quotes in your command: {str(e)}"),
-            commands.ExpectedClosingQuoteError:
-            lambda e: ("Expected Closing Quote",
-                       f"A closing quote was expected: {str(e)}"),
-            commands.MaxConcurrencyReached:
-            lambda e:
-            ("Max Concurrency Reached",
-             f"This command can only be used {e.number} times concurrently. Please wait and try again."
-             ),
-            commands.UnexpectedQuoteError:
-            lambda e:
-            ("Unexpected Quote", f"An unexpected quote was found: {str(e)}"),
-            discord.Forbidden:
-            lambda e:
-            ("Forbidden", f"I do not have permission to do that: {str(e)}"),
-            discord.NotFound:
-            lambda e:
-            ("Not Found", f"The requested resource was not found: {str(e)}"),
-            discord.HTTPException:
-            lambda e:
-            ("HTTP Exception", f"An HTTP exception occurred: {str(e)}"),
-            CommandInvokeError:
-            lambda e:
-            ("Command Error", self.get_command_invoke_error_description(e)),
-            commands.NSFWChannelRequired:
-            lambda e: ("NSFW Channel Required",
-                       "This command can only be used in NSFW channels."),
-            commands.MemberNotFound:
-            lambda e: ("Member Not Found",
-                       f"Could not find the specified member: {e.argument}"),
-            commands.RoleNotFound:
-            lambda e: ("Role Not Found",
-                       f"Could not find the specified role: {e.argument}"),
-            commands.ChannelNotFound:
-            lambda e: ("Channel Not Found",
-                       f"Could not find the specified channel: {e.argument}"),
-            commands.ChannelNotReadable:
-            lambda e:
-            ("Channel Not Readable",
-             "I don't have permission to read messages in the specified channel."
-             ),
-            commands.BadUnionArgument:
-            lambda e: ("Bad Argument",
-                       f"Could not parse argument: {e.param.name}. {str(e)}"),
-            commands.ArgumentParsingError:
-            lambda e: ("Argument Parsing Error",
-                       f"There was an error parsing your command: {str(e)}"),
-            commands.FlagError:
-            lambda e:
-            ("Flag Error", f"There was an issue with command flags: {str(e)}"),
-        }
-
-        error_type = type(error)
-        if error_type in error_handlers:
-            return error_handlers[error_type](error)
-        else:
-            tb_str = traceback.format_exception(type(error), error,
-                                                error.__traceback__)
-            simplified_tb = ''.join(tb_str[-3:])
-            logger.error(
-                f"Unhandled error in command {command_name}: {simplified_tb}")
-            return "Unexpected Error", f"An unexpected error occurred: {simplified_tb}"
+        match error:
+            case commands.MissingRequiredArgument():
+                return (
+                    "Missing Required Argument",
+                    f"Argument: '{error.param.name}'\nUsage: {ctx.prefix}{command_name} {command_signature}"
+                )
+            case commands.CommandNotFound():
+                return ("Command Not Found",
+                        self.get_command_not_found_description(ctx))
+            case commands.MissingPermissions():
+                return (
+                    "Missing Permissions",
+                    f'You need the following permissions to execute this command: "{',
+                    '.join(error.missing_permissions)}"')
+            case commands.BotMissingPermissions():
+                return (
+                    "Bot Missing Permissions",
+                    f'I need the following permissions to execute this command: "{',
+                    '.join(error.missing_permissions)}"')
+            case commands.CommandOnCooldown():
+                return (
+                    "Command on Cooldown",
+                    f"This command is on cooldown. Try again after {format_cooldown(error.retry_after)}."
+                )
+            case commands.NotOwner():
+                return ("Not Owner",
+                        "Only the bot owner can use this command.")
+            case commands.NoPrivateMessage():
+                return (
+                    "No Private Message",
+                    "This command cannot be used in private messages. Please use it in a server channel."
+                )
+            case commands.BadArgument():
+                return ("Bad Argument",
+                        f"Invalid argument provided: {str(error)}")
+            case commands.CheckFailure():
+                return ("Check Failure",
+                        "You do not have permission to execute this command.")
+            case commands.DisabledCommand():
+                return ("Disabled Command",
+                        "This command is currently disabled.")
+            case commands.UserInputError():
+                return (
+                    "User Input Error",
+                    f"There was an error processing your input: {str(error)}")
+            case commands.InvalidEndOfQuotedStringError():
+                return (
+                    "Invalid End of Quoted String",
+                    f"There was an issue with quotes in your command: {str(error)}"
+                )
+            case commands.ExpectedClosingQuoteError():
+                return ("Expected Closing Quote",
+                        f"A closing quote was expected: {str(error)}")
+            case commands.MaxConcurrencyReached():
+                return (
+                    "Max Concurrency Reached",
+                    f"This command can only be used {error.number} times concurrently. Please wait and try again."
+                )
+            case commands.UnexpectedQuoteError():
+                return ("Unexpected Quote",
+                        f"An unexpected quote was found: {str(error)}")
+            case discord.Forbidden():
+                return ("Forbidden",
+                        f"I do not have permission to do that: {str(error)}")
+            case discord.NotFound():
+                return ("Not Found",
+                        f"The requested resource was not found: {str(error)}")
+            case discord.HTTPException():
+                return ("HTTP Exception",
+                        f"An HTTP exception occurred: {str(error)}")
+            case CommandInvokeError():
+                return ("Command Error",
+                        self.get_command_invoke_error_description(error))
+            case commands.NSFWChannelRequired():
+                return ("NSFW Channel Required",
+                        "This command can only be used in NSFW channels.")
+            case commands.MemberNotFound():
+                return (
+                    "Member Not Found",
+                    f"Could not find the specified member: {error.argument}")
+            case commands.RoleNotFound():
+                return ("Role Not Found",
+                        f"Could not find the specified role: {error.argument}")
+            case commands.ChannelNotFound():
+                return (
+                    "Channel Not Found",
+                    f"Could not find the specified channel: {error.argument}")
+            case commands.ChannelNotReadable():
+                return (
+                    "Channel Not Readable",
+                    "I don't have permission to read messages in the specified channel."
+                )
+            case commands.BadUnionArgument():
+                return (
+                    "Bad Argument",
+                    f"Could not parse argument: {error.param.name}. {str(error)}"
+                )
+            case commands.ArgumentParsingError():
+                return (
+                    "Argument Parsing Error",
+                    f"There was an error parsing your command: {str(error)}")
+            case commands.FlagError():
+                return ("Flag Error",
+                        f"There was an issue with command flags: {str(error)}")
+            case _:
+                tb_str = traceback.format_exception(type(error), error,
+                                                    error.__traceback__)
+                simplified_tb = ''.join(tb_str[-3:])
+                logger.error(
+                    f"Unhandled error in command {command_name}: {simplified_tb}"
+                )
+                return "Unexpected Error", f"An unexpected error occurred: {simplified_tb}"
 
     def get_command_not_found_description(self, ctx: commands.Context) -> str:
         attempted_command = ctx.message.content.split()[0][len(ctx.prefix):]
