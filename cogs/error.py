@@ -7,7 +7,6 @@ from difflib import get_close_matches
 from typing import List, Tuple
 from loguru import logger
 import sys
-import ipdb
 from discord.ext.commands import CommandInvokeError
 
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
@@ -27,10 +26,8 @@ DEBUG_MODE = False
 
 
 def custom_excepthook(type, value, tb):
-    """Custom exception hook to trigger ipdb for debugging."""
+    """Custom exception hook for debugging."""
     traceback.print_exception(type, value, tb)
-    if DEBUG_MODE:
-        ipdb.post_mortem(tb)
 
 
 sys.excepthook = custom_excepthook
@@ -123,7 +120,12 @@ class Errors(commands.Cog):
                 f"Error in command {ctx.command}: {error}\n{description}")
 
         if DEBUG_MODE:
-            ipdb.set_trace()
+            logger.debug(f"Debug information for error in {ctx.command}:")
+            logger.debug(f"Error type: {type(error)}")
+            logger.debug(f"Error message: {str(error)}")
+            logger.debug(f"Command: {ctx.command}")
+            logger.debug(f"Arguments: {ctx.args}")
+            logger.debug(f"Keyword arguments: {ctx.kwargs}")
 
     def get_error_style(self, title: str) -> Tuple[discord.ButtonStyle, int]:
         """Determine button color and embed color based on the error severity."""
@@ -179,7 +181,12 @@ class Errors(commands.Cog):
         await self.handle_error(ctx, error, description, title)
 
         if DEBUG_MODE:
-            ipdb.set_trace()
+            logger.debug(f"Debug information for error in {ctx.command}:")
+            logger.debug(f"Error type: {type(error)}")
+            logger.debug(f"Error message: {str(error)}")
+            logger.debug(f"Command: {ctx.command}")
+            logger.debug(f"Arguments: {ctx.args}")
+            logger.debug(f"Keyword arguments: {ctx.kwargs}")
 
     async def handle_rate_limit(self, ctx: commands.Context,
                                 error: discord.HTTPException) -> None:
@@ -353,5 +360,4 @@ class Errors(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Load the Errors cog."""
     await bot.add_cog(Errors(bot))
