@@ -70,55 +70,72 @@ class AutoMod(commands.Cog):
                 f"Failed to create AutoMod rule: {e}")
 
     @automod_group.command(name="view_rule")
-    @app_commands.describe(rule_id="The ID of the AutoMod rule to view")
+    @app_commands.describe(
+        rule_id="The ID of the AutoMod rule to view (optional)")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def view_automod_rule(self, interaction: discord.Interaction,
-                                rule_id: int) -> None:
-        """View details of an existing AutoMod rule"""
-        try:
-            rule: discord.AutoModRule = await interaction.guild.fetch_automod_rule(
-                rule_id)
-            embed: discord.Embed = discord.Embed(
-                title=f"AutoMod Rule: {rule.name}", color=discord.Color.blue())
-            embed.add_field(name="Rule ID", value=rule.id, inline=False)
-            embed.add_field(name="Creator", value=rule.creator, inline=False)
-            embed.add_field(name="Event Type",
-                            value=rule.event_type,
-                            inline=False)
-            embed.add_field(name="Trigger Type",
-                            value=rule.trigger.type,
-                            inline=False)
-            if rule.trigger.keyword_filter:
-                embed.add_field(name="Keywords",
-                                value=", ".join(rule.trigger.keyword_filter),
-                                inline=False)
-            embed.add_field(name="Actions",
-                            value="\n".join(
-                                [str(action) for action in rule.actions]),
-                            inline=False)
-            await interaction.response.send_message(embed=embed)
-        except discord.NotFound:
-            await interaction.response.send_message("AutoMod rule not found.")
-        except discord.HTTPException as e:
-            await interaction.response.send_message(
-                f"Failed to fetch AutoMod rule: {e}")
+    async def view_automod_rule(self,
+                                interaction: discord.Interaction,
+                                rule_id: Optional[str] = None) -> None:
+        """View details of an existing AutoMod rule or list all rules if no ID is provided"""
+        if rule_id is None:
+            try:
+                rules: List[
+                    discord.
+                    AutoModRule] = await interaction.guild.fetch_automod_rules(
+                    )
+                if not rules:
+                    await interaction.response.send_message(
+                        "No AutoMod rules configured for this server.")
+                    return
 
-    @automod_group.command(name="delete_rule")
-    @app_commands.describe(rule_id="The ID of the AutoMod rule to delete")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def delete_automod_rule(self, interaction: discord.Interaction,
-                                  rule_id: int) -> None:
-        """Delete an existing AutoMod rule"""
-        try:
-            await interaction.guild.delete_automod_rule(rule_id)
-            await interaction.response.send_message(
-                f"AutoMod rule with ID {rule_id} has been deleted successfully."
-            )
-        except discord.NotFound:
-            await interaction.response.send_message("AutoMod rule not found.")
-        except discord.HTTPException as e:
-            await interaction.response.send_message(
-                f"Failed to delete AutoMod rule: {e}")
+                embed: discord.Embed = discord.Embed(
+                    title="AutoMod Rules", color=discord.Color.blue())
+                for rule in rules:
+                    embed.add_field(name=f"Rule: {rule.name}",
+                                    value=f"ID: {rule.id}",
+                                    inline=False)
+
+                await interaction.response.send_message(embed=embed)
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"Failed to fetch AutoMod rules: {e}")
+        else:
+            try:
+                rule_id_int = int(rule_id)
+                rule: discord.AutoModRule = await interaction.guild.fetch_automod_rule(
+                    rule_id_int)
+                embed: discord.Embed = discord.Embed(
+                    title=f"AutoMod Rule: {rule.name}",
+                    color=discord.Color.blue())
+                embed.add_field(name="Rule ID", value=rule.id, inline=False)
+                embed.add_field(name="Creator",
+                                value=rule.creator,
+                                inline=False)
+                embed.add_field(name="Event Type",
+                                value=rule.event_type,
+                                inline=False)
+                embed.add_field(name="Trigger Type",
+                                value=rule.trigger.type,
+                                inline=False)
+                if rule.trigger.keyword_filter:
+                    embed.add_field(name="Keywords",
+                                    value=", ".join(
+                                        rule.trigger.keyword_filter),
+                                    inline=False)
+                embed.add_field(name="Actions",
+                                value="\n".join(
+                                    [str(action) for action in rule.actions]),
+                                inline=False)
+                await interaction.response.send_message(embed=embed)
+            except ValueError:
+                await interaction.response.send_message(
+                    "Invalid rule ID. Please provide a valid integer.")
+            except discord.NotFound:
+                await interaction.response.send_message(
+                    "AutoMod rule not found.")
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"Failed to fetch AutoMod rule: {e}")
 
 
 async def setup(bot: commands.Bot) -> None:
