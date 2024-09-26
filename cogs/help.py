@@ -5,7 +5,6 @@ from typing import List, Optional, Union, Any, Dict, TypeVar
 import inspect
 import math
 import asyncio
-from loguru import logger
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR = discord.Color.brand_red()
