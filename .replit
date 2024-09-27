@@ -1,5 +1,5 @@
 modules = ["python-3.12"]
-run = "python main.py"
+run = "python3 main.py"
 
 [nix]
 channel = "stable-24_05"
@@ -13,4 +13,4 @@ pageEnabled = false
 buttonEnabled = false
 
 [deployment]
-run = ["sh", "-c", "python main.py"]
+run = ["sh", "-c", "python3 main.py"]

@@ -15,6 +15,21 @@ DEFAULT_NO_CATEGORY_NAME = "No Category"
 COMMANDS_PER_PAGE = 6
 VIEW_TIMEOUT = 40
 
+# New global variables for category emojis
+CATEGORY_EMOJIS = {
+    "Home": "🏠",
+    "Moderation": "🛡️",
+    "Fun": "🎉",
+    "Utilities": "<a:utility:1289226179546447973>",
+    "Jishaku": "<a:coding:1289226502877216858>",
+    "Sync": "<a:loading:1289230952215871509>",
+    "Games": "<a:controller:1289226768779055137>",
+    "NSFW": "🔞",
+    "Leveling": "<a:up_level_up:1289225386244182080>",
+    "Manga": "<a:Book:1289231286681997333>"
+    "No Category": "<a:question_mark:1289230595729129513>"
+}
+
 CommandType = Union[commands.Command[Any, Any, Any], app_commands.Command]
 ContextType = Union[commands.Context[Any], discord.Interaction]
 BotT = TypeVar('BotT', bound=commands.Bot)
@@ -114,7 +129,8 @@ class HelpView(discord.ui.View):
             color=self.cog.embed_color)
         for category, commands_list in self.categories.items():
             if category not in ["Home", "HelpCog"]:
-                embed.add_field(name=f"**{category}**",
+                emoji = CATEGORY_EMOJIS.get(category, "❓")
+                embed.add_field(name=f"**{emoji} {category}**",
                                 value=f"`{len(commands_list)}` commands",
                                 inline=True)
         embed.set_footer(text=self.cog.embed_footer.format(
@@ -127,7 +143,8 @@ class HelpView(discord.ui.View):
         end_idx = start_idx + COMMANDS_PER_PAGE
         page_commands = commands[start_idx:end_idx]
 
-        embed = discord.Embed(title=f"**{category} Commands**",
+        emoji = CATEGORY_EMOJIS.get(category, "❓")
+        embed = discord.Embed(title=f"**{emoji} {category} Commands**",
                               color=self.cog.embed_color)
 
         for command in page_commands:
@@ -365,10 +382,11 @@ class HelpCog(commands.Cog):
         view.category_select.options = [
             discord.SelectOption(label="Home",
                                  description="Return to the main help menu",
-                                 emoji="🏠")
+                                 emoji=CATEGORY_EMOJIS["Home"])
         ] + [
             discord.SelectOption(label=category,
-                                 description=f"{len(commands)} commands")
+                                 description=f"{len(commands)} commands",
+                                 emoji=CATEGORY_EMOJIS.get(category, "❓"))
             for category, commands in cog_commands.items()
             if category != "Home"
         ]
