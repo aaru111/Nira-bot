@@ -23,6 +23,24 @@ class WelcomeModal(discord.ui.Modal, title="Set Welcome Message"):
         await self.cog.set_message_callback(interaction, str(self.message))
 
 
+class DefaultWelcomeModal(discord.ui.Modal,
+                          title="Edit Default Welcome Message"):
+    message = discord.ui.TextInput(label="Default Welcome Message",
+                                   style=discord.TextStyle.long,
+                                   required=True)
+
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+        self.message.default = self.cog.default_welcome_message
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        await self.cog.set_message_callback(interaction,
+                                            str(self.message),
+                                            is_default=True)
+
+
 class TestButton(discord.ui.Button):
 
     def __init__(self, cog):
@@ -53,7 +71,6 @@ class PlaceholderButton(discord.ui.Button):
         embed = discord.Embed(title="Available Placeholders",
                               color=discord.Color.blue())
 
-        # Define placeholders as a dictionary with descriptions
         placeholders = {
             "user": "Mentions the user",
             "username": "Shows the username",
@@ -64,10 +81,8 @@ class PlaceholderButton(discord.ui.Button):
             "servercreation": "Shows the server's creation date"
         }
 
-        # Create a list of placeholders for easier iteration
         placeholder_list = list(placeholders.keys())
 
-        # First field with 5 placeholders
         embed.add_field(name="User Placeholders",
                         value="\n".join([
                             f"`{{{p}}}`\n ╰> \"{placeholders[p]}\""
@@ -75,7 +90,6 @@ class PlaceholderButton(discord.ui.Button):
                         ]),
                         inline=True)
 
-        # Second field with next 5 placeholders (or remaining if less than 5)
         if len(placeholder_list) > 5:
             embed.add_field(name="Server Placeholders",
                             value="\n".join([
@@ -84,7 +98,6 @@ class PlaceholderButton(discord.ui.Button):
                             ]),
                             inline=True)
 
-        # Third field with remaining placeholders
         if len(placeholder_list) > 10:
             embed.add_field(name="Other Placeholders",
                             value="\n".join([
@@ -105,6 +118,20 @@ class WelcomeCmds(commands.Cog):
             "user", "username", "userid", "server", "membercount", "joindate",
             "servercreation"
         }
+        self.default_welcome_message = (
+            "**Hello {user}!**\n\n"
+            "Welcome to our vibrant community. We're thrilled to have you join us as our **{membercount}th** member!\n\n"
+            "🔹 **Your Details:**\n"
+            "• Name: `{username}`\n"
+            "• ID: `{userid}`\n"
+            "• Joined on: `{joindate}`\n"
+            "• Server created on: `{servercreation}`\n\n"
+            "🔹 **Getting Started:**\n"
+            "• Check out our rules and guidelines\n"
+            "• Introduce yourself in the introductions channel\n"
+            "• Explore our various topic-specific channels\n\n"
+            "If you have any questions, feel free to ask our friendly community or moderators.\n\n"
+            "We hope you have a fantastic time here! 🌟")
 
     async def cog_load(self):
         await self.db.initialize()
@@ -125,7 +152,6 @@ class WelcomeCmds(commands.Cog):
                 channel_enabled BOOLEAN DEFAULT TRUE
             )
             """)
-        # Add columns if they don't exist
         columns = [("is_enabled", "BOOLEAN DEFAULT TRUE"),
                    ("embed_color", "INTEGER DEFAULT 3447003"),
                    ("dm_enabled", "BOOLEAN DEFAULT FALSE"),
@@ -158,7 +184,13 @@ class WelcomeCmds(commands.Cog):
     @app_commands.command(name="welcome-message",
                           description="Set the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def set_message(self, interaction: discord.Interaction):
+    @app_commands.choices(message_type=[
+        app_commands.Choice(name="Edit Default Message", value="default")
+        app_commands.Choice(name="Custom", value="custom"),
+        
+    ])
+    async def set_message(self, interaction: discord.Interaction,
+                          message_type: app_commands.Choice[str]):
         check = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", interaction.guild.id)
         if not check:
@@ -166,13 +198,18 @@ class WelcomeCmds(commands.Cog):
                 "Please set a welcome channel first!", ephemeral=True)
             return
 
-        modal = WelcomeModal(self)
-        await interaction.response.send_modal(modal)
+        if message_type.value == "custom":
+            modal = WelcomeModal(self)
+            await interaction.response.send_modal(modal)
+        else:  # default
+            modal = DefaultWelcomeModal(self)
+            await interaction.response.send_modal(modal)
 
-    async def set_message_callback(self, interaction: discord.Interaction,
-                                   message: str):
+    async def set_message_callback(self,
+                                   interaction: discord.Interaction,
+                                   message: str,
+                                   is_default: bool = False):
         if not message.strip():
-            # If the message is empty or just whitespace, set it to NULL (default message)
             await self.db.execute(
                 "UPDATE welcome SET message = NULL WHERE guild_id = $1",
                 interaction.guild.id,
@@ -187,13 +224,18 @@ class WelcomeCmds(commands.Cog):
                 ephemeral=True)
             return
 
-        await self.db.execute(
-            "UPDATE welcome SET message = $1 WHERE guild_id = $2",
-            message,
-            interaction.guild.id,
-        )
-        await interaction.followup.send(f"Set welcome message to: {message}",
-                                        ephemeral=True)
+        if is_default:
+            self.default_welcome_message = message
+            await interaction.followup.send(
+                f"Updated default welcome message.", ephemeral=True)
+        else:
+            await self.db.execute(
+                "UPDATE welcome SET message = $1 WHERE guild_id = $2",
+                message,
+                interaction.guild.id,
+            )
+            await interaction.followup.send(
+                f"Set custom welcome message to: {message}", ephemeral=True)
 
     @app_commands.command(name="welcome-toggle",
                           description="Toggle welcome message settings")
@@ -309,7 +351,6 @@ class WelcomeCmds(commands.Cog):
         return used_placeholders.issubset(self.valid_placeholders)
 
     @commands.Cog.listener()
-
     async def on_member_join(self, member: discord.Member):
         record = await self.db.fetch(
             "SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
@@ -342,20 +383,7 @@ class WelcomeCmds(commands.Cog):
 
         default_embed = discord.Embed(
             title=f"Welcome to {placeholders['server']}! 🎉",
-            description=
-            (f"**Hello {placeholders['user']}!**\n\n"
-             f"Welcome to our vibrant community. We're thrilled to have you join us as our **{placeholders['membercount']}th** member!\n\n"
-             "🔹 **Your Details:**\n"
-             f"• Name: `{placeholders['username']}`\n"
-             f"• ID: `{placeholders['userid']}`\n"
-             f"• Joined on: `{placeholders['joindate']}`\n"
-             f"• Server created on: `{placeholders['servercreation']}`\n\n"
-             "🔹 **Getting Started:**\n"
-             "• Check out our rules and guidelines\n"
-             "• Introduce yourself in the introductions channel\n"
-             "• Explore our various topic-specific channels\n\n"
-             "If you have any questions, feel free to ask our friendly community or moderators.\n\n"
-             "We hope you have a fantastic time here! 🌟"),
+            description=self.default_welcome_message.format(**placeholders),
             color=embed_color,
         )
 
