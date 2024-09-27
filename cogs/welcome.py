@@ -185,9 +185,8 @@ class WelcomeCmds(commands.Cog):
                           description="Set the welcome message")
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.choices(message_type=[
-        app_commands.Choice(name="Edit Default Message", value="default")
-        app_commands.Choice(name="Custom", value="custom"),
-        
+        app_commands.Choice(name="Edit Default Message", value="default"),
+        app_commands.Choice(name="Custom", value="custom")    
     ])
     async def set_message(self, interaction: discord.Interaction,
                           message_type: app_commands.Choice[str]):
