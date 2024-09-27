@@ -133,7 +133,7 @@ class HelpView(discord.ui.View):
         for command in page_commands:
             cmd_name = self.get_command_name(command)
             embed.add_field(
-                name=f"<a:arrow:1289066918560665653> {cmd_name}",
+                name=f"<a:arrow:1289063843129065532> {cmd_name}",
                 value=
                 f"-# ╰> {command.description or 'No description available.'}",
                 inline=False)
@@ -311,7 +311,7 @@ class HelpCog(commands.Cog):
                 await self.send_owner_only_message(ctx)
                 return
             embed.title = f"**Help for /{command.qualified_name}**"
-            embed.description = f"<a:arrow:1289066918560665653> {command.qualified_name}\n-# ╰> {command.description or 'No description available.'}"
+            embed.description = f"<a:arrow:1289063843129065532> {command.qualified_name}\n-# ╰> {command.description or 'No description available.'}"
             flag_converter = getattr(command, 'flags', None)
             usage = self.generate_usage(command, flag_converter, prefix)
             embed.add_field(name="**Usage**",
