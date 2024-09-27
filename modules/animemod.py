@@ -616,7 +616,7 @@ class AniListModule:
                                 name1, name2, value1, value2, color1, color2),
                             inline=True)
 
-    # Bullet point animated emojis for comparison
+    # Bullet point animated emojis
     def get_color_emoji(self, profile_color: str) -> str:
         color_emoji_map = {
             'blue': "<a:Blue_Dot:1289188840547811328>",
@@ -760,6 +760,8 @@ class AniListModule:
         else:
             embed_color = 0x02A9FF
 
+        emoji = self.get_color_emoji(profile_color)
+
         embed = discord.Embed(title=f"AniList Profile for {stats['name']}",
                               url=stats['siteUrl'],
                               color=embed_color)
@@ -784,23 +786,24 @@ class AniListModule:
         anime_stats: Dict[str, Any] = stats['statistics']['anime']
         manga_stats: Dict[str, Any] = stats['statistics']['manga']
 
-        anime_value = (f"Count: {anime_stats['count']}\n"
-                       f"Episodes: {anime_stats['episodesWatched']}\n"
-                       f"Time: {anime_stats['minutesWatched'] // 1440} days")
+        anime_value = (
+            f"-# {emoji} Count: {anime_stats['count']}\n"
+            f"-# {emoji} Episodes: {anime_stats['episodesWatched']}\n"
+            f"-# {emoji} Time: {anime_stats['minutesWatched'] // 1440} days")
 
         anime_score = anime_stats['meanScore']
         anime_score_bar = '█' * int(
             anime_score / 10) + '░' * (10 - int(anime_score / 10))
-        anime_score_value = f"**{anime_score:.2f} // 100**\n{anime_score_bar}"
+        anime_score_value = f"-# {emoji} **{anime_score:.2f} // 100**\n-# ╰> {anime_score_bar}"
 
-        manga_value = (f"Count: {manga_stats['count']}\n"
-                       f"Chapters: {manga_stats['chaptersRead']}\n"
-                       f"Volumes: {manga_stats['volumesRead']}")
+        manga_value = (f"-# {emoji} Count: {manga_stats['count']}\n"
+                       f"-# {emoji} Chapters: {manga_stats['chaptersRead']}\n"
+                       f"-# {emoji} Volumes: {manga_stats['volumesRead']}")
 
         manga_score = manga_stats['meanScore']
         manga_score_bar = '█' * int(
             manga_score / 10) + '░' * (10 - int(manga_score / 10))
-        manga_score_value = f"**{manga_score:.2f} // 100**\n{manga_score_bar}"
+        manga_score_value = f"-# {emoji} **{manga_score:.2f} // 100**\n-# ╰> {manga_score_bar}"
 
         embed.add_field(name="Anime Stats", value=anime_value, inline=True)
         embed.add_field(name="Anime Score",
@@ -819,15 +822,17 @@ class AniListModule:
         fav_manga = stats['favourites']['manga']['nodes'][:5]
 
         if fav_anime:
-            fav_anime_list = "\n".join(
-                [f"• {anime['title']['romaji']}" for anime in fav_anime])
+            fav_anime_list = "\n".join([
+                f"-# {emoji} {anime['title']['romaji']}" for anime in fav_anime
+            ])
             embed.add_field(name="Favorite Anime",
                             value=fav_anime_list,
                             inline=True)
 
         if fav_manga:
-            fav_manga_list = "\n".join(
-                [f"• {manga['title']['romaji']}" for manga in fav_manga])
+            fav_manga_list = "\n".join([
+                f"-# {emoji} {manga['title']['romaji']}" for manga in fav_manga
+            ])
             embed.add_field(name="Favorite Manga",
                             value=fav_manga_list,
                             inline=True)
