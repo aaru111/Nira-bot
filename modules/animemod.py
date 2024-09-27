@@ -549,6 +549,8 @@ class AniListModule:
             "Anime",
             stats1['name'],
             stats2['name'],
+            color1,
+            color2,
             count=(anime_stats1['count'], anime_stats2['count']),
             episodes=(anime_stats1['episodesWatched'],
                       anime_stats2['episodesWatched']),
@@ -561,6 +563,8 @@ class AniListModule:
             "Manga",
             stats1['name'],
             stats2['name'],
+            color1,
+            color2,
             count=(manga_stats1['count'], manga_stats2['count']),
             chapters=(manga_stats1['chaptersRead'],
                       manga_stats2['chaptersRead']),
@@ -603,22 +607,38 @@ class AniListModule:
         return embed, graph_file
 
     def add_comparison_fields(self, embed: discord.Embed, category: str,
-                              name1: str, name2: str, **kwargs):
+                              name1: str, name2: str, color1: str, color2: str,
+                              **kwargs):
         for key, (value1, value2) in kwargs.items():
             key = key.replace('_', ' ').title()
             embed.add_field(name=f"{category} {key}",
                             value=self.format_comparison(
-                                name1, name2, value1, value2),
+                                name1, name2, value1, value2, color1, color2),
                             inline=True)
 
-    def format_comparison(self, name1: str, name2: str, value1: Union[int,
-                                                                      float],
-                          value2: Union[int, float]) -> str:
-        emoji = "<a:purple_Dot:1289184290298658879>" # purple dot (bullet point) emoji)
+    def get_color_emoji(self, profile_color: str) -> str:
+        color_emoji_map = {
+            'blue': "<a:Blue_Dot:1289188840547811328>",
+            'purple': "<a:purple_Dot:1289184290298658879>",
+            'pink': "<a:dot_pink:1289188856494690334>",
+            'orange': "<a:dot_orange:1289188848806658088>",
+            'red': "<a:dot_red:1289188864795344959>",
+            'green': "<a:green_Dot:1289184290298658879>",
+            'gray': "<a:gray_Dot:1289184290298658879>"
+        }
+        return color_emoji_map.get(profile_color.lower(),
+                                   "<a:blue_Dot:1289184290298658879>")
+
+    def format_comparison(self, name1: str, name2: str,
+                          value1: Union[int, float], value2: Union[int, float],
+                          color1: str, color2: str) -> str:
+        emoji1 = self.get_color_emoji(color1)
+        emoji2 = self.get_color_emoji(color2)
+
         if isinstance(value1, float) and isinstance(value2, float):
-            return f"-# {emoji}{name1}: {value1:.2f}\n-# {emoji}{name2}: {value2:.2f}"
+            return f"-# {emoji1}{name1}: {value1:.2f}\n-# {emoji2}{name2}: {value2:.2f}"
         else:
-            return f"-# {emoji}{name1}: {value1}\n-# {emoji}{name2}: {value2}"
+            return f"-# {emoji1}{name1}: {value1}\n-# {emoji2}{name2}: {value2}"
 
     async def create_comparison_graph(self, stats1: Dict[str, Any],
                                       stats2: Dict[str, Any]) -> discord.File:
