@@ -525,10 +525,10 @@ class AniListModule:
 
         # User information
         embed.add_field(name=stats1['name'],
-                        value=f"[Profile]({stats1['siteUrl']})",
+                        value=f"-# ╰> [Profile]({stats1['siteUrl']})",
                         inline=True)
         embed.add_field(name=stats2['name'],
-                        value=f"[Profile]({stats2['siteUrl']})",
+                        value=f"-# ╰> [Profile]({stats2['siteUrl']})",
                         inline=True)
         embed.add_field(name="\u200b", value="\u200b",
                         inline=True)  # Empty field for alignment
@@ -614,10 +614,11 @@ class AniListModule:
     def format_comparison(self, name1: str, name2: str, value1: Union[int,
                                                                       float],
                           value2: Union[int, float]) -> str:
+        emoji = "<a:purple_Dot:1289184290298658879>" # purple dot (bullet point) emoji)
         if isinstance(value1, float) and isinstance(value2, float):
-            return f"{name1}: {value1:.2f}\n{name2}: {value2:.2f}"
+            return f"-# {emoji}{name1}: {value1:.2f}\n-# {emoji}{name2}: {value2:.2f}"
         else:
-            return f"{name1}: {value1}\n{name2}: {value2}"
+            return f"-# {emoji}{name1}: {value1}\n-# {emoji}{name2}: {value2}"
 
     async def create_comparison_graph(self, stats1: Dict[str, Any],
                                       stats2: Dict[str, Any]) -> discord.File:
