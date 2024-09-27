@@ -476,15 +476,20 @@ class AniListModule:
             title = media['title']['english'] or media['title']['romaji']
             progress = entry['progress']
             score = entry['score']
+            emoji = self.get_color_emoji(
+                entry.get('user', {}).get('options',
+                                          {}).get('profileColor', 'blue'))
 
             if list_type == 'anime':
                 total = media['episodes'] or '?'
-                value = f"Progress: {progress}/{total} episodes\nScore: {score}/10"
+                value = f"-# Progress: {progress}/{total} episodes\n-# Score: {score}/10"
             else:  # manga
                 total = media['chapters'] or '?'
-                value = f"Progress: {progress}/{total} chapters\nScore: {score}/10"
+                value = f"-# Progress: {progress}/{total} chapters\n-# Score: {score}/10"
 
-            embed.add_field(name=title, value=value, inline=False)
+            embed.add_field(name=f"{emoji} **{title}**",
+                            value=value,
+                            inline=False)
 
         # Footer for pagination
         total_pages = (len(list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
