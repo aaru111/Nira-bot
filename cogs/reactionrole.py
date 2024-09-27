@@ -226,11 +226,15 @@ class ReactionRoleManager:
 
     async def handle_message_deletion(self, message: discord.Message) -> None:
         """Handle message deletion events."""
-        guild_id = str(message.guild.id)
-        message_id = str(message.id)
-        if guild_id in self.cog.reaction_roles and message_id in self.cog.reaction_roles[
-                guild_id]:
-            self.cog.delete_reaction_role(guild_id, message_id)
+        if message.guild:
+            guild_id = str(message.guild.id)
+            message_id = str(message.id)
+            if guild_id in self.cog.reaction_roles and message_id in self.cog.reaction_roles[
+                    guild_id]:
+                self.cog.delete_reaction_role(guild_id, message_id)
+        else:
+            # Handle DM message deletion if necessary
+            pass
 
 
 class ReactionRole(commands.Cog):
