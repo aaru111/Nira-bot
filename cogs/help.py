@@ -17,16 +17,24 @@ VIEW_TIMEOUT = 40
 
 # New global variables for category emojis
 CATEGORY_EMOJIS = {
-    "Home": "🏠",
-    "Moderation": "🛡️",
-    "Fun": "🎉",
+    "Home": "<a:home:1289256751442694245>",
+    "Moderation": "<a:Moderator:1289256066227507302>",
+    "Fun": "<a:fun:1289255181170638939>",
     "Utilities": "<a:utility:1289226179546447973>",
     "Jishaku": "<a:coding:1289226502877216858>",
     "Sync": "<a:loading:1289230952215871509>",
     "Games": "<a:controller:1289226768779055137>",
     "NSFW": "🔞",
     "Leveling": "<a:up_level_up:1289225386244182080>",
-    "Manga": "<a:Book:1289231286681997333>",
+    "MangaReaderCog": "<a:Book:1289231286681997333>",
+    "Imagery": "<a:Image:1289258081171275798>",
+    "Premium": "<a:premium:1289259618018660435>",
+    "PrefixCog": "<a:prefix:1289260013675741336>",
+    "AutoMod": "<a:Moderator:1289256066227507302>",
+    "ReactionRole": "<a:SelfRoles:1289261351562379297>",
+    "WelcomeCmds": "<a:welcome:1289262744209592330>",
+    "EmbedCreator": "<:embed:1289263029896347698>",
+    "AniListCog":"<a:anime:1289263917448564776>",
     "No Category": "<a:question_mark:1289230595729129513>"
 }
 
