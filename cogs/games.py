@@ -18,7 +18,7 @@ from typing import Optional, Dict
 from modules.tetrismod import TetrisGame
 from modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from modules.triviamod import TriviaView
-from modules.memorymod import MemoryGameView, RematchView
+from modules.memorymod import MemoryGameView
 
 
 class Games(commands.Cog):
