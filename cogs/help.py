@@ -26,7 +26,7 @@ CATEGORY_EMOJIS = {
     "Games": "<a:controller:1289226768779055137>",
     "NSFW": "🔞",
     "Leveling": "<a:up_level_up:1289225386244182080>",
-    "Manga": "<a:Book:1289231286681997333>"
+    "Manga": "<a:Book:1289231286681997333>",
     "No Category": "<a:question_mark:1289230595729129513>"
 }
 
