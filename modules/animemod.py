@@ -616,6 +616,7 @@ class AniListModule:
                                 name1, name2, value1, value2, color1, color2),
                             inline=True)
 
+    # Bullet point animated emojis for comparison
     def get_color_emoji(self, profile_color: str) -> str:
         color_emoji_map = {
             'blue': "<a:Blue_Dot:1289188840547811328>",
@@ -627,7 +628,7 @@ class AniListModule:
             'gray': "<a:gray_Dot:1289184290298658879>"
         }
         return color_emoji_map.get(profile_color.lower(),
-                                   "<a:blue_Dot:1289184290298658879>")
+                                   "<a:purple_Dot:1289184290298658879>")
 
     def format_comparison(self, name1: str, name2: str,
                           value1: Union[int, float], value2: Union[int, float],
