@@ -592,12 +592,12 @@ class AniListModule:
         embed.add_field(
             name="Top 3 Favorite Anime",
             value=
-            f"**{stats1['name']}**: {fav_anime1}\n**{stats2['name']}**: {fav_anime2}",
+            f"-# **{stats1['name']}**: {fav_anime1}\n-# **{stats2['name']}**: {fav_anime2}",
             inline=False)
         embed.add_field(
             name="Top 3 Favorite Manga",
             value=
-            f"**{stats1['name']}**: {fav_manga1}\n**{stats2['name']}**: {fav_manga2}",
+            f"-# **{stats1['name']}**: {fav_manga1}\n-# **{stats2['name']}**: {fav_manga2}",
             inline=False)
 
         return embed, graph_file
