@@ -4,6 +4,7 @@ import asyncio
 import discord
 from discord.ext import commands, tasks
 from aiohttp import ClientSession
+from mentionable_tree import MentionableTree
 from webserver import keep_alive
 from abc import ABC, abstractmethod
 from glob import glob
@@ -150,7 +151,8 @@ async def main() -> None:
 
     bot = Bot(command_prefix=get_prefix,
               case_insensitive=True,
-              intents=intents)
+              intents=intents,
+              tree_cls=MentionableTree)
 
     try:
         await bot.start(token)

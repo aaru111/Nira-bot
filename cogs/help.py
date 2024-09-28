@@ -5,6 +5,7 @@ from typing import List, Optional, Union, Any, Dict, TypeVar
 import inspect
 import math
 import asyncio
+from mentionable_tree import MentionableTree
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
@@ -17,7 +18,7 @@ VIEW_TIMEOUT: int = 40
 
 arrow_emoji: str = "<a:arrow:1289063843129065532>"
 
-# New global variables for category emojis
+# Category emojis
 CATEGORY_EMOJIS: Dict[str, str] = {
     "Home": "<a:home:1289256751442694245>",
     "Moderation": "<a:Moderator:1289256066227507302>",
@@ -114,7 +115,7 @@ class HelpView(discord.ui.View):
             self.previous_button.disabled = True
             self.next_button.disabled = True
         else:
-            embed = self.create_category_embed(self.current_category)
+            embed = await self.create_category_embed(self.current_category)
             self.update_button_states()
 
         await interaction.response.edit_message(embed=embed, view=self)
@@ -147,7 +148,7 @@ class HelpView(discord.ui.View):
             prefix=self.get_prefix()))
         return embed
 
-    def create_category_embed(self, category: str) -> discord.Embed:
+    async def create_category_embed(self, category: str) -> discord.Embed:
         commands = self.categories[category]
         start_idx = self.current_page * COMMANDS_PER_PAGE
         end_idx = start_idx + COMMANDS_PER_PAGE
@@ -158,9 +159,11 @@ class HelpView(discord.ui.View):
                               color=self.cog.embed_color)
 
         for command in page_commands:
-            cmd_name = self.get_command_name(command)
+            mention = await self.cog.bot.tree.find_mention_for(
+                command) if isinstance(self.cog.bot.tree,
+                                       MentionableTree) else None
             embed.add_field(
-                name=f"{arrow_emoji}{cmd_name}",
+                name=f"{arrow_emoji}{mention}",
                 value=
                 f"-# ╰> {command.description or 'No description available.'}",
                 inline=False)
@@ -175,7 +178,7 @@ class HelpView(discord.ui.View):
     def get_prefix(self) -> str:
         if isinstance(self.ctx, commands.Context):
             return self.ctx.prefix or '.'
-        return '.'
+        return '/'
 
     def get_command_name(self, command: CommandType) -> str:
         if isinstance(command, app_commands.Command) or (isinstance(
@@ -338,12 +341,19 @@ class HelpCog(commands.Cog):
                 await self.send_owner_only_message(ctx)
                 return
             embed.title = f"**Help for /{command.qualified_name}**"
-            embed.description = f"<a:arrow:1289063843129065532> {command.qualified_name}\n-# ╰> {command.description or 'No description available.'}"
+
+            mention = await self.bot.tree.find_mention_for(
+                command) if isinstance(
+                    self.bot.tree,
+                    MentionableTree) else f"/{command.qualified_name}"
+            embed.description = f"<a:arrow:1289063843129065532> {mention}\n-# ╰> {command.description or 'No description available.'}"
+
             flag_converter = getattr(command, 'flags', None)
             usage = self.generate_usage(command, flag_converter, prefix)
             embed.add_field(name="**Usage**",
                             value=f"```\n{usage}\n```",
                             inline=False)
+
             if isinstance(command, commands.Command) and command.aliases:
                 embed.add_field(name="**Aliases**",
                                 value=", ".join(f"`{prefix}{alias}`"
