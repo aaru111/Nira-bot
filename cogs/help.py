@@ -139,7 +139,7 @@ class HelpView(discord.ui.View):
             if category not in ["Home", "HelpCog"]:
                 emoji = CATEGORY_EMOJIS.get(category, "❓")
                 embed.add_field(name=f"**{emoji} {category}**",
-                                value=f"`{len(commands_list)}` commands",
+                                value=f"-# ╰>`{len(commands_list)}` commands",
                                 inline=True)
         embed.set_footer(text=self.cog.embed_footer.format(
             prefix=self.get_prefix()))
