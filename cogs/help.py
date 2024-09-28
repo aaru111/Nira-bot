@@ -5,7 +5,7 @@ from typing import List, Optional, Union, Any, Dict, TypeVar
 import inspect
 import math
 import asyncio
-from mentionable_tree import MentionableTree
+from utils.mentionable_tree import MentionableTree
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
