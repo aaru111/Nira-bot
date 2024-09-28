@@ -7,16 +7,18 @@ import math
 import asyncio
 
 # Global variables for easy modification
-DEFAULT_EMBED_COLOR = discord.Color.brand_red()
-DEFAULT_EMBED_TITLE = "<:nira_ai2:1267876148201914560> N.I.R.A™ HelpDesk"
-DEFAULT_EMBED_FOOTER = "Type {prefix}help <command> for more info on a command."
-DEFAULT_OWNER_ONLY_MESSAGE = "This command does not exist or you don't have permission to view its details."
-DEFAULT_NO_CATEGORY_NAME = "No Category"
-COMMANDS_PER_PAGE = 6
-VIEW_TIMEOUT = 40
+DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
+DEFAULT_EMBED_TITLE: str = "<:nira_ai2:1267876148201914560> N.I.R.A™ HelpDesk"
+DEFAULT_EMBED_FOOTER: str = "Type {prefix}help <command> for more info on a command."
+DEFAULT_OWNER_ONLY_MESSAGE: str = "This command does not exist or you don't have permission to view its details."
+DEFAULT_NO_CATEGORY_NAME: str = "No Category"
+COMMANDS_PER_PAGE: int = 6
+VIEW_TIMEOUT: int = 40
+
+arrow_emoji: str = "<a:arrow:1289063843129065532>"
 
 # New global variables for category emojis
-CATEGORY_EMOJIS = {
+CATEGORY_EMOJIS: Dict[str, str] = {
     "Home": "<a:home:1289256751442694245>",
     "Moderation": "<a:Moderator:1289256066227507302>",
     "Fun": "<a:fun:1289255181170638939>",
@@ -46,7 +48,7 @@ BotT = TypeVar('BotT', bound=commands.Bot)
 class HelpView(discord.ui.View):
 
     def __init__(self, cog: 'HelpCog', ctx: ContextType,
-                 categories: Dict[str, List[CommandType]]):
+                 categories: Dict[str, List[CommandType]]) -> None:
         super().__init__(timeout=VIEW_TIMEOUT)
         self.cog: HelpCog = cog
         self.ctx: ContextType = ctx
@@ -158,7 +160,7 @@ class HelpView(discord.ui.View):
         for command in page_commands:
             cmd_name = self.get_command_name(command)
             embed.add_field(
-                name=f"<a:arrow:1289063843129065532> {cmd_name}",
+                name=f"{arrow_emoji}{cmd_name}",
                 value=
                 f"-# ╰> {command.description or 'No description available.'}",
                 inline=False)
@@ -191,7 +193,7 @@ class HelpView(discord.ui.View):
 
 class HelpCog(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
         self._original_help_command: Optional[
             commands.HelpCommand] = bot.help_command
