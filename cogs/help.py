@@ -208,14 +208,10 @@ class HelpCog(commands.Cog):
         self.bot.help_command = self._original_help_command
 
     @staticmethod
-    def generate_usage(command: Union[CommandType, str],
+    def generate_usage(command: CommandType,
                        flag_converter: Optional[type[
                            commands.FlagConverter]] = None,
                        prefix: str = '.') -> str:
-        if isinstance(command, str):
-            # For unknown commands, generate a usage string similar to known commands
-            return f"{prefix}{command} [arguments...]"
-
         command_name = command.qualified_name
 
         if isinstance(command, commands.Command):
@@ -229,7 +225,7 @@ class HelpCog(commands.Cog):
         else:
             usage = f"/{command_name}"
 
-        if isinstance(command, (commands.Command, commands.Group)):
+        if isinstance(command, commands.Command):
             try:
                 parameters = inspect.signature(command.callback).parameters
             except ValueError:
@@ -260,24 +256,17 @@ class HelpCog(commands.Cog):
         return usage
 
     def is_owner_only(self, command: CommandType) -> bool:
-        if isinstance(command, (commands.Command, app_commands.Command)):
-            if isinstance(command.checks, list):
-                return any(
-                    check.__qualname__.startswith('is_owner')
-                    for check in command.checks)
-            return bool(command.checks)
-        elif isinstance(command, (commands.Group, app_commands.Group)):
-            # For groups, check if any subcommand is owner-only
+        if isinstance(command.checks, list):
             return any(
-                self.is_owner_only(subcommand)
-                for subcommand in command.walk_commands())
-        return False
+                check.__qualname__.startswith('is_owner')
+                for check in command.checks)
+        return bool(command.checks)
 
     def is_jishaku_command(self, command: CommandType) -> bool:
-        if isinstance(command, (commands.Command, commands.Group)):
+        if isinstance(command, commands.Command):
             return command.cog and command.cog.qualified_name.lower(
             ) == "jishaku"
-        elif isinstance(command, (app_commands.Command, app_commands.Group)):
+        elif isinstance(command, app_commands.Command):
             return command.module is not None and "jishaku" in command.module.lower(
             )
         return False
@@ -288,17 +277,14 @@ class HelpCog(commands.Cog):
 
     @commands.hybrid_command(name="help",
                              description="Shows help for bot commands")
-    @app_commands.describe(command="The command or subcommand to get help for")
+    @app_commands.describe(command="The command to get help for")
     async def help_command(self,
                            ctx: commands.Context[BotT],
-                           *,
                            command: Optional[str] = None) -> None:
         prefix = await self.bot.get_prefix(ctx.message)
         prefix = prefix[0] if isinstance(prefix, list) else prefix
         if command:
-            # Split the command string into parts
-            command_parts = command.split()
-            await self.send_command_help(ctx, command_parts, prefix)
+            await self.send_command_help(ctx, command.lstrip('/'), prefix)
         else:
             await self.send_interactive_help(ctx, prefix)
 
@@ -310,123 +296,59 @@ class HelpCog(commands.Cog):
         is_owner = await self.is_owner(interaction.user)
         seen_commands = set()
 
-        def add_command(cmd, prefix=''):
-            if cmd.qualified_name not in seen_commands:
-                choices.append(
-                    app_commands.Choice(name=f"{prefix}{cmd.qualified_name}",
-                                        value=cmd.qualified_name))
-                seen_commands.add(cmd.qualified_name)
-
         for cmd in self.bot.walk_commands():
-            if isinstance(cmd, (commands.Command, app_commands.Command, commands.Group)) and \
+            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
                current.lower() in cmd.qualified_name.lower() and \
                (not self.is_owner_only(cmd) or is_owner) and \
                (not self.is_jishaku_command(cmd) or is_owner) and \
                cmd.cog and cmd.cog.qualified_name != "HelpCog":
-                add_command(cmd, '/')
-                if isinstance(cmd, commands.Group):
-                    for subcmd in cmd.walk_commands():
-                        if current.lower(
-                        ) in f"{cmd.qualified_name} {subcmd.name}".lower():
-                            add_command(subcmd, f'/{cmd.qualified_name} ')
+                if cmd.qualified_name not in seen_commands:
+                    choices.append(
+                        app_commands.Choice(name=f"/{cmd.qualified_name}",
+                                            value=cmd.qualified_name))
+                    seen_commands.add(cmd.qualified_name)
 
         for cmd in self.bot.tree.walk_commands():
-            if isinstance(cmd, (app_commands.Command, app_commands.Group)) and \
+            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
                current.lower() in cmd.qualified_name.lower() and \
                (not self.is_owner_only(cmd) or is_owner) and \
                (not self.is_jishaku_command(cmd) or is_owner) and \
                cmd.binding and cmd.binding.__class__.__name__ != "HelpCog":
-                add_command(cmd, '/')
-                if isinstance(cmd, app_commands.Group):
-                    for subcmd in cmd.walk_commands():
-                        if current.lower(
-                        ) in f"{cmd.qualified_name} {subcmd.name}".lower():
-                            add_command(subcmd, f'/{cmd.qualified_name} ')
+                if cmd.qualified_name not in seen_commands:
+                    choices.append(
+                        app_commands.Choice(name=f"/{cmd.qualified_name}",
+                                            value=cmd.qualified_name))
+                    seen_commands.add(cmd.qualified_name)
 
         return sorted(choices, key=lambda c: c.name)[:25]
 
-    async def send_command_help(self, ctx: ContextType,
-                                command_parts: List[str], prefix: str) -> None:
+    async def send_command_help(self, ctx: ContextType, command_name: str,
+                                prefix: str) -> None:
         embed = discord.Embed(title=self.embed_title, color=self.embed_color)
         is_owner = await self.is_owner(
             ctx.author if isinstance(ctx, commands.Context) else ctx.user)
 
-        command = self.bot.get_command(command_parts[0])
-        current_command = command
-
-        # Traverse through subcommands
-        for part in command_parts[1:]:
-            if isinstance(current_command,
-                          (commands.Group, app_commands.Group)):
-                current_command = current_command.get_command(part)
-                if current_command is None:
-                    break
-            else:
-                current_command = None
-                break
-
-        if not current_command:
-            current_command = self.bot.tree.get_command(
-                " ".join(command_parts))
-
-        command_name = " ".join(command_parts)
-
-        if isinstance(current_command, (commands.Command, app_commands.Command,
-                                        commands.Group, app_commands.Group)):
-            if (self.is_owner_only(current_command) or
-                    self.is_jishaku_command(current_command)) and not is_owner:
+        command = self.bot.get_command(
+            command_name) or self.bot.tree.get_command(command_name)
+        if isinstance(command, (commands.Command, app_commands.Command)):
+            if (self.is_owner_only(command)
+                    or self.is_jishaku_command(command)) and not is_owner:
                 await self.send_owner_only_message(ctx)
                 return
-
-            embed.title = f"**Help for /{current_command.qualified_name}**"
-            embed.description = f"<a:arrow:1289063843129065532> {current_command.qualified_name}\n-# ╰> {current_command.description or 'No description available.'}"
-
-            flag_converter = getattr(current_command, 'flags', None)
-            usage = self.generate_usage(current_command, flag_converter,
-                                        prefix)
+            embed.title = f"**Help for /{command.qualified_name}**"
+            embed.description = f"<a:arrow:1289063843129065532> {command.qualified_name}\n-# ╰> {command.description or 'No description available.'}"
+            flag_converter = getattr(command, 'flags', None)
+            usage = self.generate_usage(command, flag_converter, prefix)
             embed.add_field(name="**Usage**",
                             value=f"```\n{usage}\n```",
                             inline=False)
-
-            if isinstance(current_command,
-                          commands.Command) and current_command.aliases:
+            if isinstance(command, commands.Command) and command.aliases:
                 embed.add_field(name="**Aliases**",
-                                value=", ".join(
-                                    f"`{prefix}{alias}`"
-                                    for alias in current_command.aliases),
+                                value=", ".join(f"`{prefix}{alias}`"
+                                                for alias in command.aliases),
                                 inline=False)
-
-            if isinstance(current_command,
-                          (commands.Group, app_commands.Group)):
-                if isinstance(current_command, commands.Group):
-                    subcommands = current_command.commands
-                else:  # app_commands.Group
-                    subcommands = current_command._children.values()
-
-                if subcommands:
-                    subcommand_list = "\n".join([
-                        f"• `{subcmd.name}`: {subcmd.description or 'No description'}"
-                        for subcmd in subcommands
-                    ])
-                    embed.add_field(name="**Subcommands**",
-                                    value=subcommand_list,
-                                    inline=False)
         else:
-            # Command not found, generate a help message similar to known commands
-            embed.title = f"**Help for /{command_name}**"
-            embed.description = f"<a:arrow:1289063843129065532> {command_name}\n-# ╰> No description available."
-
-            # Generate usage using generate_usage method
-            usage = self.generate_usage(command_name, None, prefix)
-            embed.add_field(name="**Usage**",
-                            value=f"```\n{usage}\n```",
-                            inline=False)
-
-            embed.add_field(
-                name="**Note**",
-                value="This command might be an alias or a subcommand. "
-                "Try using it directly or check the main command's help.",
-                inline=False)
+            embed.description = self.owner_only_message
 
         embed.set_footer(text=self.embed_footer.format(prefix=prefix))
 
