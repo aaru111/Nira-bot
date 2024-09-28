@@ -34,7 +34,7 @@ CATEGORY_EMOJIS = {
     "ReactionRole": "<a:SelfRoles:1289261351562379297>",
     "WelcomeCmds": "<a:welcome:1289262744209592330>",
     "EmbedCreator": "<:embed:1289263029896347698>",
-    "AniListCog":"<a:anime:1289263917448564776>",
+    "AniListCog": "<a:anime:1289263917448564776>",
     "No Category": "<a:question_mark:1289230595729129513>"
 }
 
