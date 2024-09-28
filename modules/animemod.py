@@ -624,16 +624,16 @@ class AniListModule:
     # Bullet point animated emojis
     def get_color_emoji(self, profile_color: str) -> str:
         color_emoji_map = {
-            'blue': "<a:Blue_Dot:1289188787691458613>",
-            'purple': "<a:purple_Dot:1289181871087030273>",
-            'pink': "<a:dot_pink:1289188743458062420>",
-            'orange': "<a:dot_orange:1289188753277059083>",
-            'red': "<a:dot_red:1289188735925358592>",
-            'green': "<a:Green_Dot:1289188719290744914>",
-            'gray': "<a:dot_white:1289188727897194496>"
+            'blue': "<a:Blue_Dot:1289188840547811328>",
+            'purple': "<a:purple_Dot:1289184290298658879>",
+            'pink': "<a:dot_pink:1289188856494690334>",
+            'orange': "<a:dot_orange:1289188848806658088>",
+            'red': "<a:dot_red:1289188864795344959>",
+            'green': "<a:green_Dot:1289184290298658879>",
+            'gray': "<a:gray_Dot:1289184290298658879>"
         }
         return color_emoji_map.get(profile_color.lower(),
-                                   "<a:purple_Dot:1289181871087030273>")
+                                   "<a:purple_Dot:1289184290298658879>")
 
     def format_comparison(self, name1: str, name2: str,
                           value1: Union[int, float], value2: Union[int, float],
