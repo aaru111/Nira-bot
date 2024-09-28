@@ -225,7 +225,7 @@ class HelpCog(commands.Cog):
         else:
             usage = f"/{command_name}"
 
-        if isinstance(command, commands.Command):
+        if isinstance(command, (commands.Command, commands.Group)):
             try:
                 parameters = inspect.signature(command.callback).parameters
             except ValueError:
@@ -256,17 +256,24 @@ class HelpCog(commands.Cog):
         return usage
 
     def is_owner_only(self, command: CommandType) -> bool:
-        if isinstance(command.checks, list):
+        if isinstance(command, (commands.Command, app_commands.Command)):
+            if isinstance(command.checks, list):
+                return any(
+                    check.__qualname__.startswith('is_owner')
+                    for check in command.checks)
+            return bool(command.checks)
+        elif isinstance(command, (commands.Group, app_commands.Group)):
+            # For groups, check if any subcommand is owner-only
             return any(
-                check.__qualname__.startswith('is_owner')
-                for check in command.checks)
-        return bool(command.checks)
+                self.is_owner_only(subcommand)
+                for subcommand in command.walk_commands())
+        return False
 
     def is_jishaku_command(self, command: CommandType) -> bool:
-        if isinstance(command, commands.Command):
+        if isinstance(command, (commands.Command, commands.Group)):
             return command.cog and command.cog.qualified_name.lower(
             ) == "jishaku"
-        elif isinstance(command, app_commands.Command):
+        elif isinstance(command, (app_commands.Command, app_commands.Group)):
             return command.module is not None and "jishaku" in command.module.lower(
             )
         return False
@@ -296,29 +303,38 @@ class HelpCog(commands.Cog):
         is_owner = await self.is_owner(interaction.user)
         seen_commands = set()
 
+        def add_command(cmd, prefix=''):
+            if cmd.qualified_name not in seen_commands:
+                choices.append(
+                    app_commands.Choice(name=f"{prefix}{cmd.qualified_name}",
+                                        value=cmd.qualified_name))
+                seen_commands.add(cmd.qualified_name)
+
         for cmd in self.bot.walk_commands():
-            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
+            if isinstance(cmd, (commands.Command, app_commands.Command, commands.Group)) and \
                current.lower() in cmd.qualified_name.lower() and \
                (not self.is_owner_only(cmd) or is_owner) and \
                (not self.is_jishaku_command(cmd) or is_owner) and \
                cmd.cog and cmd.cog.qualified_name != "HelpCog":
-                if cmd.qualified_name not in seen_commands:
-                    choices.append(
-                        app_commands.Choice(name=f"/{cmd.qualified_name}",
-                                            value=cmd.qualified_name))
-                    seen_commands.add(cmd.qualified_name)
+                add_command(cmd, '/')
+                if isinstance(cmd, commands.Group):
+                    for subcmd in cmd.walk_commands():
+                        if current.lower(
+                        ) in f"{cmd.qualified_name} {subcmd.name}".lower():
+                            add_command(subcmd, f'/{cmd.qualified_name} ')
 
         for cmd in self.bot.tree.walk_commands():
-            if isinstance(cmd, (commands.Command, app_commands.Command)) and \
+            if isinstance(cmd, (app_commands.Command, app_commands.Group)) and \
                current.lower() in cmd.qualified_name.lower() and \
                (not self.is_owner_only(cmd) or is_owner) and \
                (not self.is_jishaku_command(cmd) or is_owner) and \
                cmd.binding and cmd.binding.__class__.__name__ != "HelpCog":
-                if cmd.qualified_name not in seen_commands:
-                    choices.append(
-                        app_commands.Choice(name=f"/{cmd.qualified_name}",
-                                            value=cmd.qualified_name))
-                    seen_commands.add(cmd.qualified_name)
+                add_command(cmd, '/')
+                if isinstance(cmd, app_commands.Group):
+                    for subcmd in cmd.walk_commands():
+                        if current.lower(
+                        ) in f"{cmd.qualified_name} {subcmd.name}".lower():
+                            add_command(subcmd, f'/{cmd.qualified_name} ')
 
         return sorted(choices, key=lambda c: c.name)[:25]
 
@@ -328,25 +344,55 @@ class HelpCog(commands.Cog):
         is_owner = await self.is_owner(
             ctx.author if isinstance(ctx, commands.Context) else ctx.user)
 
-        command = self.bot.get_command(
-            command_name) or self.bot.tree.get_command(command_name)
-        if isinstance(command, (commands.Command, app_commands.Command)):
+        command_parts = command_name.split()
+        command = self.bot.get_command(command_parts[0])
+
+        for part in command_parts[1:]:
+            if isinstance(command, (commands.Group, app_commands.Group)):
+                command = command.get_command(part)
+            else:
+                command = None
+                break
+
+        if not command:
+            command = self.bot.tree.get_command(command_name)
+
+        if isinstance(command, (commands.Command, app_commands.Command,
+                                commands.Group, app_commands.Group)):
             if (self.is_owner_only(command)
                     or self.is_jishaku_command(command)) and not is_owner:
                 await self.send_owner_only_message(ctx)
                 return
+
             embed.title = f"**Help for /{command.qualified_name}**"
             embed.description = f"<a:arrow:1289063843129065532> {command.qualified_name}\n-# ╰> {command.description or 'No description available.'}"
+
             flag_converter = getattr(command, 'flags', None)
             usage = self.generate_usage(command, flag_converter, prefix)
             embed.add_field(name="**Usage**",
                             value=f"```\n{usage}\n```",
                             inline=False)
+
             if isinstance(command, commands.Command) and command.aliases:
                 embed.add_field(name="**Aliases**",
                                 value=", ".join(f"`{prefix}{alias}`"
                                                 for alias in command.aliases),
                                 inline=False)
+
+            if isinstance(command, (commands.Group, app_commands.Group)):
+                if isinstance(command, commands.Group):
+                    subcommands = command.commands
+                else:  # app_commands.Group
+                    subcommands = command._children.values()
+
+                if subcommands:
+                    subcommand_list = "\n".join([
+                        f"• `{subcmd.name}`: {subcmd.description or 'No description'}"
+                        for subcmd in subcommands
+                    ])
+                    embed.add_field(name="**Subcommands**",
+                                    value=subcommand_list,
+                                    inline=False)
         else:
             embed.description = self.owner_only_message
 
