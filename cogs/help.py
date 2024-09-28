@@ -346,7 +346,10 @@ class HelpCog(commands.Cog):
                 command) if isinstance(
                     self.bot.tree,
                     MentionableTree) else f"/{command.qualified_name}"
-            embed.description = f"<a:arrow:1289063843129065532> {mention}\n-# ╰> {command.description or 'No description available.'}"
+
+            # Add the command description here
+            description = command.description or command.help or 'No description available.'
+            embed.description = f"<a:arrow:1289063843129065532> {mention}\n-# ╰> {description}"
 
             flag_converter = getattr(command, 'flags', None)
             usage = self.generate_usage(command, flag_converter, prefix)
