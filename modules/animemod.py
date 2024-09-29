@@ -384,6 +384,136 @@ class AniListModule:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
 
+    async def autocomplete_search(self, media_type: str, query: str):
+        graphql_query = '''
+        query ($type: MediaType, $search: String) {
+            Page(page: 1, perPage: 25) {
+                media(type: $type, search: $search) {
+                    id
+                    title {
+                        romaji
+                        english
+                    }
+                    format
+                    startDate {
+                        year
+                    }
+                }
+            }
+        }
+        '''
+
+        variables = {"type": media_type.upper(), "search": query}
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': graphql_query,
+                                        'variables': variables
+                                    },
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if 'errors' in data:
+                        return []
+                    media_list = data['data']['Page']['media']
+                    return [
+                        (f"{m['title']['romaji']} ({m['format']}) - {m['startDate']['year']}", str(m['id']))
+                        for m in media_list
+                    ]
+                else:
+                    return []
+
+    async def search_media(self, media_type: str, media_id: str):
+        graphql_query = '''
+        query ($id: Int) {
+            Media(id: $id) {
+                id
+                title {
+                    romaji
+                    english
+                }
+                type
+                format
+                status
+                description
+                episodes
+                chapters
+                volumes
+                averageScore
+                genres
+                siteUrl
+                bannerImage
+                coverImage {
+                    large
+                }
+                startDate {
+                    year
+                    month
+                    day
+                }
+                relations {
+                    edges {
+                        relationType
+                        node {
+                            id
+                            title {
+                                romaji
+                                english
+                            }
+                            type
+                            format
+                            status
+                            coverImage {
+                                large
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        '''
+
+        variables = {"id": int(media_id)}
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': graphql_query,
+                                        'variables': variables
+                                    },
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if 'errors' in data:
+                        raise Exception(
+                            f"AniList API Error: {data['errors'][0]['message']}"
+                        )
+                    return data['data']['Media']
+                else:
+                    raise Exception(
+                        f"AniList API returned status code {response.status}")
+
+    async def get_user_color(self, user_id: int) -> str:
+        if user_id in self.user_tokens:
+            try:
+                stats = await self.fetch_anilist_data(self.user_tokens[user_id]
+                                                      )
+                return self.get_color(stats['options']['profileColor'])
+            except:
+                pass
+        return '#02A9FF'
+
     async def fetch_anilist_data(
             self, access_token: str) -> Optional[Dict[str, Any]]:
         query: str = '''
@@ -505,16 +635,12 @@ class AniListModule:
     def clean_anilist_text(self, text: str) -> str:
         # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
-
-        # Remove image placeholders
-        text = re.sub(r'~~~\s*(Img\s*)+(\[\d+%\s*\])+', '', text)
-
-        # Remove specific AniList syntax
-        text = re.sub(r'(img|src=|alt=|width=|height=|a href=)', '', text)
-
-        # Remove ~~ to prevent unintended strikethrough
-        text = text.replace('~~', '')
-
+        # Remove spoiler tags
+        text = re.sub(r'\(spoiler\).*?\(/spoiler\)', '', text)
+        # Remove image tags
+        text = re.sub(r'\[img\].*?\[/img\]', '', text)
+        # Remove other AniList-specific markdown
+        text = re.sub(r'~!.*?!~', '', text)
         return text.strip()
 
     async def compare_stats(
