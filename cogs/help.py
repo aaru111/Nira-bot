@@ -164,7 +164,8 @@ class HelpView(discord.ui.View):
                 command) if isinstance(self.cog.bot.tree,
                                        MentionableTree) else None
             embed.add_field(
-                name=f"{arrow_emoji}{mention}",
+                name=
+                f"{arrow_emoji}{mention or self.get_command_name(command)}",
                 value=
                 f"-# ╰> {command.description or 'No description available.'}",
                 inline=False)
@@ -312,7 +313,7 @@ class HelpCog(commands.Cog):
                cmd.cog and cmd.cog.qualified_name != "HelpCog":
                 if cmd.qualified_name not in seen_commands:
                     choices.append(
-                        app_commands.Choice(name=f"/{cmd.qualified_name}",
+                        app_commands.Choice(name=f"{cmd.qualified_name}",
                                             value=cmd.qualified_name))
                     seen_commands.add(cmd.qualified_name)
 
@@ -343,12 +344,13 @@ class HelpCog(commands.Cog):
                     or self.is_jishaku_command(command)) and not is_owner:
                 await self.send_owner_only_message(ctx)
                 return
-            embed.title = f"**Help for /{command.qualified_name}**"
+            embed.title = f"**Help for {'/' if isinstance(command, app_commands.Command) else prefix}{command.qualified_name}**"
 
             mention = await self.bot.tree.find_mention_for(
-                command) if isinstance(
-                    self.bot.tree,
-                    MentionableTree) else f"/{command.qualified_name}"
+                command
+            ) if isinstance(
+                self.bot.tree, MentionableTree
+            ) else f"{'/' if isinstance(command, app_commands.Command) else prefix}{command.qualified_name}"
 
             # Add the command description here
             description = command.description or command.help or 'No description available.'
