@@ -138,31 +138,31 @@ class AniListCog(commands.Cog):
             embed.set_image(url=media['bannerImage'])
 
         embed.add_field(name="Type",
-                        value=f"-# {emoji} {media['type']}",
+                        value=f"{emoji} {media['type']}",
                         inline=True)
         embed.add_field(name="Format",
-                        value=f"-# {emoji} {media['format']}",
+                        value=f"{emoji} {media['format']}",
                         inline=True)
         embed.add_field(name="Status",
-                        value=f"-# {emoji} {media['status']}",
+                        value=f"{emoji} {media['status']}",
                         inline=True)
 
         if media['type'] == 'ANIME':
             embed.add_field(name="Episodes",
-                            value=f"-# {emoji} {media['episodes'] or 'N/A'}",
+                            value=f"{emoji} {media['episodes'] or 'N/A'}",
                             inline=True)
         else:
             embed.add_field(name="Chapters",
-                            value=f"-# {emoji} {media['chapters'] or 'N/A'}",
+                            value=f"{emoji} {media['chapters'] or 'N/A'}",
                             inline=True)
             embed.add_field(name="Volumes",
-                            value=f"-# {emoji} {media['volumes'] or 'N/A'}",
+                            value=f"{emoji} {media['volumes'] or 'N/A'}",
                             inline=True)
 
         if media['startDate']['year']:
             start_date = f"{media['startDate']['year']}-{media['startDate']['month']}-{media['startDate']['day']}"
             embed.add_field(name="Start Date",
-                            value=f"-# {emoji} {start_date}",
+                            value=f"{emoji} {start_date}",
                             inline=True)
 
         if media['averageScore']:
@@ -171,12 +171,12 @@ class AniListCog(commands.Cog):
             embed.add_field(
                 name="Score",
                 value=
-                f"-# {emoji} **{media['averageScore']}%**\n-# ╰> {score_bar}",
+                f"{emoji} **{media['averageScore']}%**\n{emoji} {score_bar}",
                 inline=True)
 
         if media['genres']:
             embed.add_field(name="Genres",
-                            value=f"-# {emoji} {', '.join(media['genres'])}",
+                            value=f"{emoji} {', '.join(media['genres'])}",
                             inline=False)
 
         if media['description']:
@@ -196,29 +196,31 @@ class SearchView(discord.ui.View):
         self.module = module
         self.media = media
         self.update_buttons()
-    
+
     def update_buttons(self):
         relations = self.media.get('relations', {}).get('edges', [])
         self.prequels = [edge['node'] for edge in relations if edge['relationType'].lower() == 'prequel']
         self.sequels = [edge['node'] for edge in relations if edge['relationType'].lower() == 'sequel']
-    
+
         self.prequel_button.disabled = len(self.prequels) == 0
         self.sequel_button.disabled = len(self.sequels) == 0
-    
+
     @discord.ui.button(label="Prequel", style=discord.ButtonStyle.primary)
     async def prequel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_related(interaction, self.prequels[0])
-    
+        if self.prequels:
+            await self.show_related(interaction, self.prequels[0])
+
     @discord.ui.button(label="Sequel", style=discord.ButtonStyle.primary)
     async def sequel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_related(interaction, self.sequels[0])
-    
+        if self.sequels:
+            await self.show_related(interaction, self.sequels[0])
+
     async def show_related(self, interaction: discord.Interaction, related_media):
         full_media = await self.module.search_media(related_media['type'], str(related_media['id']))
-    
+
         embed = await interaction.client.get_cog('AniListCog').create_search_embed(interaction.user, full_media)
         new_view = SearchView(self.module, full_media)
-    
+
         await interaction.response.edit_message(embed=embed, view=new_view)
 
 
