@@ -171,12 +171,12 @@ class AniListCog(commands.Cog):
             embed.add_field(
                 name="Score",
                 value=
-                f"{emoji} **{media['averageScore']}%**\n{emoji} {score_bar}",
+                f"{emoji}**{media['averageScore']}%**\n╰> {score_bar}",
                 inline=True)
 
         if media['genres']:
             embed.add_field(name="Genres",
-                            value=f"{emoji} {', '.join(media['genres'])}",
+                            value=f"{emoji}{', '.join(media['genres'])}",
                             inline=False)
 
         if media['description']:
