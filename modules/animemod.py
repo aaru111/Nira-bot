@@ -429,10 +429,10 @@ class AniListModule:
                 else:
                     return []
 
-    async def search_media(self, media_type: str, media_id: str):
+    async def search_media(self, media_type: str, query: str):
         graphql_query = '''
-        query ($id: Int) {
-            Media(id: $id) {
+        query ($id: Int, $search: String, $type: MediaType) {
+            Media(id: $id, search: $search, type: $type) {
                 id
                 title {
                     romaji
@@ -479,7 +479,13 @@ class AniListModule:
         }
         '''
 
-        variables = {"id": int(media_id)}
+        variables = {"type": media_type.upper()}
+
+        # Check if the query is a number (ID) or a string (search term)
+        if query.isdigit():
+            variables["id"] = int(query)
+        else:
+            variables["search"] = query
 
         headers = {
             'Content-Type': 'application/json',

@@ -99,7 +99,7 @@ class AniListCog(commands.Cog):
         name="search", description="Search for an anime or manga on AniList")
     @app_commands.describe(
         media_type="Choose whether to search for anime or manga",
-        query="The name of the anime or manga to search for")
+        query="The name or ID of the anime or manga to search for")
     @app_commands.choices(media_type=[
         app_commands.Choice(name="Anime", value="ANIME"),
         app_commands.Choice(name="Manga", value="MANGA")
