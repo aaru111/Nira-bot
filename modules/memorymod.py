@@ -209,7 +209,7 @@ class MemoryGameView(discord.ui.View):
                                 view=None)
         self.game_started = False
         await self.remove_hint_reaction()
-        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
+        del self.cog.memory_games[self.ctx.author.id]
 
     async def end_game_timeout(self):
         if self.inactivity_task:
@@ -219,7 +219,7 @@ class MemoryGameView(discord.ui.View):
         await self.message.edit(content="Time's up! Game over.", view=None)
         self.game_started = False
         await self.remove_hint_reaction()
-        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
+        del self.cog.memory_games[self.ctx.author.id]
 
     async def end_game(self, interaction: discord.Interaction):
         if self.inactivity_task:
@@ -253,7 +253,8 @@ class MemoryGameView(discord.ui.View):
 
         self.game_started = False
         await self.remove_hint_reaction()
-        self.cog.end_game(self.ctx.author.id, self.ctx.guild.id)
+        if self.ctx.author.id in self.cog.memory_games:
+            del self.cog.memory_games[self.ctx.author.id]
 
     async def remove_hint_reaction(self):
         try:

@@ -248,17 +248,29 @@ class Games(commands.Cog):
     async def memory(self, ctx: commands.Context, time_limit: int = 5) -> None:
         """Start a 5x5 memory game with custom server emojis."""
         if ctx.author.id in self.memory_games:
-            await ctx.send(
-                "You already have an ongoing game. Please finish it before starting a new one."
-            )
-            return
+            game = self.memory_games[ctx.author.id]
+            if game.game_started and not game.message.channel.permissions_for(
+                    ctx.me).read_message_history:
+                # If we can't see the message history, assume the game is no longer active
+                del self.memory_games[ctx.author.id]
+            else:
+                try:
+                    # Try to fetch the game message
+                    await game.message.fetch()
+                    await ctx.send(
+                        "You already have an ongoing game. Please finish it before starting a new one."
+                    )
+                    return
+                except discord.NotFound:
+                    # If the message is not found, remove the game from memory_games
+                    del self.memory_games[ctx.author.id]
 
         if not 1 <= time_limit <= 6:
             await ctx.send("Time limit must be between 1 and 6 minutes.")
             return
 
         try:
-            game: MemoryGameView = MemoryGameView(ctx, time_limit, self)
+            game = MemoryGameView(ctx, time_limit, self)
             self.memory_games[ctx.author.id] = game
             await game.start_game()
         except ValueError as e:
