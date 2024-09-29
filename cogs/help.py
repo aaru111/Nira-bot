@@ -6,6 +6,7 @@ import inspect
 import math
 import asyncio
 from utils.mentionable_tree import MentionableTree
+import aiohttp
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
@@ -208,9 +209,11 @@ class HelpCog(commands.Cog):
         self.embed_footer: str = DEFAULT_EMBED_FOOTER
         self.owner_only_message: str = DEFAULT_OWNER_ONLY_MESSAGE
         self.no_category_name: str = DEFAULT_NO_CATEGORY_NAME
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
 
     async def cog_unload(self) -> None:
         self.bot.help_command = self._original_help_command
+        await self.session.close()
 
     @staticmethod
     def generate_usage(command: CommandType,
