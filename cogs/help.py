@@ -10,7 +10,7 @@ import aiohttp
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
-DEFAULT_EMBED_TITLE: str = "{bot_emoji}{bot_name}™ HelpDesk"
+DEFAULT_EMBED_TITLE: str = "<:chronix:1290183354389364788>{bot_name}™ HelpDesk"
 DEFAULT_EMBED_FOOTER: str = "Type {prefix}help <command> for more info on a command."
 DEFAULT_OWNER_ONLY_MESSAGE: str = "This command does not exist or you don't have permission to view its details."
 DEFAULT_NO_CATEGORY_NAME: str = "No Category"
@@ -18,7 +18,6 @@ COMMANDS_PER_PAGE: int = 6
 VIEW_TIMEOUT: int = 40
 
 arrow_emoji: str = "<a:arrow:1289933782291447818>"
-bot_emoji: str = "<:chronix:1290183354389364788>"
 
 # Category emojis
 CATEGORY_EMOJIS: Dict[str, str] = {
