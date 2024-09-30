@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext.commands import Context
 import platform
 from datetime import datetime, timedelta
+from typing import Literal
 
 
 # Utility Functions
@@ -346,6 +347,9 @@ class Moderation(commands.Cog):
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.nuke_cooldowns = commands.CooldownMapping.from_cooldown(
             1, 300, commands.BucketType.member)
+
+    automod_group: app_commands.Group = app_commands.Group(
+        name="automod", description="AutoMod commands")
 
     async def cog_unload(self):
         """Cleanup resources when the cog is unloaded."""
@@ -877,6 +881,131 @@ class Moderation(commands.Cog):
             await context.send("I sent you a private message!")
         except discord.Forbidden:
             await context.send(embed=embed)
+
+    @automod_group.command(name="create_rule")
+    @app_commands.describe(
+        name="The name of the AutoMod rule",
+        preset="Preset for the AutoMod rule",
+        custom_keywords="Custom keywords to filter (comma-separated)")
+    @app_commands.choices(preset=[
+        app_commands.Choice(name="Profanity Filter", value="profanity"),
+        app_commands.Choice(name="Spam Prevention", value="spam"),
+        app_commands.Choice(name="Scam Links", value="scam"),
+    ])
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def create_automod_rule(
+            self,
+            interaction: discord.Interaction,
+            name: str,
+            preset: Literal["profanity", "spam", "scam"],
+            custom_keywords: Optional[str] = None) -> None:
+        """Create an AutoMod rule using presets or custom keywords"""
+        preset_keywords: dict[str, List[str]] = {
+            "profanity": [
+                "bad_word1", "bad_word2", "bad_word3", "swear1", "swear2",
+                "offensive1", "offensive2"
+            ],
+            "spam": [
+                "discord.gg", "http://", "https://", "www.", ".com", ".net",
+                ".org", "join my server"
+            ],
+            "scam": [
+                "free nitro", "steam gift", "click here", "limited offer",
+                "exclusive deal", "claim your prize", "you've won"
+            ]
+        }
+
+        keywords: List[str] = preset_keywords.get(preset, [])
+        if custom_keywords:
+            keywords.extend([kw.strip() for kw in custom_keywords.split(',')])
+
+        try:
+            rule: discord.AutoModRule = await interaction.guild.create_automod_rule(
+                name=name,
+                event_type=discord.AutoModRuleEventType.message_send,
+                trigger=discord.AutoModTrigger(keyword_filter=keywords),
+                actions=[
+                    discord.AutoModRuleAction(
+                        type=discord.AutoModRuleActionType.block_message,
+                        custom_message="This message was blocked by AutoMod.")
+                ],
+                enabled=True,
+                exempt_roles=[],
+                exempt_channels=[])
+            await interaction.response.send_message(
+                f"AutoMod rule '{name}' created successfully! Rule ID: {rule.id}"
+            )
+        except discord.HTTPException as e:
+            await interaction.response.send_message(
+                f"Failed to create AutoMod rule: {e}")
+
+    @automod_group.command(name="view_rule")
+    @app_commands.describe(
+        rule_id="The ID of the AutoMod rule to view (optional)")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def view_automod_rule(self,
+                                interaction: discord.Interaction,
+                                rule_id: Optional[str] = None) -> None:
+        """View details of an existing AutoMod rule or list all rules if no ID is provided"""
+        if rule_id is None:
+            try:
+                rules: List[
+                    discord.
+                    AutoModRule] = await interaction.guild.fetch_automod_rules(
+                    )
+                if not rules:
+                    await interaction.response.send_message(
+                        "No AutoMod rules configured for this server.")
+                    return
+
+                embed: discord.Embed = discord.Embed(
+                    title="AutoMod Rules", color=discord.Color.blue())
+                for rule in rules:
+                    embed.add_field(name=f"Rule: {rule.name}",
+                                    value=f"ID: {rule.id}",
+                                    inline=False)
+
+                await interaction.response.send_message(embed=embed)
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"Failed to fetch AutoMod rules: {e}")
+        else:
+            try:
+                rule_id_int = int(rule_id)
+                rule: discord.AutoModRule = await interaction.guild.fetch_automod_rule(
+                    rule_id_int)
+                embed: discord.Embed = discord.Embed(
+                    title=f"AutoMod Rule: {rule.name}",
+                    color=discord.Color.blue())
+                embed.add_field(name="Rule ID", value=rule.id, inline=False)
+                embed.add_field(name="Creator",
+                                value=rule.creator,
+                                inline=False)
+                embed.add_field(name="Event Type",
+                                value=rule.event_type,
+                                inline=False)
+                embed.add_field(name="Trigger Type",
+                                value=rule.trigger.type,
+                                inline=False)
+                if rule.trigger.keyword_filter:
+                    embed.add_field(name="Keywords",
+                                    value=", ".join(
+                                        rule.trigger.keyword_filter),
+                                    inline=False)
+                embed.add_field(name="Actions",
+                                value="\n".join(
+                                    [str(action) for action in rule.actions]),
+                                inline=False)
+                await interaction.response.send_message(embed=embed)
+            except ValueError:
+                await interaction.response.send_message(
+                    "Invalid rule ID. Please provide a valid integer.")
+            except discord.NotFound:
+                await interaction.response.send_message(
+                    "AutoMod rule not found.")
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"Failed to fetch AutoMod rule: {e}")
 
 
 async def setup(bot: commands.Bot) -> None:

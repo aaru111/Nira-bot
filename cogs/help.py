@@ -32,7 +32,6 @@ CATEGORY_EMOJIS: Dict[str, str] = {
     "Leveling": "<a:up_level_up:1289934037292679248>",
     "Imagery": "<a:Images_Icon:1289933928261484635>",
     "Premium": "<a:premium:1289933987850227803>",
-    "Prefix": "<a:prefix:1289933972922568756>",
     "AutoMod": "<a:Moderator:1289933964429103134>",
     "ReactionRoles": "<a:SelfRoles:1289934024776618115>",
     "Welcome": "<a:welcome_pepe:1289934059170172928>",
