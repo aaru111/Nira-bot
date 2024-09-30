@@ -38,7 +38,7 @@ CATEGORY_EMOJIS: Dict[str, str] = {
     "ReactionRoles": "<a:SelfRoles:1289934024776618115>",
     "Welcome": "<a:welcome_pepe:1289934059170172928>",
     "EmbedCreator": "<:embed:1289933863363018752>",
-    "AniList": "<a:anime:1289933771470143562>",
+    "Anilist": "<a:anime:1289933771470143562>",
     "No Category": "<a:question_mark:1289934011246055424>"
 }
 
