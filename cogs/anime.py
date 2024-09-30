@@ -5,7 +5,7 @@ from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSel
 from typing import List
 
 
-class AniListCog(commands.Cog):
+class Anilist(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot: commands.Bot = bot
@@ -218,11 +218,11 @@ class SearchView(discord.ui.View):
     async def show_related(self, interaction: discord.Interaction, related_media):
         full_media = await self.module.search_media(related_media['type'], str(related_media['id']))
 
-        embed = await interaction.client.get_cog('AniListCog').create_search_embed(interaction.user, full_media)
+        embed = await interaction.client.get_cog('Anilist').create_search_embed(interaction.user, full_media)
         new_view = SearchView(self.module, full_media)
 
         await interaction.response.edit_message(embed=embed, view=new_view)
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(AniListCog(bot))
+    await bot.add_cog(Anilist(bot))

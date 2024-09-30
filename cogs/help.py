@@ -30,15 +30,15 @@ CATEGORY_EMOJIS: Dict[str, str] = {
     "Games": "<a:controller:1289933810787549348>",
     "NSFW": "🔞",
     "Leveling": "<a:up_level_up:1289934037292679248>",
-    "MangaReaderCog": "<a:Book:1289933794908045412>",
+    "MangaReader": "<a:Book:1289933794908045412>",
     "Imagery": "<a:Images_Icon:1289933928261484635>",
     "Premium": "<a:premium:1289933987850227803>",
-    "PrefixCog": "<a:prefix:1289933972922568756>",
+    "Prefix": "<a:prefix:1289933972922568756>",
     "AutoMod": "<a:Moderator:1289933964429103134>",
-    "ReactionRole": "<a:SelfRoles:1289934024776618115>",
-    "WelcomeCmds": "<a:welcome_pepe:1289934059170172928>",
+    "ReactionRoles": "<a:SelfRoles:1289934024776618115>",
+    "Welcome": "<a:welcome_pepe:1289934059170172928>",
     "EmbedCreator": "<:embed:1289933863363018752>",
-    "AniListCog": "<a:anime:1289933771470143562>",
+    "AniList": "<a:anime:1289933771470143562>",
     "No Category": "<a:question_mark:1289934011246055424>"
 }
 

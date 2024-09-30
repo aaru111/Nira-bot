@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 from utils.wel import get_welcome_card
 from database import Database
-import datetime
 
 
 class WelcomeModal(discord.ui.Modal, title="Set Welcome Message"):
@@ -109,7 +108,7 @@ class PlaceholderButton(discord.ui.Button):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-class WelcomeCmds(commands.Cog):
+class Welcome(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -226,7 +225,7 @@ class WelcomeCmds(commands.Cog):
         if is_default:
             self.default_welcome_message = message
             await interaction.followup.send(
-                f"Updated default welcome message.", ephemeral=True)
+                "Updated default welcome message.", ephemeral=True)
         else:
             await self.db.execute(
                 "UPDATE welcome SET message = $1 WHERE guild_id = $2",
@@ -423,4 +422,4 @@ class WelcomeCmds(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(WelcomeCmds(bot))
+    await bot.add_cog(Welcome(bot))

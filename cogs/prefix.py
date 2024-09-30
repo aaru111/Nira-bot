@@ -39,7 +39,7 @@ class PostgreSQLManager(DatabaseManager):
         await db.execute(query, guild_id, prefix)
 
 
-class PrefixCog(commands.Cog):
+class Prefix(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
@@ -97,7 +97,7 @@ class PrefixCog(commands.Cog):
         return '.'  # Default prefix for DMs
 
 
-async def setup(bot):
-    cog = PrefixCog(bot)
+async def setup(bot: commands.Bot):
+    cog = Prefix(bot)
     await bot.add_cog(cog)
     bot.get_prefix = cog.get_prefix

@@ -37,7 +37,7 @@ class RolesyncCooldown:
 
 class NavigationView(discord.ui.View):
 
-    def __init__(self, cog: 'ReactionRole', guild: discord.Guild,
+    def __init__(self, cog: 'ReactionRoles', guild: discord.Guild,
                  channel: discord.TextChannel) -> None:
         super().__init__(timeout=None)
         self.cog = cog
@@ -89,7 +89,7 @@ class NavigationView(discord.ui.View):
 
 class ChannelSelect(discord.ui.Select):
 
-    def __init__(self, cog: 'ReactionRole',
+    def __init__(self, cog: 'ReactionRoles',
                  options: List[discord.SelectOption]) -> None:
         super().__init__(placeholder="Select a channel", options=options)
         self.cog = cog
@@ -107,7 +107,7 @@ class ChannelSelect(discord.ui.Select):
 
 class ChannelSelectView(discord.ui.View):
 
-    def __init__(self, cog: 'ReactionRole',
+    def __init__(self, cog: 'ReactionRoles',
                  options: List[discord.SelectOption]) -> None:
         super().__init__()
         self.add_item(ChannelSelect(cog, options))
@@ -237,7 +237,7 @@ class ReactionRoleManager:
             pass
 
 
-class ReactionRole(commands.Cog):
+class ReactionRoles(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -691,4 +691,4 @@ class ReactionRole(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     """Setup the ReactionRole cog."""
-    await bot.add_cog(ReactionRole(bot))
+    await bot.add_cog(ReactionRoles(bot))

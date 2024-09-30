@@ -5,7 +5,7 @@ import aiohttp
 import re
 
 
-class MangaReaderCog(commands.Cog):
+class MangaReader(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
@@ -401,4 +401,4 @@ class MangaReaderCog(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(MangaReaderCog(bot))
+    await bot.add_cog(MangaReader(bot))
