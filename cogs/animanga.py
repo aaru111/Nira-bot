@@ -2,15 +2,20 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, SearchView
+from modules.mangamod import MangaMod
 from typing import List
 
 
-class Anilist(commands.Cog):
+class AniManga(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot: commands.Bot = bot
         self.anilist_module: AniListModule = AniListModule()
+        self.manga_mod = MangaMod()
         self.bot.loop.create_task(self.anilist_module.load_tokens())
+
+    async def cog_unload(self) -> None:
+        await self.manga_mod.close_session()
 
     async def autocomplete_media(
             self, interaction: discord.Interaction,
@@ -110,13 +115,15 @@ class Anilist(commands.Cog):
         await interaction.response.defer()
 
         try:
-            search_result = await self.anilist_module.search_media(media_type, query)
+            search_result = await self.anilist_module.search_media(
+                media_type, query)
             if not search_result:
                 await interaction.followup.send(
                     f"No {media_type.lower()} found for '{query}'.")
                 return
 
-            embed = await self.create_search_embed(interaction.user, search_result)
+            embed = await self.create_search_embed(interaction.user,
+                                                   search_result)
             view = SearchView(self.anilist_module, search_result)
             await interaction.followup.send(embed=embed, view=view)
         except Exception as e:
@@ -170,8 +177,7 @@ class Anilist(commands.Cog):
                 10 - int(media['averageScore'] / 10))
             embed.add_field(
                 name="Score",
-                value=
-                f"{emoji}**{media['averageScore']}%**\n╰> {score_bar}",
+                value=f"{emoji}**{media['averageScore']}%**\n╰> {score_bar}",
                 inline=True)
 
         if media['genres']:
@@ -188,9 +194,14 @@ class Anilist(commands.Cog):
 
         return embed
 
-
-
+    @commands.hybrid_command(name='manga')
+    async def manga(self, ctx: commands.Context, *, query: str) -> None:
+        """
+        Command to search and read a manga using the MangaDex API.
+        Syntax: /manga <manga_id_or_name> [volume_number]
+        """
+        await self.manga_mod.handle_manga_command(ctx, query)
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(Anilist(bot))
+    await bot.add_cog(AniManga(bot))

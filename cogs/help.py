@@ -30,7 +30,6 @@ CATEGORY_EMOJIS: Dict[str, str] = {
     "Games": "<a:controller:1289933810787549348>",
     "NSFW": "🔞",
     "Leveling": "<a:up_level_up:1289934037292679248>",
-    "MangaReader": "<a:Book:1289933794908045412>",
     "Imagery": "<a:Images_Icon:1289933928261484635>",
     "Premium": "<a:premium:1289933987850227803>",
     "Prefix": "<a:prefix:1289933972922568756>",
@@ -38,7 +37,7 @@ CATEGORY_EMOJIS: Dict[str, str] = {
     "ReactionRoles": "<a:SelfRoles:1289934024776618115>",
     "Welcome": "<a:welcome_pepe:1289934059170172928>",
     "EmbedCreator": "<:embed:1289933863363018752>",
-    "Anilist": "<a:anime:1289933771470143562>",
+    "AniManga": "<a:anime:1289933771470143562>",
     "No Category": "<a:question_mark:1289934011246055424>"
 }
 
@@ -206,7 +205,8 @@ class HelpCog(commands.Cog):
 
         # Instance variables that can be overridden
         self.embed_color: discord.Color = DEFAULT_EMBED_COLOR
-        self.embed_title: str = DEFAULT_EMBED_TITLE.format(bot_name=bot.user.name if bot.user else "Chronix")
+        self.embed_title: str = DEFAULT_EMBED_TITLE.format(
+            bot_name=bot.user.name if bot.user else "Chronix")
         self.embed_footer: str = DEFAULT_EMBED_FOOTER
         self.owner_only_message: str = DEFAULT_OWNER_ONLY_MESSAGE
         self.no_category_name: str = DEFAULT_NO_CATEGORY_NAME
