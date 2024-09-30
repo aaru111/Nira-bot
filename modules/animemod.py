@@ -422,10 +422,9 @@ class AniListModule:
                     if 'errors' in data:
                         return []
                     media_list = data['data']['Page']['media']
-                    return [
-                        (f"{m['title']['romaji']} ({m['format']}) - {m['startDate']['year']}", str(m['id']))
-                        for m in media_list
-                    ]
+                    return [(
+                        f"{m['title']['romaji']} ({m['format']}) - {m['startDate']['year']}",
+                        str(m['id'])) for m in media_list]
                 else:
                     return []
 
@@ -1338,3 +1337,49 @@ class LogoutView(discord.ui.View):
             for item in self.children:
                 item.disabled = True
             await self.message.edit(view=self)
+
+
+class SearchView(discord.ui.View):
+
+    def __init__(self, module: AniListModule, media):
+        super().__init__()
+        self.module = module
+        self.media = media
+        self.update_buttons()
+
+    def update_buttons(self):
+        relations = self.media.get('relations', {}).get('edges', [])
+        self.prequels = [
+            edge['node'] for edge in relations
+            if edge['relationType'].lower() == 'prequel'
+        ]
+        self.sequels = [
+            edge['node'] for edge in relations
+            if edge['relationType'].lower() == 'sequel'
+        ]
+
+        self.prequel_button.disabled = len(self.prequels) == 0
+        self.sequel_button.disabled = len(self.sequels) == 0
+
+    @discord.ui.button(label="Prequel", style=discord.ButtonStyle.primary)
+    async def prequel_button(self, interaction: discord.Interaction,
+                             button: discord.ui.Button):
+        if self.prequels:
+            await self.show_related(interaction, self.prequels[0])
+
+    @discord.ui.button(label="Sequel", style=discord.ButtonStyle.primary)
+    async def sequel_button(self, interaction: discord.Interaction,
+                            button: discord.ui.Button):
+        if self.sequels:
+            await self.show_related(interaction, self.sequels[0])
+
+    async def show_related(self, interaction: discord.Interaction,
+                           related_media):
+        full_media = await self.module.search_media(related_media['type'],
+                                                    str(related_media['id']))
+
+        embed = await interaction.client.get_cog(
+            'Anilist').create_search_embed(interaction.user, full_media)
+        new_view = SearchView(self.module, full_media)
+
+        await interaction.response.edit_message(embed=embed, view=new_view)
