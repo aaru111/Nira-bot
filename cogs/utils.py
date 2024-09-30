@@ -5,11 +5,13 @@ import aiohttp
 import os
 from typing import Optional, List
 from urllib.parse import quote
+from abc import ABC, abstractmethod
 
 from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from modules.weathermod import create_weather_embed
 from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
 from modules.shortnermod import URLShortenerCore
+from database import db
 
 # Retrieve the Bitly API token from environment variables
 BITLY_TOKEN = os.getenv("BITLY_API")
@@ -17,6 +19,37 @@ BITLY_TOKEN = os.getenv("BITLY_API")
 user_rate_limits = {}
 RATE_LIMIT = 5  # Max number of URL shortenings per user within the reset interval
 RESET_INTERVAL = 60 * 60  # Reset interval in seconds (e.g., 1 hour)
+
+
+# DatabaseManager interface for abstracting database operations
+class DatabaseManager(ABC):
+
+    @abstractmethod
+    async def get_prefix(self, guild_id: int) -> str:
+        pass
+
+    @abstractmethod
+    async def set_prefix(self, guild_id: int, prefix: str) -> None:
+        pass
+
+
+class PostgreSQLManager(DatabaseManager):
+
+    async def initialize(self):
+        await db.initialize()
+
+    async def get_prefix(self, guild_id: int) -> str:
+        query = 'SELECT prefix FROM guild_prefixes WHERE guild_id = $1'
+        result = await db.fetch(query, guild_id)
+        return result[0]['prefix'] if result else '.'
+
+    async def set_prefix(self, guild_id: int, prefix: str) -> None:
+        query = '''
+        INSERT INTO guild_prefixes (guild_id, prefix)
+        VALUES ($1, $2)
+        ON CONFLICT (guild_id) DO UPDATE SET prefix = $2
+        '''
+        await db.execute(query, guild_id, prefix)
 
 
 class Utilities(commands.Cog):
@@ -28,19 +61,27 @@ class Utilities(commands.Cog):
         self.embed_creator = WikiEmbedCreator()
         self.url_shortener_core = URLShortenerCore(BITLY_TOKEN or "",
                                                    RATE_LIMIT, RESET_INTERVAL)
+        self.db_manager = PostgreSQLManager()
 
     async def cog_load(self):
         """Initialize resources when the cog is loaded."""
         await self.url_shortener_core.initialize_session()
+        await self.db_manager.initialize()
 
     async def cog_unload(self):
         """Cleanup resources when the cog is unloaded."""
         await self.session.close()
         await self.url_shortener_core.close_session()
+        await db.close()
 
-    async def wiki_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    async def wiki_autocomplete(
+            self, interaction: discord.Interaction,
+            current: str) -> List[app_commands.Choice[str]]:
         suggestions = await self.searcher.autocomplete(current)
-        return [app_commands.Choice(name=suggestion, value=suggestion) for suggestion in suggestions[:25]]
+        return [
+            app_commands.Choice(name=suggestion, value=suggestion)
+            for suggestion in suggestions[:25]
+        ]
 
     @commands.hybrid_command(name="wiki",
                              description="Search Wikipedia for information")
@@ -150,7 +191,8 @@ class Utilities(commands.Cog):
         if self.url_shortener_core.is_already_shortened(url):
             await ctx.send("Cannot shorten an already shortened URL.")
             return
-        shortened_url = await self.url_shortener_core.shorten_url(url, expire_days)
+        shortened_url = await self.url_shortener_core.shorten_url(
+            url, expire_days)
         if shortened_url:
             formatted_url = self.url_shortener_core.format_shortened_url(
                 shortened_url)
@@ -168,6 +210,51 @@ class Utilities(commands.Cog):
                 "Failed to shorten the URL. Please ensure it's a valid URL and try again."
             )
 
+    @staticmethod
+    def is_valid_prefix(prefix: str) -> bool:
+        return len(prefix) <= 10 and not any(char.isspace() for char in prefix)
+
+    @app_commands.command(
+        name='prefix',
+        description='Change or view the bot prefix for this server')
+    @app_commands.describe(
+        new_prefix='The new prefix to set (leave empty to view current prefix)'
+    )
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def change_prefix(self,
+                            interaction: discord.Interaction,
+                            new_prefix: Optional[str] = None):
+        if new_prefix is None:
+            current_prefix = await self.db_manager.get_prefix(
+                interaction.guild.id)
+            await interaction.response.send_message(
+                f"The current prefix is: `{current_prefix}`")
+            return
+        if not self.is_valid_prefix(new_prefix):
+            await interaction.response.send_message(
+                "Invalid prefix. It must be 10 characters or less and contain no spaces.",
+                ephemeral=True)
+            return
+        await self.db_manager.set_prefix(interaction.guild.id, new_prefix)
+        self.bot.command_prefix = commands.when_mentioned_or(new_prefix)
+        await interaction.response.send_message(
+            f"Prefix updated to: `{new_prefix}`")
+
+    @change_prefix.error
+    async def change_prefix_error(self, interaction: discord.Interaction,
+                                  error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message(
+                "You need 'Manage Server' permissions to change the prefix.",
+                ephemeral=True)
+
+    async def get_prefix(self, message: discord.Message) -> str:
+        if message.guild:
+            return await self.db_manager.get_prefix(message.guild.id)
+        return '.'  # Default prefix for DMs
+
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(Utilities(bot))
+    cog = Utilities(bot)
+    await bot.add_cog(cog)
+    bot.get_prefix = cog.get_prefix
