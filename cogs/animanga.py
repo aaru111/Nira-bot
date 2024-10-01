@@ -124,7 +124,7 @@ class AniManga(commands.Cog):
 
             embed = await self.create_search_embed(interaction.user,
                                                    search_result)
-            view = SearchView(self.anilist_module, search_result)
+            view = SearchView(self.anilist_module, search_result, self)
             await interaction.followup.send(embed=embed, view=view)
         except Exception as e:
             await interaction.followup.send(
@@ -136,11 +136,9 @@ class AniManga(commands.Cog):
         embed_color = int(profile_color.lstrip('#'), 16)
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
-        embed = discord.Embed(
-            title=
-            f"{media['title']['romaji']}",
-            url=media.get('siteUrl', 'https://anilist.co'),
-            color=embed_color)
+        embed = discord.Embed(title=f"{media['title']['romaji']}",
+                              url=media.get('siteUrl', 'https://anilist.co'),
+                              color=embed_color)
         embed.set_thumbnail(url=media['coverImage']['large'])
 
         if media['bannerImage']:

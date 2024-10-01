@@ -1349,21 +1349,22 @@ class LogoutView(discord.ui.View):
 
 class SearchView(discord.ui.View):
 
-    def __init__(self, module: AniListModule, media):
+    def __init__(self, module: AniListModule, media, cog):
         super().__init__()
         self.module = module
         self.media = media
+        self.cog = cog
         self.update_buttons()
 
     def update_buttons(self):
         relations = self.media.get('relations', {}).get('edges', [])
         self.prequels = [
             edge['node'] for edge in relations
-            if edge['relationType'].lower() == 'prequel'
+            if edge['relationType'] == 'PREQUEL'
         ]
         self.sequels = [
             edge['node'] for edge in relations
-            if edge['relationType'].lower() == 'sequel'
+            if edge['relationType'] == 'SEQUEL'
         ]
 
         self.prequel_button.disabled = len(self.prequels) == 0
@@ -1386,8 +1387,8 @@ class SearchView(discord.ui.View):
         full_media = await self.module.search_media(related_media['type'],
                                                     str(related_media['id']))
 
-        embed = await interaction.client.get_cog(
-            'Anilist').create_search_embed(interaction.user, full_media)
-        new_view = SearchView(self.module, full_media)
+        embed = await self.cog.create_search_embed(interaction.user,
+                                                   full_media)
+        new_view = SearchView(self.module, full_media, self.cog)
 
         await interaction.response.edit_message(embed=embed, view=new_view)
