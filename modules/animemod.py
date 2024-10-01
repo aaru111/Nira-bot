@@ -928,18 +928,24 @@ class AniListModule:
             f"-# {emoji} Time: {anime_stats['minutesWatched'] // 1440} days")
 
         anime_score = anime_stats['meanScore']
-        anime_score_bar = '█' * int(
-            anime_score / 10) + '░' * (10 - int(anime_score / 10))
-        anime_score_value = f"-# {emoji} **{anime_score:.2f} // 100**\n-# ╰> {anime_score_bar}"
+        if anime_score == 0:
+            anime_score_value = f"-# {emoji} **N/A**"
+        else:
+            anime_score_bar = '█' * int(
+                anime_score / 10) + '░' * (10 - int(anime_score / 10))
+            anime_score_value = f"-# {emoji} **{anime_score:.2f} // 100**\n-# ╰> {anime_score_bar}"
 
         manga_value = (f"-# {emoji} Count: {manga_stats['count']}\n"
                        f"-# {emoji} Chapters: {manga_stats['chaptersRead']}\n"
                        f"-# {emoji} Volumes: {manga_stats['volumesRead']}")
 
         manga_score = manga_stats['meanScore']
-        manga_score_bar = '█' * int(
-            manga_score / 10) + '░' * (10 - int(manga_score / 10))
-        manga_score_value = f"-# {emoji} **{manga_score:.2f} // 100**\n-# ╰> {manga_score_bar}"
+        if manga_score == 0:
+            manga_score_value = f"-# {emoji} **N/A**"
+        else:
+            manga_score_bar = '█' * int(
+                manga_score / 10) + '░' * (10 - int(manga_score / 10))
+            manga_score_value = f"-# {emoji} **{manga_score:.2f} // 100**\n-# ╰> {manga_score_bar}"
 
         embed.add_field(name="Anime Stats", value=anime_value, inline=True)
         embed.add_field(name="Anime Score",
