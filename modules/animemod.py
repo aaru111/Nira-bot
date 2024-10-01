@@ -899,7 +899,7 @@ class AniListModule:
         emoji = self.get_color_emoji(profile_color)
 
         embed = discord.Embed(title=f"AniList Profile for {stats['name']}",
-                              url=stats['siteUrl'],
+                              url=stats.get('siteUrl', 'https://anilist.co'),
                               color=embed_color)
 
         if stats['avatar']['large']:
@@ -965,7 +965,8 @@ class AniListModule:
 
         if fav_anime:
             fav_anime_list = "\n".join([
-                f"-# {emoji} {anime['title']['romaji']}" for anime in fav_anime
+                f"-# {emoji} [{anime['title']['romaji']}]({anime.get('siteUrl', 'https://anilist.co')})"
+                for anime in fav_anime
             ])
             embed.add_field(name="Favorite Anime",
                             value=fav_anime_list,
@@ -973,7 +974,8 @@ class AniListModule:
 
         if fav_manga:
             fav_manga_list = "\n".join([
-                f"-# {emoji} {manga['title']['romaji']}" for manga in fav_manga
+                f"-# {emoji} [{manga['title']['romaji']}]({manga.get('siteUrl', 'https://anilist.co')})"
+                for manga in fav_manga
             ])
             embed.add_field(name="Favorite Manga",
                             value=fav_manga_list,

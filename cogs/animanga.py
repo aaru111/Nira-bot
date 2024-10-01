@@ -136,40 +136,42 @@ class AniManga(commands.Cog):
         embed_color = int(profile_color.lstrip('#'), 16)
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
-        embed = discord.Embed(title=media['title']['romaji'],
-                              url=media['siteUrl'],
-                              color=embed_color)
+        embed = discord.Embed(
+            title=
+            f"{media['title']['romaji']}",
+            url=media.get('siteUrl', 'https://anilist.co'),
+            color=embed_color)
         embed.set_thumbnail(url=media['coverImage']['large'])
 
         if media['bannerImage']:
             embed.set_image(url=media['bannerImage'])
 
         embed.add_field(name="Type",
-                        value=f"{emoji} {media['type']}",
+                        value=f"{emoji}{media['type']}",
                         inline=True)
         embed.add_field(name="Format",
-                        value=f"{emoji} {media['format']}",
+                        value=f"{emoji}{media['format']}",
                         inline=True)
         embed.add_field(name="Status",
-                        value=f"{emoji} {media['status']}",
+                        value=f"{emoji}{media['status']}",
                         inline=True)
 
         if media['type'] == 'ANIME':
             embed.add_field(name="Episodes",
-                            value=f"{emoji} {media['episodes'] or 'N/A'}",
+                            value=f"{emoji}{media['episodes'] or 'N/A'}",
                             inline=True)
         else:
             embed.add_field(name="Chapters",
-                            value=f"{emoji} {media['chapters'] or 'N/A'}",
+                            value=f"{emoji}{media['chapters'] or 'N/A'}",
                             inline=True)
             embed.add_field(name="Volumes",
-                            value=f"{emoji} {media['volumes'] or 'N/A'}",
+                            value=f"{emoji}{media['volumes'] or 'N/A'}",
                             inline=True)
 
         if media['startDate']['year']:
             start_date = f"{media['startDate']['year']}-{media['startDate']['month']}-{media['startDate']['day']}"
             embed.add_field(name="Start Date",
-                            value=f"{emoji} {start_date}",
+                            value=f"{emoji}{start_date}",
                             inline=True)
 
         if media['averageScore']:
@@ -181,8 +183,12 @@ class AniManga(commands.Cog):
                 inline=True)
 
         if media['genres']:
+            genres_links = ", ".join([
+                f"[{genre}](https://anilist.co/search/anime?genres={genre})"
+                for genre in media['genres']
+            ])
             embed.add_field(name="Genres",
-                            value=f"{emoji}{', '.join(media['genres'])}",
+                            value=f"{emoji}{genres_links}",
                             inline=False)
 
         if media['description']:
