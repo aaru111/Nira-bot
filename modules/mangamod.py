@@ -256,7 +256,7 @@ class MangaMod:
         manga_url = f"https://mangadex.org/title/{manga_id}"
 
         embed = discord.Embed(
-            title=f"[{manga_title}]({manga_url})",
+            title=f"{manga_title}",
             url=manga_url,
             description=
             f"Volume {current_volume_number} - Chapter {current_chapter['attributes']['chapter']}",
