@@ -701,7 +701,7 @@ class Moderation(commands.Cog):
                         value=f"`{websocket_latency}ms`")
         embed.add_field(name="Response Time", value=f"`{response_time}ms`")
         embed.set_footer(text="Bot Latency Information")
-        await message.edit(content=None, embed=embed)
+        await message.edit(embed=embed)
 
     @commands.hybrid_command(name="role-add")
     @commands.has_permissions(manage_roles=True)
