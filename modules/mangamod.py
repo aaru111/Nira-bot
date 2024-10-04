@@ -390,6 +390,11 @@ class MangaMod:
             Button(label='⬅️',
                    style=discord.ButtonStyle.red,
                    custom_id='prev_page'))
+
+        view.add_item(
+            Button(label='🔢',
+                   style=discord.ButtonStyle.grey,
+                   custom_id='go_to_page'))
         view.add_item(
             Button(label='➡️',
                    style=discord.ButtonStyle.green,
@@ -399,10 +404,6 @@ class MangaMod:
                    style=discord.ButtonStyle.blurple,
                    custom_id='next_volume'))
 
-        view.add_item(
-            Button(label='🔢',
-                   style=discord.ButtonStyle.grey,
-                   custom_id='go_to_page'))
         view.add_item(chapter_select)
 
         view.on_timeout = lambda: message.edit(view=None)
