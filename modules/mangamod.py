@@ -390,7 +390,6 @@ class MangaMod:
             Button(label='⬅️',
                    style=discord.ButtonStyle.red,
                    custom_id='prev_page'))
-
         view.add_item(
             Button(label='🔢',
                    style=discord.ButtonStyle.grey,
@@ -406,7 +405,17 @@ class MangaMod:
 
         view.add_item(chapter_select)
 
-        view.on_timeout = lambda: message.edit(view=None)
+        async def on_timeout():
+            try:
+                await message.edit(view=None)
+            except discord.errors.NotFound:
+                # Message was deleted, ignore the error
+                pass
+            except discord.errors.HTTPException as e:
+                # Log the error or handle it as appropriate for your bot
+                print(f"Error editing message after timeout: {e}")
+
+        view.on_timeout = on_timeout
 
         for item in view.children:
             if isinstance(item, Button):
