@@ -84,7 +84,14 @@ class MangaMod:
             success = await self.display_manga(ctx, select.values[0],
                                                specified_volume)
             if success:
-                await interaction.message.delete()
+                try:
+                    await interaction.message.delete()
+                except discord.errors.NotFound:
+                    # Message already deleted, ignore the error
+                    pass
+                except discord.errors.HTTPException as e:
+                    # Log the error or handle it as appropriate for your bot
+                    print(f"Error deleting message: {e}")
 
         select.callback = select_callback
         view = View()
