@@ -145,31 +145,31 @@ class AniManga(commands.Cog):
             embed.set_image(url=media['bannerImage'])
 
         embed.add_field(name="Type",
-                        value=f"{emoji}{media['type']}",
+                        value=f"-# {emoji}{media['type']}",
                         inline=True)
         embed.add_field(name="Format",
-                        value=f"{emoji}{media['format']}",
+                        value=f"-# {emoji}{media['format']}",
                         inline=True)
         embed.add_field(name="Status",
-                        value=f"{emoji}{media['status']}",
+                        value=f"-# {emoji}{media['status']}",
                         inline=True)
 
         if media['type'] == 'ANIME':
             embed.add_field(name="Episodes",
-                            value=f"{emoji}{media['episodes'] or 'N/A'}",
+                            value=f"-# {emoji}{media['episodes'] or 'N/A'}",
                             inline=True)
         else:
             embed.add_field(name="Chapters",
-                            value=f"{emoji}{media['chapters'] or 'N/A'}",
+                            value=f"-# {emoji}{media['chapters'] or 'N/A'}",
                             inline=True)
             embed.add_field(name="Volumes",
-                            value=f"{emoji}{media['volumes'] or 'N/A'}",
+                            value=f"-# {emoji}{media['volumes'] or 'N/A'}",
                             inline=True)
 
         if media['startDate']['year']:
             start_date = f"{media['startDate']['year']}-{media['startDate']['month']}-{media['startDate']['day']}"
             embed.add_field(name="Start Date",
-                            value=f"{emoji}{start_date}",
+                            value=f"-# {emoji}{start_date}",
                             inline=True)
 
         if media['averageScore']:
@@ -177,7 +177,7 @@ class AniManga(commands.Cog):
                 10 - int(media['averageScore'] / 10))
             embed.add_field(
                 name="Score",
-                value=f"{emoji}**{media['averageScore']}%**\n╰> {score_bar}",
+                value=f"-# {emoji}**{media['averageScore']}%**\n-# ╰>{score_bar}",
                 inline=True)
 
         if media['genres']:
@@ -186,7 +186,7 @@ class AniManga(commands.Cog):
                 for genre in media['genres']
             ])
             embed.add_field(name="Genres",
-                            value=f"{emoji}{genres_links}",
+                            value=f"-# {emoji}{genres_links}",
                             inline=False)
 
         if media['description']:
