@@ -8,6 +8,7 @@ from typing import List, Tuple
 from loguru import logger
 import sys
 from discord.ext.commands import CommandInvokeError
+from discord.errors import Forbidden, HTTPException
 
 DELETE_AFTER: int = 10  # Time in seconds after which the error message will delete itself
 DEFAULT_EMBED_COLOR: int = 0x2f3131  # Default embed color
@@ -139,7 +140,6 @@ class Errors(commands.Cog):
         if not isinstance(error, non_logging_errors):
             logger.error(f"Error occurred in command {ctx.command}: {error}")
 
-        # Rest of the error handling logic...
         if hasattr(ctx.command, 'on_error'):
             return  # Don't interfere with custom error handlers
 
@@ -149,6 +149,21 @@ class Errors(commands.Cog):
         if isinstance(error, discord.HTTPException) and error.status == 429:
             await self.handle_rate_limit(ctx, error)
             return
+
+        try:
+            if not ctx.channel.permissions_for(ctx.me).send_messages:
+                try:
+                    await ctx.author.send(
+                        "I don't have permission to send messages in that channel. "
+                        "Please give me the 'Send Messages' permission and try again."
+                    )
+                except discord.Forbidden:
+                    # If we can't send a DM, we can't communicate the error at all
+                    pass
+                return
+        except AttributeError:
+            # This can happen in DMs where ctx.channel.permissions_for() doesn't exist
+            pass
 
         # Fallback for other errors
         command_name: str = ctx.command.qualified_name if ctx.command else "Unknown Command"
@@ -305,6 +320,29 @@ class Errors(commands.Cog):
             case commands.FlagError():
                 return ("Flag Error",
                         f"There was an issue with command flags: {str(error)}")
+
+            case Forbidden():
+                if error.code == 50013:  # Missing Permissions
+                    return (
+                        "Missing Bot Permissions",
+                        "I don't have the necessary permissions to perform this action. "
+                        "Please make sure I have the correct permissions in this channel and try again."
+                    )
+                else:
+                    return (
+                        "Forbidden Action",
+                        f"I'm not allowed to perform this action: {error.text}"
+                    )
+
+            case HTTPException():
+                if error.code == 50006:  # Cannot send an empty message
+                    return (
+                        "Empty Message Error",
+                        "An attempt was made to send an empty message. This is likely due to an issue with the command's response generation."
+                    )
+                else:
+                    return ("HTTP Exception",
+                            f"An HTTP error occurred: {error.text}")
             case _:
                 tb_str = traceback.format_exception(type(error), error,
                                                     error.__traceback__)
