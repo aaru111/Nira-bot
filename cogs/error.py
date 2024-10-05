@@ -196,6 +196,12 @@ class Errors(commands.Cog):
             command_name: str, command_signature: str) -> Tuple[str, str]:
         """Get the title and description for the error embed based on the error type."""
         match error:
+
+            case commands.NSFWChannelRequired():
+                return (
+                    "NSFW Channel Required",
+                    f"The command '{command_name}' can only be used in NSFW channels. Please use this command in an appropriate channel."
+                )
             case commands.MissingRequiredArgument():
                 return (
                     "Missing Required Argument",
