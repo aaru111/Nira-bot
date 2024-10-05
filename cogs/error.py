@@ -21,9 +21,6 @@ logger.add(
     backtrace=True,
     diagnose=True)
 
-# Enable/disable interactive debugging
-DEBUG_MODE = False
-
 
 def custom_excepthook(type, value, tb):
     """Custom exception hook for debugging."""
@@ -119,14 +116,6 @@ class Errors(commands.Cog):
             logger.error(
                 f"Error in command {ctx.command}: {error}\n{description}")
 
-        if DEBUG_MODE:
-            logger.debug(f"Debug information for error in {ctx.command}:")
-            logger.debug(f"Error type: {type(error)}")
-            logger.debug(f"Error message: {str(error)}")
-            logger.debug(f"Command: {ctx.command}")
-            logger.debug(f"Arguments: {ctx.args}")
-            logger.debug(f"Keyword arguments: {ctx.kwargs}")
-
     def get_error_style(self, title: str) -> Tuple[discord.ButtonStyle, int]:
         """Determine button color and embed color based on the error severity."""
         match title:
@@ -169,14 +158,6 @@ class Errors(commands.Cog):
         title, description = self.get_error_title_and_description(
             ctx, error, command_name, command_signature)
         await self.handle_error(ctx, error, description, title)
-
-        if DEBUG_MODE:
-            logger.debug(f"Debug information for error in {ctx.command}:")
-            logger.debug(f"Error type: {type(error)}")
-            logger.debug(f"Error message: {str(error)}")
-            logger.debug(f"Command: {ctx.command}")
-            logger.debug(f"Arguments: {ctx.args}")
-            logger.debug(f"Keyword arguments: {ctx.kwargs}")
 
     async def handle_rate_limit(self, ctx: commands.Context,
                                 error: discord.HTTPException) -> None:
