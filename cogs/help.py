@@ -284,6 +284,7 @@ class HelpCog(commands.Cog):
     @commands.hybrid_command(name="help",
                              description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
+    @app_commands.allowed_installs(guilds=True, users=True)
     async def help_command(self,
                            ctx: commands.Context[BotT],
                            command: Optional[str] = None) -> None:
