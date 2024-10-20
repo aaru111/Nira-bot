@@ -10,6 +10,7 @@ from modules.collatz import is_collatz_conjecture
 import aiofiles
 from typing import Optional, List, Dict, Tuple, Any, Union
 from modules.mememod import MemeView, MemeModule
+from modules.horoscopemod import HoroscopeModule, ZodiacSign, HoroscopeError
 
 # Global variables for reuse
 DEFAULT_EMBED_COLOR: int = 0x2f3136
@@ -30,10 +31,12 @@ class Fun(commands.Cog):
         self.bot = bot
         self.session = aiohttp.ClientSession()
         self.meme_module = MemeModule()
+        self.horoscope_module = HoroscopeModule()
 
     async def cog_unload(self) -> None:
         await self.session.close()
         await self.meme_module.close()
+        await self.horoscope_module.close()
 
     @app_commands.command(name="meme", description="Get a random meme")
     @app_commands.choices(topic=[
@@ -473,6 +476,52 @@ class Fun(commands.Cog):
             app_commands.Choice(name=choice, value=choice)
             for choice in choices if current.lower() in choice.lower()
         ]
+
+    @app_commands.command()
+    @app_commands.describe(
+        zodiac_sign="The Zodiac sign to get the horoscope of")
+    async def horoscope(self, interaction: discord.Interaction,
+                        zodiac_sign: ZodiacSign) -> None:
+        """Get today's horoscope and star ratings for the given Zodiac sign."""
+        await interaction.response.defer()
+
+        try:
+            horoscope = await self.horoscope_module.get_today_horoscope(
+                zodiac_sign)
+            star_ratings = await self.horoscope_module.get_today_star_rating(
+                zodiac_sign)
+
+            today = discord.utils.utcnow()
+
+            embed = discord.Embed(color=0x9266CC,
+                                  title=f"Horoscope for {zodiac_sign.name}",
+                                  timestamp=today)
+
+            # Get the emoji URL from the horoscope module
+            embed.set_thumbnail(
+                url=self.horoscope_module.ZODIAC_EMOJIS[zodiac_sign])
+            embed.add_field(name="Today's Horoscope",
+                            value=horoscope,
+                            inline=False)
+
+            for category, text in star_ratings:
+                embed.add_field(name=category, value=text, inline=False)
+
+            await interaction.followup.send(embed=embed)
+
+        except HoroscopeError as e:
+            error_embed = discord.Embed(
+                color=discord.Color.red(),
+                title="Error",
+                description=f"Failed to get horoscope: {str(e)}")
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+
+        except Exception as e:
+            error_embed = discord.Embed(
+                color=discord.Color.red(),
+                title="Unexpected Error",
+                description=f"An unexpected error occurred: {str(e)}")
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

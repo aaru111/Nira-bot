@@ -50,6 +50,7 @@ class Bot(commands.Bot, BotBase):
                          intents=intents,
                          **kwargs)
         self.session: ClientSession = None
+        self.http_session: ClientSession = None
         self.default_prefix = command_prefix if isinstance(
             command_prefix, str) else "."
         self.status_list = itertools.cycle([
