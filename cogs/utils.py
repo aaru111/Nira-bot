@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 import os
+import typing
 from typing import Optional, List
 from urllib.parse import quote
 from abc import ABC, abstractmethod
@@ -12,6 +13,7 @@ from modules.weathermod import create_weather_embed
 from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
 from modules.shortnermod import URLShortenerCore
 from database import db
+from modules.timestampmod import DatetimeTransformer, TimezoneTransformer, TimezoneTransformerError, make_timestamps_embed, TIMESTAMP_STYLE
 
 # Retrieve the Bitly API token from environment variables
 BITLY_TOKEN = os.getenv("BITLY_API")
@@ -252,6 +254,57 @@ class Utilities(commands.Cog):
         if message.guild:
             return await self.db_manager.get_prefix(message.guild.id)
         return '.'  # Default prefix for DMs
+
+    @app_commands.command()
+    @app_commands.describe(style="The style to format the datetime with.")
+    @app_commands.choices(style=TIMESTAMP_STYLE)
+    async def now(
+        self,
+        interaction: discord.Interaction,
+        style: typing.Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        """Create timestamps of now to send to get rich formatting."""
+
+        _now = discord.utils.utcnow()
+
+        embed = make_timestamps_embed(_now, style=style)
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command()
+    @app_commands.describe(
+        dt="The date and time.",
+        tz="The time zone of the time.",
+        style="The style to format the datetime with.",
+    )
+    @app_commands.rename(dt="datetime", tz="timezone")
+    @app_commands.choices(style=TIMESTAMP_STYLE)
+    async def timestamp(
+        self,
+        interaction: discord.Interaction,
+        dt: app_commands.Transform[str, DatetimeTransformer],
+        tz: app_commands.Transform[str, TimezoneTransformer],
+        style: typing.Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        """Create timestamps of the given time to send to get rich formatting."""
+
+        dt_tz = dt.replace(tzinfo=tz)  # type: ignore
+
+        embed = make_timestamps_embed(dt_tz, style=style)
+        await interaction.response.send_message(embed=embed)
+
+    @timestamp.error
+    async def timestamp_error(self, interaction: discord.Interaction,
+                              error: app_commands.AppCommandError) -> None:
+        """Error handler for the timestamp command."""
+
+        if isinstance(error, TimezoneTransformerError):
+            await interaction.response.send_message(
+                f"Could not find the appropriate time zone `{error.tz_key}`. "
+                "Try again by selecting a proposed value.",
+                ephemeral=True,
+            )
+        else:
+            interaction.extras["error_handled"] = False
 
 
 async def setup(bot: commands.Bot) -> None:
