@@ -37,6 +37,7 @@ class AniManga(commands.Cog):
     @app_commands.describe(
         user="The Discord user to look up (optional)",
         anilist_username="The AniList username to look up (optional)")
+    @app_commands.allowed_installs(guilds=True, users=True)
     async def anilist(self,
                       interaction: discord.Interaction,
                       user: discord.User = None,
@@ -105,6 +106,7 @@ class AniManga(commands.Cog):
     @app_commands.describe(
         media_type="Choose whether to search for anime or manga",
         query="The name or ID of the anime or manga to search for")
+    @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.choices(media_type=[
         app_commands.Choice(name="Anime", value="ANIME"),
         app_commands.Choice(name="Manga", value="MANGA")
@@ -199,6 +201,7 @@ class AniManga(commands.Cog):
         return embed
 
     @commands.hybrid_command(name='manga')
+    @app_commands.allowed_installs(guilds=True, users=True)
     async def manga(self, ctx: commands.Context, *, query: str) -> None:
         """
         Command to search and read a manga using the MangaDex API.
