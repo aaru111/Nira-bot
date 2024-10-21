@@ -108,7 +108,7 @@ tqdm==4.63.0
 traitlets==5.14.3
 typing_extensions==4.12.2
 update-checker==0.18.0
-urllib3==2.2.2
+urllib3
 wcwidth==0.2.13
 webcolors==24.6.0
 webencodings==0.5.1
