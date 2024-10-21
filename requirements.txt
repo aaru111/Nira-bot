@@ -91,7 +91,7 @@ pyzmq==26.1.0
 qrcode==7.4.2
 redis==5.0.8
 referencing==0.35.1
-requests==2.32.3
+requests
 rpds-py==0.19.1
 rule34==1.8.1
 scikit-learn==1.5.1
