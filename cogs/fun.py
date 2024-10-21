@@ -39,6 +39,10 @@ class Fun(commands.Cog):
         await self.horoscope_module.close()
 
     @app_commands.command(name="meme", description="Get a random meme")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(topic=[
         app_commands.Choice(name="General", value="general"),
         app_commands.Choice(name="Anime", value="anime"),
@@ -186,38 +190,48 @@ class Fun(commands.Cog):
         return discord.File(buffer, filename='quote.png')
 
     @commands.hybrid_command(name="quote")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.describe(
         quote="Enter your own quote or leave it empty for a random quote",
-        member="The member to use the profile picture of (defaults to you)",
+        user="The user to use the profile picture of (defaults to you)",
         sepia="Apply a sepia effect to the image (True/False)")
     async def quote(self,
                     ctx: commands.Context,
                     *,
                     quote: Optional[str] = None,
-                    member: Optional[discord.Member] = None,
+                    user: Optional[Union[discord.Member, discord.User]] = None,
                     sepia: bool = False) -> None:
         await ctx.defer()
 
-        member = member or ctx.author
+        user = user or ctx.author
 
         if quote:
-            display_quote, author = quote, member.display_name
+            display_quote, author = quote, user.display_name
         else:
             display_quote, author = await self.fetch_quote()
 
-        quote_image = await self.generate_quote_image(member, display_quote,
+        quote_image = await self.generate_quote_image(user, display_quote,
                                                       author, sepia)
         await ctx.send(file=quote_image)
 
     @commands.hybrid_command(name="wanted")
-    @app_commands.describe(member="The member to generate a wanted poster for")
-    async def wanted(self,
-                     ctx: commands.Context,
-                     *,
-                     member: Optional[discord.Member] = None) -> None:
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
+    @app_commands.describe(user="The user to generate a wanted poster for")
+    async def wanted(
+            self,
+            ctx: commands.Context,
+            *,
+            user: Optional[Union[discord.Member,
+                                 discord.User]] = None) -> None:
         await ctx.defer()
 
-        member = member or ctx.author
+        user = user or ctx.author
 
         if not os.path.exists(WANTED_IMAGE_PATH):
             await ctx.send(
@@ -235,7 +249,7 @@ class Fun(commands.Cog):
             return
 
         try:
-            avatar_bytes: BytesIO = BytesIO(await member.display_avatar.read())
+            avatar_bytes: BytesIO = BytesIO(await user.display_avatar.read())
             pfp: Image.Image = Image.open(avatar_bytes)
             pfp = pfp.resize((2691, 2510))
             wanted.paste(pfp, (750, 1867))
@@ -260,6 +274,10 @@ class Fun(commands.Cog):
             await ctx.send("Failed to send the image. Please try again.")
 
     @commands.hybrid_command(name="collatz")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.describe(
         number="Number to check against the Collatz conjecture")
     async def collatz(self, ctx: commands.Context, number: int) -> None:
@@ -301,6 +319,10 @@ class Fun(commands.Cog):
             file.write("]\n")
 
     @commands.hybrid_command(name="pp")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def pp(self, ctx: commands.Context) -> None:
         """Generates a random 'pp' size."""
         await ctx.defer()
@@ -320,6 +342,10 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="rng")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def rng(self, ctx: commands.Context) -> None:
         """Generates a random number between 1 and 1000."""
         await ctx.defer()
@@ -333,6 +359,10 @@ class Fun(commands.Cog):
 
     @app_commands.command(name="joke")
     @app_commands.describe(category="Choose a joke category")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(category=[
         app_commands.Choice(name="Any", value="Any"),
         app_commands.Choice(name="Programming", value="Programming"),
@@ -416,9 +446,13 @@ class Fun(commands.Cog):
             return "https://media.tenor.com/slap.gif"  # Fallback GIF
 
     @commands.hybrid_command(name="slap")
-    @app_commands.describe(who="The member to slap",
+    @app_commands.describe(who="The user to slap",
                            reason="Reason for slapping",
                            style="Style of slap GIF")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(style=[
         app_commands.Choice(name="Anime", value="anime"),
         app_commands.Choice(name="Classic", value="classic"),
@@ -426,7 +460,7 @@ class Fun(commands.Cog):
     ])
     async def slap(self,
                    ctx: commands.Context,
-                   who: discord.Member,
+                   who: Union[discord.Member, discord.User],
                    style: Optional[str] = "anime",
                    reason: Optional[str] = None) -> None:
         """Command to slap a user with a reason and choose a style of slap GIF."""
@@ -452,6 +486,10 @@ class Fun(commands.Cog):
     @commands.hybrid_command(name='neko',
                              description="Send a neko image or gif")
     @app_commands.describe(choice="Choose between a neko image or gif")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def neko(self, ctx: commands.Context, choice: str = "image"):
         """Send a neko image or gif based on the user's choice."""
         url = "https://nekos.life/api/v2/img/neko" if choice == "image" else "https://nekos.life/api/v2/img/ngif"
@@ -480,6 +518,10 @@ class Fun(commands.Cog):
     @app_commands.command()
     @app_commands.describe(
         zodiac_sign="The Zodiac sign to get the horoscope of")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def horoscope(self, interaction: discord.Interaction,
                         zodiac_sign: ZodiacSign) -> None:
         """Get today's horoscope and star ratings for the given Zodiac sign."""

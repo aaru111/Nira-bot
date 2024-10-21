@@ -38,6 +38,9 @@ class AniManga(commands.Cog):
         user="The Discord user to look up (optional)",
         anilist_username="The AniList username to look up (optional)")
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def anilist(self,
                       interaction: discord.Interaction,
                       user: discord.User = None,
@@ -107,6 +110,9 @@ class AniManga(commands.Cog):
         media_type="Choose whether to search for anime or manga",
         query="The name or ID of the anime or manga to search for")
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(media_type=[
         app_commands.Choice(name="Anime", value="ANIME"),
         app_commands.Choice(name="Manga", value="MANGA")
@@ -179,7 +185,8 @@ class AniManga(commands.Cog):
                 10 - int(media['averageScore'] / 10))
             embed.add_field(
                 name="Score",
-                value=f"-# {emoji}**{media['averageScore']}%**\n-# ╰>{score_bar}",
+                value=
+                f"-# {emoji}**{media['averageScore']}%**\n-# ╰>{score_bar}",
                 inline=True)
 
         if media['genres']:
@@ -202,6 +209,7 @@ class AniManga(commands.Cog):
 
     @commands.hybrid_command(name='manga')
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def manga(self, ctx: commands.Context, *, query: str) -> None:
         """
         Command to search and read a manga using the MangaDex API.

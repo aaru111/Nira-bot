@@ -215,6 +215,10 @@ class Imagery(commands.Cog):
     @app_commands.describe(
         image="Upload an image or provide an image URL",
         url="URL of the image (optional if image is uploaded)")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def identify(self,
                        interaction: discord.Interaction,
                        image: Optional[discord.Attachment] = None,
@@ -266,6 +270,10 @@ class Imagery(commands.Cog):
         image_url="Or provide a URL to an image of the plant",
         language="Select the language for plant information (default: English)"
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(language=[
         Choice(name="English", value="en"),
         Choice(name="French", value="fr"),

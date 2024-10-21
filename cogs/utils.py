@@ -89,6 +89,9 @@ class Utilities(commands.Cog):
                              description="Search Wikipedia for information")
     @app_commands.describe(query="The search query for Wikipedia")
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.autocomplete(query=wiki_autocomplete)
     async def wiki(self, ctx: commands.Context, *, query: str):
         await ctx.defer()
@@ -128,7 +131,9 @@ class Utilities(commands.Cog):
         name="weather", description="Get the weather for a specified location")
     @app_commands.describe(location="The location to get weather for")
     @app_commands.allowed_installs(guilds=True, users=True)
-    
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def weather(self, ctx: commands.Context, *, location: str):
         api_key = os.getenv(
             "WEATHER_API_KEY")  # Retrieve the API key from the environment
@@ -150,6 +155,9 @@ class Utilities(commands.Cog):
     @app_commands.describe(word="The word to search for in Urban Dictionary")
     @app_commands.autocomplete(word=search_urban_dictionary)
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def urban(self, ctx: commands.Context, *, word: str):
         encoded_word = quote(word)
         url = f"https://api.urbandictionary.com/v0/define?term={encoded_word}"
@@ -182,6 +190,9 @@ class Utilities(commands.Cog):
         "Number of days after which the shortened URL will expire (default is no expiry)"
     )
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def shorten(self,
                       ctx: commands.Context,
                       url: str,
@@ -263,6 +274,9 @@ class Utilities(commands.Cog):
     @app_commands.command()
     @app_commands.describe(style="The style to format the datetime with.")
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.choices(style=TIMESTAMP_STYLE)
     async def now(
         self,
@@ -283,6 +297,7 @@ class Utilities(commands.Cog):
         style="The style to format the datetime with.",
     )
     @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.rename(dt="datetime", tz="timezone")
     @app_commands.choices(style=TIMESTAMP_STYLE)
     async def timestamp(
