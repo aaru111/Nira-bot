@@ -17,25 +17,25 @@ DEFAULT_NO_CATEGORY_NAME: str = "No Category"
 COMMANDS_PER_PAGE: int = 6
 VIEW_TIMEOUT: int = 40
 
-arrow_emoji: str = "<a:arrow:1289933782291447818>"
+arrow_emoji: str = "<a:arrow:1289063843129065532>"
 
 # Category emojis
 CATEGORY_EMOJIS: Dict[str, str] = {
-    "Home": "<a:home:1289933914898436127>",
-    "Moderation": "<a:Moderator:1289933964429103134>",
-    "Fun": "<a:fun:1289933886079373344>",
-    "Utilities": "<a:utility:1289934048445071390>",
-    "Jishaku": "<a:coding:1289933802612981760>",
-    "Owner": "<a:loading:1289933948880814150>",
-    "Games": "<a:controller:1289933810787549348>",
+    "Home": "<a:home:1289256751442694245>",
+    "Moderation": "<a:Moderator:1289256066227507302>",
+    "Fun": "<a:fun:1289255181170638939>",
+    "Utilities": "<a:utility:1289226179546447973>",
+    "Jishaku": "<a:coding:1289226502877216858>",
+    "Owner": "<a:owner:1297761407109959700>",
+    "Games": "<a:controller:1289226768779055137>",
     "NSFW": "🔞",
-    "Leveling": "<a:up_level_up:1289934037292679248>",
-    "Imagery": "<a:Images_Icon:1289933928261484635>",
-    "ReactionRoles": "<a:SelfRoles:1289934024776618115>",
-    "Welcome": "<a:welcome_pepe:1289934059170172928>",
-    "EmbedCreator": "<:embed:1289933863363018752>",
-    "AniManga": "<a:anime:1289933771470143562>",
-    "No Category": "<a:question_mark:1289934011246055424>"
+    "Leveling": "<a:up_level_up:1289225386244182080>",
+    "Imagery": "<a:Image:1289258081171275798>",
+    "ReactionRoles": "<a:SelfRoles:1297760770771386378>",
+    "Welcome": "<a:welcome:1289262744209592330>",
+    "EmbedCreator": "<:embed:1289263029896347698>",
+    "AniManga": "<a:anime:1289263917448564776>",
+    "No Category": "<a:question_mark:1289230595729129513>"
 }
 
 CommandType = Union[commands.Command[Any, Any, Any], app_commands.Command]
