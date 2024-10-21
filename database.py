@@ -6,7 +6,9 @@ DATABASE_URL: Optional[str] = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
+
 class Database:
+
     def __init__(self) -> None:
         self.pool: Optional[asyncpg.Pool] = None
 
@@ -52,6 +54,16 @@ class Database:
             access_token TEXT NOT NULL
         );
         """
+        create_player_stats_table: str = """
+        CREATE TABLE IF NOT EXISTS player_stats(
+            player_id BIGINT PRIMARY KEY,
+            player_name TEXT NOT NULL,
+            games_played INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            draws INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0
+        );
+        """
         try:
             if self.pool is None:
                 raise ValueError("Database pool is not initialized")
@@ -61,6 +73,7 @@ class Database:
                     await conn.execute(create_reaction_roles_table)
                     await conn.execute(create_tracked_messages_table)
                     await conn.execute(create_anilist_tokens_table)
+                    await conn.execute(create_player_stats_table)
         except asyncpg.UniqueViolationError as e:
             print(f"Unique violation error while creating tables: {e}")
             raise
@@ -98,6 +111,7 @@ class Database:
     async def close(self) -> None:
         if self.pool:
             await self.pool.close()
+
 
 # Instantiate a global database object
 db: Database = Database()
