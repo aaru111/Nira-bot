@@ -94,6 +94,29 @@ class ChessGame:
         else:
             return False
 
+    def get_game_status(self):
+        if self.board.is_checkmate():
+            return "Checkmate!"
+        elif self.board.is_check():
+            return "Check!"
+        elif self.board.is_stalemate():
+            return "Stalemate!"
+        elif self.board.is_insufficient_material():
+            return "Draw (Insufficient material)"
+        elif self.board.is_seventyfive_moves():
+            return "Draw (75-move rule)"
+        elif self.board.is_fivefold_repetition():
+            return "Draw (Fivefold repetition)"
+        return None
+
+    def get_last_move_info(self):
+        if not self.move_history:
+            return None
+
+        last_move = self.move_history[-1]
+        last_player = self.player2 if self.current_player == self.player1 else self.player1
+        return f"Last move: {last_move} by {last_player.name}"
+
     def calculate_material_advantage(self):
         """Calculate the material advantage for each side."""
         white_material = 0
@@ -258,7 +281,6 @@ class ChessView(discord.ui.View):
         png_image = self.convert_svg_to_png(svg_board)
         file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
 
-        # Get captured pieces and material advantage
         white_captured, black_captured = self.game.get_captured_pieces_display(
         )
         material_advantage = self.game.calculate_material_advantage()
@@ -270,7 +292,6 @@ class ChessView(discord.ui.View):
 
         embed.set_image(url="attachment://chessboard.png")
 
-        # Add captured pieces fields
         if white_captured:
             embed.add_field(name="White's Captures",
                             value=white_captured,
@@ -280,12 +301,16 @@ class ChessView(discord.ui.View):
                             value=black_captured,
                             inline=True)
 
-        # Add material advantage field
         if material_advantage != 0:
             advantage_text = f"{'White' if material_advantage > 0 else 'Black'} +{abs(material_advantage)}"
             embed.add_field(name="Material Advantage",
                             value=advantage_text,
                             inline=True)
+
+        # Add game status (check/checkmate/etc)
+        game_status = self.game.get_game_status()
+        if game_status:
+            embed.add_field(name="Status", value=game_status, inline=True)
 
         if game_over:
             embed.add_field(name="Game Over!",
@@ -296,6 +321,11 @@ class ChessView(discord.ui.View):
         else:
             embed.add_field(name="Current Turn",
                             value=self.game.current_player.name)
+
+        # Add last move to footer if available
+        last_move_info = self.game.get_last_move_info()
+        if last_move_info:
+            embed.set_footer(text=last_move_info)
 
         await interaction.message.edit(embed=embed,
                                        attachments=[file],
