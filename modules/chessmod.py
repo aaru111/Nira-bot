@@ -396,7 +396,7 @@ class ChessView(discord.ui.View):
             last_move = self.game.move_history[-1]
             last_player = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
             embed.set_footer(
-                text=f"Last move: {last_move} by {last_player.name}")
+                text=f"Last move: *{last_move}* by {last_player.name}")
 
         await interaction.message.edit(embed=embed,
                                        attachments=[file],
