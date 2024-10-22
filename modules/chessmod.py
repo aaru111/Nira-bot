@@ -413,7 +413,7 @@ class ChessView(discord.ui.View):
         await self.game.record_game_result(winner)
 
         await interaction.response.send_message(
-            f"{interaction.user.name} has resigned. {winner.name} wins!",
+            f"{interaction.user.mention} has resigned. {winner.mention} wins!",
             ephemeral=False)
         self.disable_buttons()
         await self.update_board(interaction, game_over=True)
@@ -430,11 +430,11 @@ class ChessView(discord.ui.View):
 
         opponent = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
         await interaction.response.send_message(
-            f"{interaction.user.name} has proposed a draw. Waiting for {opponent.name}'s response...",
+            f"{interaction.user.mention} has proposed a draw. Waiting for {opponent.mention}'s response...",
             ephemeral=True)
 
         await interaction.channel.send(
-            f"{opponent.mention}, {interaction.user.name} has proposed a draw. Type 'accept' to agree or 'decline' to reject."
+            f"{opponent.mention}, {interaction.user.mention} has proposed a draw. Type 'accept' to agree or 'decline' to reject."
         )
 
         def check(response):
