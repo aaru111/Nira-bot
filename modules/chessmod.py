@@ -325,7 +325,9 @@ class ChessView(discord.ui.View):
         self.game = game
 
     async def update_board(self, interaction, game_over=False):
-        svg_board = self.game.get_svg_board()
+        # Determine if board should be flipped based on current player
+        flip_board = self.game.current_player == self.game.player2
+        svg_board = chess.svg.board(self.game.board, flipped=flip_board)
         png_image = self.convert_svg_to_png(svg_board)
         file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
 
@@ -368,12 +370,16 @@ class ChessView(discord.ui.View):
                             value=f"[Analyze the game here]({analysis_link})")
         else:
             embed.add_field(name="Current Turn",
-                            value=self.game.current_player.name)
+                            value=self.game.current_player.mention)
 
-        # Add last move to footer if available
+        # Update last move info to use mentions
         last_move_info = self.game.get_last_move_info()
         if last_move_info:
-            embed.set_footer(text=last_move_info)
+            # We need to modify the get_last_move_info method to return the move and player separately
+            last_move = self.game.move_history[-1]
+            last_player = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
+            embed.set_footer(
+                text=f"Last move: {last_move} by {last_player.name}")
 
         await interaction.message.edit(embed=embed,
                                        attachments=[file],
