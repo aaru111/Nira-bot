@@ -13,7 +13,7 @@ logging.basicConfig(filename='dropdown_debug.log',
 
 
 class PlayerStats:
-
+    # PlayerStats class remains unchanged
     def __init__(self, player: discord.Member):
         self.player_id = player.id
         self.player_name = player.name
@@ -52,6 +52,14 @@ class PlayerStats:
 
 
 class ChessGame:
+    PIECE_VALUES = {
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
+        chess.KING: 0  # King's value isn't counted in material advantage
+    }
 
     def __init__(self, player1: discord.Member, player2: discord.Member):
         self.player1 = player1
@@ -59,18 +67,73 @@ class ChessGame:
         self.board = chess.Board()
         self.current_player = player1
         self.move_history = []
+        self.captured_pieces = {
+            chess.WHITE: [],  # Pieces captured by black
+            chess.BLACK: []  # Pieces captured by white
+        }
+        self.initial_position = self.board.fen()
 
     def move_piece(self, san_move):
         if self.is_valid_move(san_move):
             move = self.board.parse_san(san_move)
+            # Check if a piece is being captured
+            if self.board.is_capture(move):
+                captured_square = move.to_square
+                if self.board.is_en_passant(move):
+                    # Handle en passant capture
+                    pawn_direction = -8 if self.board.turn == chess.WHITE else 8
+                    captured_square = move.to_square + pawn_direction
+                captured_piece = self.board.piece_at(captured_square)
+                if captured_piece:
+                    self.captured_pieces[not self.board.turn].append(
+                        captured_piece)
+
             self.board.push(move)
             self.move_history.append(san_move)
             return True
         else:
             return False
 
+    def calculate_material_advantage(self):
+        """Calculate the material advantage for each side."""
+        white_material = 0
+        black_material = 0
+
+        # Count material for pieces still on the board
+        for square in chess.SQUARES:
+            piece = self.board.piece_at(square)
+            if piece:
+                value = self.PIECE_VALUES[piece.piece_type]
+                if piece.color == chess.WHITE:
+                    white_material += value
+                else:
+                    black_material += value
+
+        # Add captured pieces to the opposite side's total
+        for piece in self.captured_pieces[
+                chess.WHITE]:  # Pieces captured by black
+            black_material += self.PIECE_VALUES[piece.piece_type]
+        for piece in self.captured_pieces[
+                chess.BLACK]:  # Pieces captured by white
+            white_material += self.PIECE_VALUES[piece.piece_type]
+
+        return white_material - black_material
+
+    def get_captured_pieces_display(self):
+        """Format captured pieces for display."""
+
+        def piece_to_unicode(piece):
+            return piece.unicode_symbol()
+
+        white_captured = ' '.join(
+            piece_to_unicode(p) for p in self.captured_pieces[chess.BLACK])
+        black_captured = ' '.join(
+            piece_to_unicode(p) for p in self.captured_pieces[chess.WHITE])
+
+        return white_captured, black_captured
+
+    # Rest of the methods remain unchanged
     def generate_lichess_pgn_link(self):
-        """Generate a Lichess PGN analysis link using the current move history."""
         pgn_moves = '_'.join(self.move_history)
         base_url = "https://lichess.org/analysis/pgn"
         link = f"{base_url}/{pgn_moves}"
@@ -132,7 +195,7 @@ class ChessGame:
 
 
 class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
-
+    # ChessMoveModal remains unchanged
     def __init__(self, view, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.view = view
@@ -146,7 +209,6 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
         self.add_item(self.move_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        """Handle the move submission."""
         move = self.move_input.value
         if interaction.user != self.view.game.current_player:
             await interaction.response.send_message("It's not your turn!",
@@ -181,7 +243,6 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
     async def delete_message_after_delay(self,
                                          interaction: discord.Interaction,
                                          delay: int):
-        """Delete the response message after a delay."""
         await asyncio.sleep(delay)
         await interaction.delete_original_response()
 
@@ -193,15 +254,39 @@ class ChessView(discord.ui.View):
         self.game = game
 
     async def update_board(self, interaction, game_over=False):
-        """Send or edit the current board state."""
         svg_board = self.game.get_svg_board()
         png_image = self.convert_svg_to_png(svg_board)
         file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
+
+        # Get captured pieces and material advantage
+        white_captured, black_captured = self.game.get_captured_pieces_display(
+        )
+        material_advantage = self.game.calculate_material_advantage()
+
         embed = discord.Embed(
             title=
             f"Chess Game: {self.game.player1.name} vs {self.game.player2.name}",
             color=discord.Color.from_rgb(239, 158, 240))
+
         embed.set_image(url="attachment://chessboard.png")
+
+        # Add captured pieces fields
+        if white_captured:
+            embed.add_field(name="White's Captures",
+                            value=white_captured,
+                            inline=True)
+        if black_captured:
+            embed.add_field(name="Black's Captures",
+                            value=black_captured,
+                            inline=True)
+
+        # Add material advantage field
+        if material_advantage != 0:
+            advantage_text = f"{'White' if material_advantage > 0 else 'Black'} +{abs(material_advantage)}"
+            embed.add_field(name="Material Advantage",
+                            value=advantage_text,
+                            inline=True)
+
         if game_over:
             embed.add_field(name="Game Over!",
                             value="Check out the analysis link below:")
@@ -217,7 +302,6 @@ class ChessView(discord.ui.View):
                                        view=self)
 
     def convert_svg_to_png(self, svg_data):
-        """Convert SVG data to PNG format."""
         return svg2png(bytestring=svg_data.encode('utf-8'))
 
     @discord.ui.button(label="Move",
@@ -225,7 +309,6 @@ class ChessView(discord.ui.View):
                        custom_id="move_button")
     async def move_button(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
-        """Open the move modal for the current player."""
         if interaction.user != self.game.current_player:
             return await interaction.response.send_message(
                 "It's not your turn!", ephemeral=True)
@@ -237,14 +320,12 @@ class ChessView(discord.ui.View):
                        custom_id="resign_button")
     async def resign_button(self, interaction: discord.Interaction,
                             button: discord.ui.Button):
-        """Handle resignation from the game."""
         if interaction.user != self.game.current_player:
             return await interaction.response.send_message(
                 "It's not your turn!", ephemeral=True)
 
         winner = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
 
-        # Update the player stats to record the resignation
         await self.game.record_game_result(winner)
 
         await interaction.response.send_message(
@@ -259,7 +340,6 @@ class ChessView(discord.ui.View):
                        custom_id="draw_button")
     async def draw_button(self, interaction: discord.Interaction,
                           button: discord.ui.Button):
-        """Handle draw proposal."""
         if interaction.user != self.game.current_player:
             return await interaction.response.send_message(
                 "It's not your turn!", ephemeral=True)
@@ -283,8 +363,7 @@ class ChessView(discord.ui.View):
             if response.content.lower() == 'accept':
                 await interaction.channel.send(
                     "The draw has been accepted! It's a draw.")
-                await self.game.record_game_result(None
-                                                   )  # None indicates a draw
+                await self.game.record_game_result(None)
                 self.disable_buttons()
                 await self.update_board(interaction, game_over=True)
                 self.stop()
@@ -295,6 +374,5 @@ class ChessView(discord.ui.View):
                 "No response received. Draw proposal timed out.")
 
     def disable_buttons(self):
-        """Disable all buttons when the game ends."""
         for child in self.children:
             child.disabled = True
