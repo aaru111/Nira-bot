@@ -181,7 +181,50 @@ class ChessGame:
     def switch_turns(self):
         self.current_player = self.player2 if self.current_player == self.player1 else self.player1
 
+    def get_move_validation_message(self, san_move):
+        """Get a detailed message about why a move is invalid."""
+        try:
+            # Try to parse the move first
+            try:
+                move = chess.Move.from_uci(san_move.lower())
+            except ValueError:
+                try:
+                    move = self.board.parse_san(san_move)
+                except ValueError:
+                    return f"'{san_move}' is not a valid chess move notation. Use Standard Algebraic Notation (e.g., e4, Nf3, O-O)."
+
+            # Check if the move exists on the board
+            from_square = move.from_square
+            piece = self.board.piece_at(from_square)
+
+            if not piece:
+                return "There is no piece at the starting square of this move."
+
+            if piece.color != self.board.turn:
+                return f"It's {'white' if self.board.turn else 'black'}'s turn to move."
+
+            # Check if the move is legal
+            if move not in self.board.legal_moves:
+                # Check specific reasons why the move might be illegal
+                if self.board.is_check():
+                    return "This move doesn't get you out of check."
+
+                if self.board.is_into_check(move):
+                    return "This move would put you in check."
+
+                if piece.piece_type == chess.PAWN:
+                    if chess.square_rank(move.to_square) in [0, 7]:
+                        return "Pawn promotion must be specified (e.g., e8=Q)."
+
+                # Generic illegal move message if no specific reason is found
+                return f"This is not a legal move for this {piece.symbol()}."
+
+            return None  # Move is valid
+        except Exception as e:
+            return f"Invalid move: {str(e)}"
+
     def is_valid_move(self, san_move):
+        """Check if a move is valid and return True/False."""
         try:
             move = self.board.parse_san(san_move)
             return move in self.board.legal_moves
@@ -240,26 +283,31 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
                 interaction, 5))
             return
 
-        if self.view.game.move_piece(move):
-            await interaction.response.send_message(
-                f"Move '{move}' was successful!", ephemeral=True)
-            asyncio.create_task(self.delete_message_after_delay(
-                interaction, 5))
+        # Get validation message if move is invalid
+        error_message = self.view.game.get_move_validation_message(move)
 
-            if self.view.game.is_game_over():
-                winner = self.view.game.get_winner()
-                await self.view.game.record_game_result(winner)
-                await interaction.followup.send(
-                    f"Game Over! Winner: {winner.name if winner else 'Draw'}")
-                self.view.disable_buttons()
-                await self.view.update_board(interaction, game_over=True)
-                self.view.stop()
-            else:
-                self.view.game.switch_turns()
-                await self.view.update_board(interaction)
-        else:
+        if error_message is None:  # Move is valid
+            if self.view.game.move_piece(move):
+                await interaction.response.send_message(
+                    f"Move '{move}' was successful!", ephemeral=True)
+                asyncio.create_task(
+                    self.delete_message_after_delay(interaction, 5))
+
+                if self.view.game.is_game_over():
+                    winner = self.view.game.get_winner()
+                    await self.view.game.record_game_result(winner)
+                    await interaction.followup.send(
+                        f"Game Over! Winner: {winner.name if winner else 'Draw'}"
+                    )
+                    self.view.disable_buttons()
+                    await self.view.update_board(interaction, game_over=True)
+                    self.view.stop()
+                else:
+                    self.view.game.switch_turns()
+                    await self.view.update_board(interaction)
+        else:  # Move is invalid
             await interaction.response.send_message(
-                f"Invalid move '{move}'. Please try again.", ephemeral=True)
+                f"{error_message} Please try again.", ephemeral=True)
             asyncio.create_task(self.delete_message_after_delay(
                 interaction, 5))
 
