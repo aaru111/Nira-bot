@@ -336,19 +336,15 @@ class ChessView(discord.ui.View):
             # Get the last move directly from the board's move stack
             last_move = self.game.board.move_stack[-1]
             arrows.append(
-                chess.svg.Arrow(
-                    last_move.from_square,
-                    last_move.to_square,
-                    color="#00ff0080"  # Semi-transparent green
-                ))
+                chess.svg.Arrow(last_move.from_square,
+                                last_move.to_square,
+                                color="#00ff0080"))
 
         # Generate board SVG with arrows
-        svg_board = chess.svg.board(
-            board=self.game.board,
-            flipped=flip_board,
-            arrows=arrows,
-            size=800  
-        )
+        svg_board = chess.svg.board(board=self.game.board,
+                                    flipped=flip_board,
+                                    arrows=arrows,
+                                    size=800)
 
         png_image = self.convert_svg_to_png(svg_board)
         file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
