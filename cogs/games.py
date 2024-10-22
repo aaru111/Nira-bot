@@ -15,7 +15,7 @@ import io
 
 from typing import Optional, Dict
 
-# Importing modules used in the games
+# Importing modules used in the games 
 from modules.tetrismod import TetrisGame
 from modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from modules.triviamod import TriviaView
