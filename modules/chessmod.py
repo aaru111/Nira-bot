@@ -289,7 +289,7 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
         if error_message is None:  # Move is valid
             if self.view.game.move_piece(move):
                 await interaction.response.send_message(
-                    f"Move '{move}' was successful!", ephemeral=True)
+                    f"Move `{move}` was successful!", ephemeral=True)
                 asyncio.create_task(
                     self.delete_message_after_delay(interaction, 5))
 
