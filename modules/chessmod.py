@@ -74,25 +74,27 @@ class ChessGame:
         self.initial_position = self.board.fen()
 
     def move_piece(self, san_move):
-        if self.is_valid_move(san_move):
+        try:
             move = self.board.parse_san(san_move)
-            # Check if a piece is being captured
-            if self.board.is_capture(move):
-                captured_square = move.to_square
-                if self.board.is_en_passant(move):
-                    # Handle en passant capture
-                    pawn_direction = -8 if self.board.turn == chess.WHITE else 8
-                    captured_square = move.to_square + pawn_direction
-                captured_piece = self.board.piece_at(captured_square)
-                if captured_piece:
-                    self.captured_pieces[not self.board.turn].append(
-                        captured_piece)
+            if move in self.board.legal_moves:
+                # Check if a piece is being captured
+                if self.board.is_capture(move):
+                    captured_square = move.to_square
+                    if self.board.is_en_passant(move):
+                        # Handle en passant capture
+                        pawn_direction = -8 if self.board.turn == chess.WHITE else 8
+                        captured_square = move.to_square + pawn_direction
+                    captured_piece = self.board.piece_at(captured_square)
+                    if captured_piece:
+                        self.captured_pieces[not self.board.turn].append(
+                            captured_piece)
 
-            self.board.push(move)
-            self.move_history.append(san_move)
-            return True
-        else:
-            return False
+                self.board.push(move)  # This adds the move to the move_stack
+                self.move_history.append(san_move)
+                return True
+        except ValueError:
+            pass
+        return False
 
     def get_game_status(self):
         if self.board.is_checkmate():
@@ -327,7 +329,27 @@ class ChessView(discord.ui.View):
     async def update_board(self, interaction, game_over=False):
         # Determine if board should be flipped based on current player
         flip_board = self.game.current_player == self.game.player2
-        svg_board = chess.svg.board(self.game.board, flipped=flip_board)
+
+        # Create arrows list for the last move
+        arrows = []
+        if len(self.game.board.move_stack) > 0:
+            # Get the last move directly from the board's move stack
+            last_move = self.game.board.move_stack[-1]
+            arrows.append(
+                chess.svg.Arrow(
+                    last_move.from_square,
+                    last_move.to_square,
+                    color="#00ff0080"  # Semi-transparent green
+                ))
+
+        # Generate board SVG with arrows
+        svg_board = chess.svg.board(
+            board=self.game.board,
+            flipped=flip_board,
+            arrows=arrows,
+            size=800  
+        )
+
         png_image = self.convert_svg_to_png(svg_board)
         file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
 
@@ -375,7 +397,6 @@ class ChessView(discord.ui.View):
         # Update last move info to use mentions
         last_move_info = self.game.get_last_move_info()
         if last_move_info:
-            # We need to modify the get_last_move_info method to return the move and player separately
             last_move = self.game.move_history[-1]
             last_player = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
             embed.set_footer(
