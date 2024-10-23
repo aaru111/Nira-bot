@@ -175,52 +175,63 @@ class PokemonInfoView(discord.ui.View):
                 return ""
             details = evolution_details[0]
             if details.get('item'):
-                return f"Evolves the moment it holds {details['item']['name'].replace('-', ' ').title()}"
+                return f"Evolves using {details['item']['name'].replace('-', ' ').title()}"
             elif details.get('min_level'):
                 return f"Evolves at level {details['min_level']}"
             elif details.get('trigger'):
                 return f"Evolves by {details['trigger']['name'].replace('-', ' ').title()}"
             return ""
 
-        def process_evo_chain(chain):
-            current = {
-                'name': chain['species']['name'],
-                'details': get_evo_details(chain.get('evolution_details', []))
-            }
-            evolutions = []
-            for evo in chain.get('evolves_to', []):
-                evolutions.append(process_evo_chain(evo))
-            return {'current': current, 'evolutions': evolutions}
+        def get_evolution_chain(chain, target_name, prev_chain=None):
+            current_name = chain['species']['name']
+            if current_name == target_name:
+                next_evos = []
+                evo_details = []
+                for evo in chain['evolves_to']:
+                    next_chain = []
+                    build_next_chain(evo, next_chain)
+                    next_evos.append(" > ".join(p.title() for p in next_chain))
+                    evo_details.append(
+                        get_evo_details(evo['evolution_details']))
+                return prev_chain, next_evos, evo_details
 
-        evo_processed = process_evo_chain(evo_data['chain'])
-
-        def find_pokemon_in_chain(chain, pokemon_name, prev=None):
-            if chain['current']['name'] == pokemon_name:
-                return prev, [evo['current'] for evo in chain['evolutions']]
-            for evo in chain['evolutions']:
-                result = find_pokemon_in_chain(evo, pokemon_name,
-                                               chain['current'])
+            for evolution in chain['evolves_to']:
+                new_prev = prev_chain + [current_name] if prev_chain else [
+                    current_name
+                ]
+                result = get_evolution_chain(evolution, target_name, new_prev)
                 if result:
                     return result
             return None
 
-        prev_evo, next_evos = find_pokemon_in_chain(
-            evo_processed, self.pokemon_data['name']) or (None, [])
+        def build_next_chain(chain, result):
+            result.append(chain['species']['name'])
+            if chain['evolves_to']:
+                build_next_chain(chain['evolves_to'][0], result)
 
-        if prev_evo:
-            embed.add_field(name="Previous Evolution",
-                            value=prev_evo['name'].title(),
-                            inline=True)
+        evolution_data = get_evolution_chain(evo_data['chain'],
+                                             self.pokemon_data['name'].lower())
 
-        if next_evos:
-            embed.add_field(name="Next Evolutions",
-                            value="\n".join(evo['name'].title()
-                                            for evo in next_evos),
-                            inline=True)
-            embed.add_field(name="How to evolve",
-                            value="\n".join(evo['details'] for evo in next_evos
-                                            if evo['details']),
-                            inline=False)
+        if evolution_data:
+            prev_chain, next_evos, evo_details = evolution_data
+
+            if prev_chain:
+                prev_evo_text = " > ".join(name.title() for name in prev_chain)
+                embed.add_field(name="Previous Evolution(s)",
+                                value=prev_evo_text,
+                                inline=True)
+
+            if next_evos:
+                embed.add_field(name="Next Evolution(s)",
+                                value="\n".join(next_evos),
+                                inline=True)
+
+                if any(evo_details):
+                    embed.add_field(name="How to Evolve",
+                                    value="\n".join(detail
+                                                    for detail in evo_details
+                                                    if detail),
+                                    inline=False)
 
         type_effectiveness = await self.calculate_type_effectiveness(
             self.pokemon_data['types'])
@@ -248,9 +259,10 @@ class PokemonInfoView(discord.ui.View):
             f"-# {t}" for t, multiplier in type_effectiveness.items()
             if multiplier == 0
         ]
-        embed.add_field(name="Immunities",
-                        value="\n".join(immunities) if immunities else "-# None",
-                        inline=True)
+        embed.add_field(
+            name="Immunities",
+            value="\n".join(immunities) if immunities else "-# None",
+            inline=True)
 
         pokedex_entries = [
             entry for entry in species_data['flavor_text_entries']
