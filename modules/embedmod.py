@@ -618,12 +618,34 @@ class BackButton(BaseButton):
 
 
 class SendButton(BaseButton):
+    # Class variable to track cooldowns for all users
+    user_cooldowns = {}
 
     def __init__(self, embed: discord.Embed):
         super().__init__(label="Send", style=ButtonStyle.green, emoji="🚀")
         self.embed = embed
+        self.cooldown_duration = 20  # Cooldown duration in seconds
 
     async def handle_callback(self, interaction: Interaction) -> None:
+        current_time = discord.utils.utcnow().timestamp()
+        user_id = interaction.user.id
+
+        # Check if user is on cooldown
+        if user_id in self.user_cooldowns:
+            last_use = self.user_cooldowns[user_id]
+            time_elapsed = current_time - last_use
+
+            if time_elapsed < self.cooldown_duration:
+                time_remaining = round(self.cooldown_duration - time_elapsed)
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="Cooldown Active",
+                    description=
+                    f"Please wait {time_remaining} seconds before sending another embed.",
+                    color=discord.Color.yellow()),
+                                                        ephemeral=True)
+                return
+
+        # Check if embed is configured
         if not is_embed_configured(self.embed):
             await interaction.response.send_message(embed=discord.Embed(
                 title="Error",
@@ -633,13 +655,30 @@ class SendButton(BaseButton):
                                                     ephemeral=True)
             return
 
-        sent_message = await interaction.channel.send(embed=self.embed)
-        message_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}/{sent_message.id}"
-        await interaction.response.edit_message(
-            content=
-            f"✅ Embed sent! {message_link}. You can continue editing or send it again.",
-            embed=self.embed,
-            view=create_embed_view(self.embed, interaction.client))
+        try:
+            # Send the embed
+            sent_message = await interaction.channel.send(embed=self.embed)
+
+            # Update cooldown
+            self.user_cooldowns[user_id] = current_time
+
+            # Create message link
+            message_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}/{sent_message.id}"
+
+            await interaction.response.edit_message(
+                content=
+                f"✅ Embed sent! {message_link}. You can continue editing or send it again in {self.cooldown_duration} seconds.",
+                embed=self.embed,
+                view=create_embed_view(self.embed, interaction.client))
+
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I don't have permission to send messages in this channel.",
+                ephemeral=True)
+        except discord.HTTPException as e:
+            await interaction.response.send_message(
+                f"An error occurred while sending the embed: {str(e)}",
+                ephemeral=True)
 
 
 class ResetButton(BaseButton):
