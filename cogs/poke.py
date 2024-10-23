@@ -6,7 +6,7 @@ import random
 from io import BytesIO
 from PIL import Image
 import asyncio
-from discord.ui import View, TextInput, Modal
+from discord.ui import View, Modal, TextInput
 
 
 class PokemonNumberInput(Modal, title="Go to Pokémon"):
@@ -127,9 +127,7 @@ class PokemonInfoSelect(discord.ui.Select):
 
 class PokemonInfoView(discord.ui.View):
 
-    def __init__(self,
-                 pokemon_data: Dict,
-                 timeout: float = 150.0):  # 2.5 minutes timeout
+    def __init__(self, pokemon_data: Dict, timeout: float = 180.0):
         super().__init__(timeout=timeout)
         self.pokemon_data = pokemon_data
         self.add_item(PokemonInfoSelect(pokemon_data))
@@ -143,22 +141,6 @@ class PokemonInfoView(discord.ui.View):
                                     label="▶",
                                     custom_id="next"))
         self.current_page = "main"
-        self.message = None
-
-    async def on_timeout(self) -> None:
-        """Handle timeout by disabling all items and updating the message"""
-        # Disable all items
-        for item in self.children:
-            item.disabled = True
-
-        if self.message:
-            try:
-                # Update the message with disabled components
-                await self.message.edit(view=self)
-            except discord.errors.NotFound:
-                pass  # Message was deleted
-            except discord.errors.HTTPException:
-                pass  # Can't edit the message
 
     async def create_stats_embed(self) -> discord.Embed:
         embed = discord.Embed(
@@ -562,8 +544,7 @@ class Pokemon(commands.Cog):
 
             view = PokemonInfoView(pokemon_data)
             embed = await view.create_main_embed()
-            # Store the message in the view for timeout handling
-            view.message = await ctx.send(embed=embed, view=view)
+            await ctx.send(embed=embed, view=view)
 
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
