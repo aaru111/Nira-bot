@@ -175,11 +175,11 @@ class PokemonInfoView(discord.ui.View):
                 return ""
             details = evolution_details[0]
             if details.get('item'):
-                return f"Evolves using {details['item']['name'].replace('-', ' ').title()}"
+                return f"- Evolves using {details['item']['name'].replace('-', ' ').title()}"
             elif details.get('min_level'):
-                return f"Evolves at level {details['min_level']}"
+                return f"- Evolves at level {details['min_level']}"
             elif details.get('trigger'):
-                return f"Evolves by {details['trigger']['name'].replace('-', ' ').title()}"
+                return f"- Evolves by {details['trigger']['name'].replace('-', ' ').title()}"
             return ""
 
         def get_evolution_chain(chain, target_name, prev_chain=None):
@@ -190,7 +190,8 @@ class PokemonInfoView(discord.ui.View):
                 for evo in chain['evolves_to']:
                     next_chain = []
                     build_next_chain(evo, next_chain)
-                    next_evos.append(" > ".join(p.title() for p in next_chain))
+                    next_evos.append("- " + " > ".join(p.title()
+                                                       for p in next_chain))
                     evo_details.append(
                         get_evo_details(evo['evolution_details']))
                 return prev_chain, next_evos, evo_details
@@ -216,7 +217,8 @@ class PokemonInfoView(discord.ui.View):
             prev_chain, next_evos, evo_details = evolution_data
 
             if prev_chain:
-                prev_evo_text = " > ".join(name.title() for name in prev_chain)
+                prev_evo_text = "- " + " > ".join(name.title()
+                                                  for name in prev_chain)
                 embed.add_field(name="Prev. Evolution(s)",
                                 value=prev_evo_text,
                                 inline=True)
