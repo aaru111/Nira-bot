@@ -58,31 +58,35 @@ class PokemonNavigationButton(discord.ui.Button):
         current_id = view.pokemon_data['id']
 
         try:
-            async with aiohttp.ClientSession() as session:
-                if self.custom_id == "prev" and current_id > 1:
-                    pokemon_id = current_id - 1
-                elif self.custom_id == "next":
-                    pokemon_id = current_id + 1
-                else:
-                    return
+            if self.custom_id == "prev" and current_id > 1:
+                pokemon_id = current_id - 1
+            elif self.custom_id == "next":
+                pokemon_id = current_id + 1
+            else:
+                return
 
+            # Defer the response to prevent timeouts
+            await interaction.response.defer()
+
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
                         f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}"
                 ) as resp:
                     if resp.status == 404:
-                        await interaction.response.send_message(
+                        await interaction.followup.send(
                             "No more Pokémon found!", ephemeral=True)
                         return
                     pokemon_data = await resp.json()
 
-                new_view = PokemonInfoView(pokemon_data)
-                embed = await new_view.create_main_embed()
-                await interaction.response.edit_message(embed=embed,
-                                                        view=new_view)
+            new_view = PokemonInfoView(pokemon_data)
+            embed = await new_view.create_main_embed()
+
+            # Use followup instead of response
+            await interaction.message.edit(embed=embed, view=new_view)
 
         except Exception as e:
-            await interaction.response.send_message(
-                f"An error occurred: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"An error occurred: {str(e)}",
+                                            ephemeral=True)
 
 
 class CountButton(discord.ui.Button):
@@ -130,6 +134,7 @@ class PokemonInfoView(discord.ui.View):
     def __init__(self, pokemon_data: Dict, timeout: float = 180.0):
         super().__init__(timeout=timeout)
         self.pokemon_data = pokemon_data
+        self.session = None
         self.add_item(PokemonInfoSelect(pokemon_data))
         self.add_item(
             PokemonNavigationButton(style=discord.ButtonStyle.primary,
@@ -141,6 +146,19 @@ class PokemonInfoView(discord.ui.View):
                                     label="▶",
                                     custom_id="next"))
         self.current_page = "main"
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        return True  # Allow all interactions
+
+    def get_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def on_timeout(self) -> None:
+        if self.session and not self.session.closed:
+            await self.session.close()
 
     async def create_stats_embed(self) -> discord.Embed:
         embed = discord.Embed(
