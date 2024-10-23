@@ -475,20 +475,15 @@ class Pokemon(commands.Cog):
                         description=
                         f"Correct! The Pokémon was: {pokemon_name.title()}!",
                         color=discord.Color.green())
-
-                    async with self.session.get(pokemon_image) as resp:
-                        actual_image = BytesIO(await resp.read())
+                    embed.set_image(
+                        url=pokemon_image
+                    )  # Set the actual Pokémon image in the embed
 
                     new_view = View()
                     new_view.add_item(
-                        SeePokedexButton(
-                            pokemon_data,
-                            ctx.author))  # Fixed: Added required arguments
+                        SeePokedexButton(pokemon_data, ctx.author))
                     await message.edit(embed=embed,
-                                       attachments=[
-                                           discord.File(actual_image,
-                                                        filename="pokemon.png")
-                                       ],
+                                       attachments=[],
                                        view=new_view)
                     break
 
@@ -503,20 +498,15 @@ class Pokemon(commands.Cog):
                         description=
                         f"Game Over! The Pokémon was: {pokemon_name.title()}!",
                         color=discord.Color.red())
-
-                    async with self.session.get(pokemon_image) as resp:
-                        actual_image = BytesIO(await resp.read())
+                    embed.set_image(
+                        url=pokemon_image
+                    )  # Set the actual Pokémon image in the embed
 
                     new_view = View()
                     new_view.add_item(
-                        SeePokedexButton(
-                            pokemon_data,
-                            ctx.author))  # Fixed: Added required arguments
+                        SeePokedexButton(pokemon_data, ctx.author))
                     await message.edit(embed=embed,
-                                       attachments=[
-                                           discord.File(actual_image,
-                                                        filename="pokemon.png")
-                                       ],
+                                       attachments=[],
                                        view=new_view)
 
             except asyncio.TimeoutError:
@@ -525,20 +515,12 @@ class Pokemon(commands.Cog):
                     description=
                     f"You took too long to answer... The Pokémon was: {pokemon_name.title()}!",
                     color=discord.Color.red())
-
-                async with self.session.get(pokemon_image) as resp:
-                    actual_image = BytesIO(await resp.read())
+                embed.set_image(url=pokemon_image
+                                )  # Set the actual Pokémon image in the embed
 
                 new_view = View()
-                new_view.add_item(SeePokedexButton(
-                    pokemon_data,
-                    ctx.author))  # Fixed: Added required arguments
-                await message.edit(embed=embed,
-                                   attachments=[
-                                       discord.File(actual_image,
-                                                    filename="pokemon.png")
-                                   ],
-                                   view=new_view)
+                new_view.add_item(SeePokedexButton(pokemon_data, ctx.author))
+                await message.edit(embed=embed, attachments=[], view=new_view)
                 break
 
     async def get_random_pokemon(self) -> dict:
