@@ -6,7 +6,95 @@ import random
 from io import BytesIO
 from PIL import Image
 import asyncio
-from discord.ui import View
+from discord.ui import View, TextInput, Modal
+
+
+class PokemonNumberInput(Modal, title="Go to Pokémon"):
+    number = TextInput(label="Enter Pokémon number or name",
+                       placeholder="e.g. 25 or Pikachu",
+                       required=True)
+
+    def __init__(self, view):
+        super().__init__()
+        self.pokemon_view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Try to convert to number first
+            pokemon_id = int(self.number.value)
+            pokemon_name = str(pokemon_id)
+        except ValueError:
+            # If not a number, treat as name
+            pokemon_name = self.number.value.lower()
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                        f"https://pokeapi.co/api/v2/pokemon/{pokemon_name}"
+                ) as resp:
+                    if resp.status == 404:
+                        await interaction.response.send_message(
+                            f"Pokémon '{pokemon_name}' not found!",
+                            ephemeral=True)
+                        return
+                    pokemon_data = await resp.json()
+
+            # Create new view and embed
+            new_view = PokemonInfoView(pokemon_data)
+            embed = await new_view.create_main_embed()
+            await interaction.response.edit_message(embed=embed, view=new_view)
+        except Exception as e:
+            await interaction.response.send_message(
+                f"An error occurred: {str(e)}", ephemeral=True)
+
+
+class PokemonNavigationButton(discord.ui.Button):
+
+    def __init__(self, style: discord.ButtonStyle, label: str, custom_id: str):
+        super().__init__(style=style, label=label, custom_id=custom_id)
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        current_id = view.pokemon_data['id']
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                if self.custom_id == "prev" and current_id > 1:
+                    pokemon_id = current_id - 1
+                elif self.custom_id == "next":
+                    pokemon_id = current_id + 1
+                else:
+                    return
+
+                async with session.get(
+                        f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}"
+                ) as resp:
+                    if resp.status == 404:
+                        await interaction.response.send_message(
+                            "No more Pokémon found!", ephemeral=True)
+                        return
+                    pokemon_data = await resp.json()
+
+                new_view = PokemonInfoView(pokemon_data)
+                embed = await new_view.create_main_embed()
+                await interaction.response.edit_message(embed=embed,
+                                                        view=new_view)
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"An error occurred: {str(e)}", ephemeral=True)
+
+
+class CountButton(discord.ui.Button):
+
+    def __init__(self, pokemon_data: Dict):
+        super().__init__(style=discord.ButtonStyle.primary,
+                         label=f"#{pokemon_data['id']}/898",
+                         custom_id="count")
+
+    async def callback(self, interaction: discord.Interaction):
+        modal = PokemonNumberInput(self.view)
+        await interaction.response.send_modal(modal)
 
 
 class PokemonInfoSelect(discord.ui.Select):
@@ -39,11 +127,38 @@ class PokemonInfoSelect(discord.ui.Select):
 
 class PokemonInfoView(discord.ui.View):
 
-    def __init__(self, pokemon_data: Dict, timeout: float = 180.0):
+    def __init__(self,
+                 pokemon_data: Dict,
+                 timeout: float = 150.0):  # 2.5 minutes timeout
         super().__init__(timeout=timeout)
         self.pokemon_data = pokemon_data
         self.add_item(PokemonInfoSelect(pokemon_data))
+        self.add_item(
+            PokemonNavigationButton(style=discord.ButtonStyle.primary,
+                                    label="◀",
+                                    custom_id="prev"))
+        self.add_item(CountButton(pokemon_data))
+        self.add_item(
+            PokemonNavigationButton(style=discord.ButtonStyle.primary,
+                                    label="▶",
+                                    custom_id="next"))
         self.current_page = "main"
+        self.message = None
+
+    async def on_timeout(self) -> None:
+        """Handle timeout by disabling all items and updating the message"""
+        # Disable all items
+        for item in self.children:
+            item.disabled = True
+
+        if self.message:
+            try:
+                # Update the message with disabled components
+                await self.message.edit(view=self)
+            except discord.errors.NotFound:
+                pass  # Message was deleted
+            except discord.errors.HTTPException:
+                pass  # Can't edit the message
 
     async def create_stats_embed(self) -> discord.Embed:
         embed = discord.Embed(
@@ -447,7 +562,8 @@ class Pokemon(commands.Cog):
 
             view = PokemonInfoView(pokemon_data)
             embed = await view.create_main_embed()
-            await ctx.send(embed=embed, view=view)
+            # Store the message in the view for timeout handling
+            view.message = await ctx.send(embed=embed, view=view)
 
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
