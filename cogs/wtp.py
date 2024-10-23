@@ -210,13 +210,13 @@ class PokemonInfoView(discord.ui.View):
         if prev_evo:
             embed.add_field(name="Previous Evolution",
                             value=prev_evo['name'].title(),
-                            inline=False)
+                            inline=True)
 
         if next_evos:
             embed.add_field(name="Next Evolutions",
                             value="\n".join(evo['name'].title()
                                             for evo in next_evos),
-                            inline=False)
+                            inline=True)
             embed.add_field(name="How to evolve",
                             value="\n".join(evo['details'] for evo in next_evos
                                             if evo['details']),
@@ -226,7 +226,7 @@ class PokemonInfoView(discord.ui.View):
             self.pokemon_data['types'])
 
         weaknesses = [
-            f"{t} (x{multiplier})"
+            f"-# {t} (x{multiplier})"
             for t, multiplier in type_effectiveness.items() if multiplier > 1
         ]
         if weaknesses:
@@ -235,7 +235,7 @@ class PokemonInfoView(discord.ui.View):
                             inline=True)
 
         resistances = [
-            f"{t} (x{multiplier})"
+            f"-# {t} (x{multiplier})"
             for t, multiplier in type_effectiveness.items()
             if 0 < multiplier < 1
         ]
@@ -245,11 +245,11 @@ class PokemonInfoView(discord.ui.View):
                             inline=True)
 
         immunities = [
-            f"{t}" for t, multiplier in type_effectiveness.items()
+            f"-# {t}" for t, multiplier in type_effectiveness.items()
             if multiplier == 0
         ]
         embed.add_field(name="Immunities",
-                        value="\n".join(immunities) if immunities else "None",
+                        value="\n".join(immunities) if immunities else "-# None",
                         inline=True)
 
         pokedex_entries = [
