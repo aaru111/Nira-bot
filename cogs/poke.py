@@ -217,7 +217,7 @@ class PokemonInfoView(discord.ui.View):
 
             if prev_chain:
                 prev_evo_text = " > ".join(name.title() for name in prev_chain)
-                embed.add_field(name="Previous Evolution(s)",
+                embed.add_field(name="Prev. Evolution(s)",
                                 value=prev_evo_text,
                                 inline=True)
 
@@ -360,14 +360,19 @@ class SeePokedexButton(discord.ui.Button):
         self.original_author = original_author
 
     async def callback(self, interaction: discord.Interaction):
+
         if interaction.user != self.original_author:
             await interaction.response.send_message("This isn't your game!",
                                                     ephemeral=True)
             return
 
+        self.disabled = True
         view = PokemonInfoView(self.pokemon_data)
         embed = await view.create_main_embed()
-        await interaction.response.send_message(embed=embed, view=view)
+
+        await interaction.response.edit_message(view=self.view)
+
+        await interaction.followup.send(embed=embed, view=view)
 
 
 class PokemonGuessView(discord.ui.View):
