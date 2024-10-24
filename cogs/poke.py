@@ -9,6 +9,8 @@ import asyncio
 from discord.ui import View, Modal, TextInput
 from difflib import get_close_matches
 from discord import app_commands
+from colorthief import ColorThief
+from urllib.request import urlopen
 
 
 class PokemonNumberInput(Modal, title="Go to Pokémon"):
@@ -149,6 +151,16 @@ class PokemonInfoView(discord.ui.View):
                                     custom_id="next"))
         self.current_page = "main"
 
+    async def get_pokemon_color(self) -> discord.Color:
+        """Extract the dominant color from the Pokémon's official artwork."""
+        image_url = self.pokemon_data['sprites']['other']['official-artwork'][
+            'front_default']
+        fd = urlopen(image_url)
+        color_thief = ColorThief(fd)
+        dominant_color = color_thief.get_color(quality=1)
+        fd.close()
+        return discord.Color.from_rgb(*dominant_color)
+
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
         return True  # Allow all interactions
@@ -163,9 +175,10 @@ class PokemonInfoView(discord.ui.View):
             await self.session.close()
 
     async def create_stats_embed(self) -> discord.Embed:
+        pokemon_color = await self.get_pokemon_color()
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Base Stats",
-            color=discord.Color.blue())
+            color=pokemon_color)
         embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
                             ['official-artwork']['front_default'])
 
@@ -190,9 +203,10 @@ class PokemonInfoView(discord.ui.View):
         return embed
 
     async def create_moves_embed(self) -> discord.Embed:
+        pokemon_color = await self.get_pokemon_color()
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Moves",
-            color=discord.Color.blue())
+            color=pokemon_color)
         embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
                             ['official-artwork']['front_default'])
 
@@ -239,9 +253,10 @@ class PokemonInfoView(discord.ui.View):
         return embed
 
     async def create_locations_embed(self) -> discord.Embed:
+        pokemon_color = await self.get_pokemon_color()
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Locations",
-            color=discord.Color.blue())
+            color=pokemon_color)
         embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
                             ['official-artwork']['front_default'])
 
@@ -280,10 +295,11 @@ class PokemonInfoView(discord.ui.View):
         gen_num = species_data['generation']['name'].upper().replace(
             'GENERATION-', 'Gen ')
 
+        pokemon_color = await self.get_pokemon_color()
         embed = discord.Embed(
             title=
             f"{gen_num} - {self.pokemon_data['name'].title()} #{self.pokemon_data['id']}",
-            color=discord.Color.blue())
+            color=pokemon_color)
         embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
                             ['official-artwork']['front_default'])
 
