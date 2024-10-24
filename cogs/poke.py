@@ -7,6 +7,8 @@ from io import BytesIO
 from PIL import Image
 import asyncio
 from discord.ui import View, Modal, TextInput
+from difflib import get_close_matches
+from discord import app_commands
 
 
 class PokemonNumberInput(Modal, title="Go to Pokémon"):
@@ -548,7 +550,40 @@ class Pokemon(commands.Cog):
         if self.session:
             await self.session.close()
 
-    @commands.command(name="pokedex", aliases=["dex"])
+    async def pokemon_autocomplete(
+            self, interaction: discord.Interaction,
+            current: str) -> List[app_commands.Choice[str]]:
+        if not hasattr(self, '_pokemon_names_cache'):
+            async with self.session.get(
+                    f"{self.pokeapi_url}/pokemon?limit=898") as resp:
+                data = await resp.json()
+                self._pokemon_names_cache = [
+                    pokemon['name'] for pokemon in data['results']
+                ]
+
+        pokemon_names = self._pokemon_names_cache
+        return [
+            app_commands.Choice(name=name, value=name)
+            for name in pokemon_names if current.lower() in name.lower()
+        ][:25]
+
+    async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
+        if not hasattr(self, '_pokemon_names_cache'):
+            async with self.session.get(
+                    f"{self.pokeapi_url}/pokemon?limit=898") as resp:
+                data = await resp.json()
+                self._pokemon_names_cache = [
+                    pokemon['name'] for pokemon in data['results']
+                ]
+
+        matches = get_close_matches(pokemon_name.lower(),
+                                    self._pokemon_names_cache,
+                                    n=1,
+                                    cutoff=0.6)
+        return matches[0] if matches else None
+
+    @commands.hybrid_command(name="pokedex", aliases=["dex"])
+    @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
     async def pokedex(self, ctx: commands.Context, *, pokemon_name: str):
         """Look up detailed information about a Pokémon."""
         try:
@@ -556,8 +591,42 @@ class Pokemon(commands.Cog):
                     f"{self.pokeapi_url}/pokemon/{pokemon_name.lower()}"
             ) as resp:
                 if resp.status == 404:
-                    await ctx.send(f"Pokémon '{pokemon_name}' not found!")
-                    return
+                    # Try to find closest match
+                    closest_match = await self.find_closest_pokemon(
+                        pokemon_name)
+                    if closest_match:
+                        confirm_view = discord.ui.View(timeout=30)
+                        confirm_button = discord.ui.Button(
+                            style=discord.ButtonStyle.primary,
+                            label=f"Show {closest_match.title()}")
+
+                        async def confirm_callback(
+                                interaction: discord.Interaction):
+                            if interaction.user != ctx.author:
+                                await interaction.response.send_message(
+                                    "This isn't your search!", ephemeral=True)
+                                return
+
+                            async with self.session.get(
+                                    f"{self.pokeapi_url}/pokemon/{closest_match.lower()}"
+                            ) as pokemon_resp:
+                                pokemon_data = await pokemon_resp.json()
+
+                            view = PokemonInfoView(pokemon_data)
+                            embed = await view.create_main_embed()
+                            await interaction.response.send_message(
+                                embed=embed, view=view)
+                            confirm_view.stop()
+
+                        confirm_button.callback = confirm_callback
+                        confirm_view.add_item(confirm_button)
+                        await ctx.send(
+                            f"Pokémon `'{pokemon_name}'` not found! Did you mean `'{closest_match.title()}'`?",
+                            view=confirm_view)
+                        return
+                    else:
+                        await ctx.send(f"Pokémon '{pokemon_name}' not found!")
+                        return
                 pokemon_data = await resp.json()
 
             view = PokemonInfoView(pokemon_data)
@@ -567,7 +636,8 @@ class Pokemon(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
 
-    @commands.command(name="whosthat", description="Play Who's That Pokémon?")
+    @commands.hybrid_command(name="whosthat",
+                             description="Play Who's That Pokémon?")
     async def whos_that_pokemon(self, ctx: commands.Context):
         """Start a game of Who's That Pokémon?"""
         pokemon_data = await self.get_random_pokemon()
@@ -603,17 +673,16 @@ class Pokemon(commands.Cog):
                                                 timeout=25.0,
                                                 check=check_guess)
 
+                # Exact match required for the guess
                 if guess.content.lower() == pokemon_name.lower():
                     embed = discord.Embed(
                         title="**Who's That Pokémon?**",
                         description=
                         f"Correct! The Pokémon was: {pokemon_name.title()}!",
                         color=discord.Color.green())
-                    embed.set_image(
-                        url=pokemon_image
-                    )  # Set the actual Pokémon image in the embed
+                    embed.set_image(url=pokemon_image)
 
-                    new_view = View()
+                    new_view = discord.ui.View()
                     new_view.add_item(
                         SeePokedexButton(pokemon_data, ctx.author))
                     await message.edit(embed=embed,
@@ -632,11 +701,9 @@ class Pokemon(commands.Cog):
                         description=
                         f"Game Over! The Pokémon was: {pokemon_name.title()}!",
                         color=discord.Color.red())
-                    embed.set_image(
-                        url=pokemon_image
-                    )  # Set the actual Pokémon image in the embed
+                    embed.set_image(url=pokemon_image)
 
-                    new_view = View()
+                    new_view = discord.ui.View()
                     new_view.add_item(
                         SeePokedexButton(pokemon_data, ctx.author))
                     await message.edit(embed=embed,
@@ -649,10 +716,9 @@ class Pokemon(commands.Cog):
                     description=
                     f"You took too long to answer... The Pokémon was: {pokemon_name.title()}!",
                     color=discord.Color.red())
-                embed.set_image(url=pokemon_image
-                                )  # Set the actual Pokémon image in the embed
+                embed.set_image(url=pokemon_image)
 
-                new_view = View()
+                new_view = discord.ui.View()
                 new_view.add_item(SeePokedexButton(pokemon_data, ctx.author))
                 await message.edit(embed=embed, attachments=[], view=new_view)
                 break
