@@ -582,7 +582,23 @@ class Pokemon(commands.Cog):
                                     cutoff=0.6)
         return matches[0] if matches else None
 
-    @commands.hybrid_command(name="pokedex", aliases=["dex"])
+    @commands.hybrid_command(
+        name="pokedex",
+        aliases=["pd", "dex"],
+        description=
+        "Look up detailed information about a Pokémon in the Pokédex",
+        brief="Search the Pokédex",
+        help=
+        """Search for a Pokémon in the Pokédex and view detailed information including:
+        - Base stats and type effectiveness
+        - Evolution chain and methods
+        - Pokédex description
+        - Moves and abilities
+
+        Usage: !pokedex <pokemon_name>
+        Example: !pokedex pikachu""")
+    @app_commands.describe(
+        pokemon_name="The name or number of the Pokémon to look up")
     @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
     async def pokedex(self, ctx: commands.Context, *, pokemon_name: str):
         """Look up detailed information about a Pokémon."""
@@ -621,7 +637,7 @@ class Pokemon(commands.Cog):
                         confirm_button.callback = confirm_callback
                         confirm_view.add_item(confirm_button)
                         await ctx.send(
-                            f"Pokémon `'{pokemon_name}'` not found! Did you mean `'{closest_match.title()}'`?",
+                            f"Pokémon '{pokemon_name}' not found! Did you mean '{closest_match.title()}'?",
                             view=confirm_view)
                         return
                     else:
@@ -636,10 +652,24 @@ class Pokemon(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
 
-    @commands.hybrid_command(name="whosthat",
-                             description="Play Who's That Pokémon?")
-    async def whos_that_pokemon(self, ctx: commands.Context):
-        """Start a game of Who's That Pokémon?"""
+    @commands.hybrid_command(
+        name="wtp",
+        aliases=["whosthat", "whosthatpokemon"],
+        description="Play a game of Who's That Pokémon?",
+        brief="Play Who's That Pokémon?",
+        help=
+        """Start a game of Who's That Pokémon where you need to guess the Pokémon from its silhouette.
+
+        Rules:
+        - You have 3 attempts to guess correctly
+        - You have 25 seconds to make each guess
+        - The spelling must be exact
+        - Only the person who started the game can make guesses
+
+        Usage: /wtp
+        After starting, type your guess in the chat.""")
+    async def wtp(self, ctx: commands.Context):
+        """Play a game of Who's That Pokémon? Guess the Pokémon from its silhouette!"""
         pokemon_data = await self.get_random_pokemon()
         pokemon_name = pokemon_data['name']
         pokemon_image = pokemon_data['sprites']['other']['official-artwork'][
