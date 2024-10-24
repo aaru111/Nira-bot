@@ -69,28 +69,52 @@ class PokemonNavigationButton(discord.ui.Button):
             else:
                 return
 
-            # Defer the response to prevent timeouts
-            await interaction.response.defer()
+            # Create loading embed
+            loading_embed = discord.Embed(
+                title="Loading Next Pokémon...",
+                description="🔄 Please wait while we fetch the data...",
+                color=discord.Color.blue())
+            loading_embed.set_thumbnail(
+                url=view.pokemon_data['sprites']['other']['official-artwork']
+                ['front_default'])
+            loading_embed.add_field(name="Status",
+                                    value="⌛ Fetching Pokémon data...",
+                                    inline=False)
+
+            # Show loading state
+            await interaction.response.edit_message(embed=loading_embed,
+                                                    view=view)
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                         f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}"
                 ) as resp:
                     if resp.status == 404:
-                        await interaction.followup.send(
-                            "No more Pokémon found!", ephemeral=True)
+                        error_embed = discord.Embed(
+                            title="Error",
+                            description="❌ No more Pokémon found!",
+                            color=discord.Color.red())
+                        await interaction.edit_original_response(
+                            embed=error_embed, view=view)
                         return
                     pokemon_data = await resp.json()
 
             new_view = PokemonInfoView(pokemon_data)
             embed = await new_view.create_main_embed()
 
-            # Use followup instead of response
-            await interaction.message.edit(embed=embed, view=new_view)
+            # Update with new data
+            await interaction.edit_original_response(embed=embed,
+                                                     view=new_view)
 
         except Exception as e:
-            await interaction.followup.send(f"An error occurred: {str(e)}",
-                                            ephemeral=True)
+            error_embed = discord.Embed(
+                title="Error",
+                description=f"❌ An error occurred: {str(e)}",
+                color=discord.Color.red())
+            await interaction.edit_original_response(embed=error_embed,
+                                                     view=view)
+            await interaction.followup.send(
+                "An error occurred. Please try again.", ephemeral=True)
 
 
 class CountButton(discord.ui.Button):
@@ -150,6 +174,36 @@ class PokemonInfoView(discord.ui.View):
                                     label="▶",
                                     custom_id="next"))
         self.current_page = "main"
+
+    async def create_loading_embed(self) -> discord.Embed:
+        """Creates a loading state embed"""
+        loading_embed = discord.Embed(
+            title="Loading Pokémon Data...",
+            description="🔄 Please wait while we fetch the information...",
+            color=discord.Color.blue())
+
+        # Keep the current Pokémon's image as thumbnail during loading
+        if self.pokemon_data and self.pokemon_data['sprites']['other'][
+                'official-artwork']['front_default']:
+            loading_embed.set_thumbnail(
+                url=self.pokemon_data['sprites']['other']['official-artwork']
+                ['front_default'])
+
+        loading_embed.add_field(name="Status",
+                                value="⌛ Loading...",
+                                inline=False)
+
+        # Add a progress indicator
+        loading_embed.set_footer(text="This may take a few seconds...")
+
+        return loading_embed
+
+    async def create_error_embed(self, error_message: str) -> discord.Embed:
+        """Creates an error state embed"""
+        error_embed = discord.Embed(title="Error Loading Pokémon",
+                                    description=f"❌ {error_message}",
+                                    color=discord.Color.red())
+        return error_embed
 
     async def get_pokemon_color(self) -> discord.Color:
         """Extract the dominant color from the Pokémon's official artwork."""

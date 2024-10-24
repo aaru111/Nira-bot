@@ -1,3 +1,12 @@
 {
-  "files": {}
+  "files": {
+    "cogs/poke.py": [
+      {
+        "id": "65d45a4b-68c0-486d-85a0-bd43ae5d616a",
+        "line": 160,
+        "version": 465,
+        "index": 6250
+      }
+    ]
+  }
 }
