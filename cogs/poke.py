@@ -398,19 +398,6 @@ class PokemonInfoView(discord.ui.View):
 
     async def calculate_type_effectiveness(
             self, types: List[Dict]) -> Dict[str, float]:
-        type_chart = {
-            'normal': {
-                'weakness': ['fighting'],
-                'resistance': [],
-                'immunity': ['ghost']
-            },
-            'fighting': {
-                'weakness': ['flying', 'psychic', 'fairy'],
-                'resistance': ['rock', 'bug', 'dark'],
-                'immunity': []
-            },
-        }
-
         effectiveness = {}
         pokemon_types = [t['type']['name'] for t in types]
 
