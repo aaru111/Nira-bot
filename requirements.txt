@@ -24,6 +24,7 @@ charset-normalizer
 chess==1.11.1
 click==8.1.7
 colorlog==6.8.2
+colorthief
 contourpy==1.3.0
 cssselect2==0.7.0
 cycler==0.12.1
