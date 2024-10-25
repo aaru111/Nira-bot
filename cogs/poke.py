@@ -7,7 +7,7 @@ from io import BytesIO
 from PIL import Image
 import asyncio
 from difflib import get_close_matches
-from discord import app_commands
+from discord import Interaction, app_commands
 
 from modules.pokemod import *
 
@@ -29,33 +29,42 @@ class Pokemon(commands.Cog):
     async def pokemon_autocomplete(
             self, interaction: discord.Interaction,
             current: str) -> List[app_commands.Choice[str]]:
-
         if not current:
             return []
-
         if not hasattr(self, '_pokemon_names_cache'):
+            # Fetch the base Pokémon names
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon?limit=898") as resp:
                 data = await resp.json()
-                self._pokemon_names_cache = [
-                    pokemon['name'] for pokemon in data['results']
-                ]
+            base_names = {pokemon['name']
+                          for pokemon in data['results']
+                          }  # Use a set to avoid duplicates
 
+            # Fetch additional forms and Mega Evolutions
+            async with self.session.get(
+                f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
+                form_data = await resp.json()
+            form_names = {form['name']
+                          for form in form_data['results']}  # Also use a set
+
+            # Combine the base Pokémon names with the form names, ensuring uniqueness
+            self._pokemon_names_cache = list(
+                base_names | form_names)  # Union of both sets
+
+        # Perform matching for the current input
         pokemon_names = self._pokemon_names_cache
-
         exact_matches = [
             app_commands.Choice(name=name, value=name)
             for name in pokemon_names if current.lower() in name.lower()
         ]
-
         if exact_matches:
             return exact_matches[:25]
 
+        # Fallback to close matches if no exact matches are found
         close_matches = get_close_matches(current.lower(),
                                           pokemon_names,
                                           n=25,
                                           cutoff=0.4)
-
         return [
             app_commands.Choice(name=name, value=name)
             for name in close_matches
@@ -63,13 +72,24 @@ class Pokemon(commands.Cog):
 
     async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
         if not hasattr(self, '_pokemon_names_cache'):
+            # Load the Pokémon and form names if not already cached
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon?limit=898") as resp:
                 data = await resp.json()
-                self._pokemon_names_cache = [
-                    pokemon['name'] for pokemon in data['results']
-                ]
+            self._pokemon_names_cache = [
+                pokemon['name'] for pokemon in data['results']
+            ]
 
+            # Fetch additional forms and Mega Evolutions
+            async with self.session.get(
+                f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
+                form_data = await resp.json()
+            form_names = [form['name'] for form in form_data['results']]
+
+            # Combine base and form names
+            self._pokemon_names_cache.extend(form_names)
+
+        # Use difflib to find the closest match
         matches = get_close_matches(pokemon_name.lower(),
                                     self._pokemon_names_cache,
                                     n=1,
@@ -80,28 +100,33 @@ class Pokemon(commands.Cog):
         name="pokedex",
         aliases=["pd", "dex"],
         description=
-        "Look up detailed information about a Pokémon in the Pokédex",
+        "Lookup detailed information about a Pokémon in the Pokédex",
         brief="Search the Pokédex",
         help=
         """Search for a Pokémon in the Pokédex and view detailed information including:
-        - Base stats and type effectiveness
-        - Evolution chain and methods
-        - Pokédex description
-        - Moves and abilities
-
-        Usage: !pokedex <pokemon_name>
-        Example: !pokedex pikachu""")
+                - Base stats and type effectiveness
+                - Evolution chain and methods
+                - Pokédex description
+                - Moves and abilities
+                Usage: !pokedex <pokemon_name>
+                Example: !pokedex pikachu""")
     @app_commands.describe(
-        pokemon_name="The name or number of the Pokémon to look up")
+        pokemon_name="The name or number of the Pokémon to lookup")
     @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
     async def pokedex(self, ctx: commands.Context, *, pokemon_name: str):
-        """Look up detailed information about a Pokémon."""
+        """Lookup detailed information about a Pokémon."""
+        is_interaction = hasattr(ctx,
+                                 'interaction') and ctx.interaction is not None
         try:
+            # Defer interaction for slash commands
+            if is_interaction:
+                await ctx.interaction.response.defer()
+
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon/{pokemon_name.lower()}"
             ) as resp:
                 if resp.status == 404:
-                    # Try to find closest match
+                    # Try to find the closest match
                     closest_match = await self.find_closest_pokemon(
                         pokemon_name)
                     if closest_match:
@@ -116,35 +141,59 @@ class Pokemon(commands.Cog):
                                 await interaction.response.send_message(
                                     "This isn't your search!", ephemeral=True)
                                 return
-
+                            await interaction.response.defer(
+                            )  # Defer again if needed
                             async with self.session.get(
                                     f"{self.pokeapi_url}/pokemon/{closest_match.lower()}"
                             ) as pokemon_resp:
                                 pokemon_data = await pokemon_resp.json()
-
                             view = PokemonInfoView(pokemon_data)
                             embed = await view.create_main_embed()
-                            await interaction.response.send_message(
-                                embed=embed, view=view)
+                            await interaction.followup.send(embed=embed,
+                                                            view=view)
                             confirm_view.stop()
 
                         confirm_button.callback = confirm_callback
                         confirm_view.add_item(confirm_button)
-                        await ctx.send(
-                            f"Pokémon '{pokemon_name}' not found! Did you mean '{closest_match.title()}'?",
-                            view=confirm_view)
+
+                        # Send a response depending on whether it's a slash command or a regular command
+                        if is_interaction:
+                            await ctx.interaction.followup.send(
+                                f"Pokémon '{pokemon_name}' not found! Did you mean '{closest_match.title()}'?",
+                                view=confirm_view)
+                        else:
+                            await ctx.send(
+                                f"Pokémon '{pokemon_name}' not found! Did you mean '{closest_match.title()}'?",
+                                view=confirm_view)
                         return
                     else:
-                        await ctx.send(f"Pokémon '{pokemon_name}' not found!")
+                        # Send a response depending on the command type
+                        if is_interaction:
+                            await ctx.interaction.followup.send(
+                                f"Pokémon '{pokemon_name}' not found!")
+                        else:
+                            await ctx.send(
+                                f"Pokémon '{pokemon_name}' not found!")
                         return
-                pokemon_data = await resp.json()
 
-            view = PokemonInfoView(pokemon_data)
-            embed = await view.create_main_embed()
-            await ctx.send(embed=embed, view=view)
+                # If the Pokémon is found, send the data
+                pokemon_data = await resp.json()
+                view = PokemonInfoView(pokemon_data)
+                embed = await view.create_main_embed()
+
+                # Send a response based on the command type
+                if is_interaction:
+                    await ctx.interaction.followup.send(embed=embed, view=view)
+                else:
+                    await ctx.send(embed=embed, view=view)
 
         except Exception as e:
-            await ctx.send(f"An error occurred: {str(e)}")
+            # Handle unexpected errors gracefully
+            if is_interaction:
+                await ctx.interaction.followup.send(
+                    f"An error occurred: {str(e)}")
+            else:
+                await ctx.send(f"An error occurred: {str(e)}")
 
     @commands.hybrid_command(
         name="wtp",
