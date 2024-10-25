@@ -29,6 +29,10 @@ class Pokemon(commands.Cog):
     async def pokemon_autocomplete(
             self, interaction: discord.Interaction,
             current: str) -> List[app_commands.Choice[str]]:
+
+        if not current:
+            return []
+
         if not hasattr(self, '_pokemon_names_cache'):
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon?limit=898") as resp:
@@ -38,10 +42,24 @@ class Pokemon(commands.Cog):
                 ]
 
         pokemon_names = self._pokemon_names_cache
-        return [
+
+        exact_matches = [
             app_commands.Choice(name=name, value=name)
             for name in pokemon_names if current.lower() in name.lower()
-        ][:25]
+        ]
+
+        if exact_matches:
+            return exact_matches[:25]
+
+        close_matches = get_close_matches(current.lower(),
+                                          pokemon_names,
+                                          n=25,
+                                          cutoff=0.4)
+
+        return [
+            app_commands.Choice(name=name, value=name)
+            for name in close_matches
+        ]
 
     async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
         if not hasattr(self, '_pokemon_names_cache'):
