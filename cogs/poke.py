@@ -78,13 +78,13 @@ class Pokemon(commands.Cog):
 
     async def cache_pokemon_names(self) -> None:
         async with self.session.get(
-                f"{self.pokeapi_url}/pokemon?limit=898") as resp:
+                f"{self.pokeapi_url}/pokemon?limit=10277") as resp:
             data: Dict[str, Union[List[Dict[str, str]],
                                   str]] = await resp.json()
             base_names: set = {pokemon['name'] for pokemon in data['results']}
 
         async with self.session.get(
-                f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
+                f"{self.pokeapi_url}/pokemon-form?limit=10448") as resp:
             form_data: Dict[str, Union[List[Dict[str, str]],
                                        str]] = await resp.json()
             form_names: set = {form['name'] for form in form_data['results']}
@@ -95,7 +95,7 @@ class Pokemon(commands.Cog):
 
     async def cache_items(self) -> None:
         async with self.session.get(
-                f"{self.pokeapi_url}/item?limit=1000") as resp:
+                f"{self.pokeapi_url}/item?limit=10002") as resp:
             item_data: Dict[str, Union[List[Dict[str, str]],
                                        str]] = await resp.json()
             self._items_cache: List[Tuple[str, str]] = [
@@ -104,7 +104,7 @@ class Pokemon(commands.Cog):
 
     async def cache_abilities(self) -> None:
         async with self.session.get(
-                f"{self.pokeapi_url}/ability?limit=300") as resp:
+                f"{self.pokeapi_url}/ability?limit=10060") as resp:
             ability_data: Dict[str, Union[List[Dict[str, str]],
                                           str]] = await resp.json()
             self._abilities_cache: List[Tuple[str, str]] = [
@@ -114,7 +114,7 @@ class Pokemon(commands.Cog):
 
     async def cache_berries(self) -> None:
         async with self.session.get(
-                f"{self.pokeapi_url}/berry?limit=300") as resp:
+                f"{self.pokeapi_url}/berry?limit=70") as resp:
             berry_data: Dict[str, Union[List[Dict[str, str]],
                                         str]] = await resp.json()
             self._berries_cache: List[Tuple[str, str]] = [
@@ -123,7 +123,7 @@ class Pokemon(commands.Cog):
 
     async def cache_moves(self) -> None:
         async with self.session.get(
-                f"{self.pokeapi_url}/move?limit=1000") as resp:
+                f"{self.pokeapi_url}/move?limit=10018") as resp:
             move_data: Dict[str, Union[List[Dict[str, str]],
                                        str]] = await resp.json()
             self._moves_cache: List[Tuple[str, str]] = [
@@ -408,7 +408,7 @@ class Pokemon(commands.Cog):
 
     async def get_random_pokemon(self) -> Dict[str, Union[str, Dict]]:
         async with self.session.get(
-                f"{self.pokeapi_url}/pokemon?limit=898") as resp:
+                f"{self.pokeapi_url}/pokemon?limit=10277") as resp:
             data: Dict[str, Union[List[Dict[str, str]],
                                   str]] = await resp.json()
             pokemon: Dict[str, str] = random.choice(data['results'])

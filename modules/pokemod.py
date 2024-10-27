@@ -94,7 +94,7 @@ class CountButton(discord.ui.Button):
 
     def __init__(self, pokemon_data: Dict):
         super().__init__(style=discord.ButtonStyle.primary,
-                         label=f"#{pokemon_data['id']}/898",
+                         label=f"#{pokemon_data['id']}/10277",
                          custom_id="count")
 
     async def callback(self, interaction: discord.Interaction):
