@@ -32,17 +32,14 @@ class Pokemon(commands.Cog):
         if not current:
             return []
 
-        # Normalize input by replacing spaces with hyphens
         normalized_current = current.replace(" ", "-").lower()
 
-        # Check if caches for different categories exist
         if not hasattr(self, '_pokemon_names_cache'):
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon?limit=898") as resp:
                 data = await resp.json()
                 base_names = {pokemon['name'] for pokemon in data['results']}
 
-            # Fetch Pokémon forms as well
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
                 form_data = await resp.json()
@@ -80,12 +77,10 @@ class Pokemon(commands.Cog):
                 self._moves_cache = [(move['name'], "move")
                                      for move in move_data['results']]
 
-        # Combine all categories for matching
         combined_cache = (self._pokemon_names_cache + self._items_cache +
                           self._abilities_cache + self._berries_cache +
                           self._moves_cache)
 
-        # Perform normalized matching
         exact_matches = [
             app_commands.Choice(name=f"{name} ({category})", value=name)
             for name, category in combined_cache
@@ -94,10 +89,9 @@ class Pokemon(commands.Cog):
         if exact_matches:
             return exact_matches[:25]
 
-        # Fallback to close matches if no exact matches are found
         cache_names = [
             name.replace(" ", "-").lower() for name, _ in combined_cache
-        ]  # Normalized cache names
+        ]
         close_matches = get_close_matches(normalized_current,
                                           cache_names,
                                           n=25,
@@ -110,7 +104,6 @@ class Pokemon(commands.Cog):
 
     async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
         if not hasattr(self, '_pokemon_names_cache'):
-            # Load the Pokémon and form names if not already cached
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon?limit=898") as resp:
                 data = await resp.json()
@@ -118,16 +111,13 @@ class Pokemon(commands.Cog):
                 pokemon['name'] for pokemon in data['results']
             ]
 
-            # Fetch additional forms and Mega Evolutions
             async with self.session.get(
-                f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
+                    f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
                 form_data = await resp.json()
             form_names = [form['name'] for form in form_data['results']]
 
-            # Combine base and form names
             self._pokemon_names_cache.extend(form_names)
 
-        # Use difflib to find the closest match
         matches = get_close_matches(pokemon_name.lower(),
                                     self._pokemon_names_cache,
                                     n=1,
@@ -149,18 +139,15 @@ class Pokemon(commands.Cog):
     )
     @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
     async def pokedex(self, ctx: commands.Context, *, pokemon_name: str):
-        """Lookup detailed information about a Pokémon, item, ability, berry, or move."""
         is_interaction = hasattr(ctx,
                                  'interaction') and ctx.interaction is not None
 
-        # Normalize the input to match API format: replace spaces with hyphens
         normalized_name = pokemon_name.replace(" ", "-").lower()
 
         try:
             if is_interaction:
                 await ctx.interaction.response.defer()
 
-            # Attempt to fetch Pokémon data
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -176,7 +163,6 @@ class Pokemon(commands.Cog):
                         await ctx.send(embed=embed, view=view)
                     return
 
-            # Attempt to fetch item data
             async with self.session.get(
                     f"{self.pokeapi_url}/item/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -189,16 +175,13 @@ class Pokemon(commands.Cog):
                              if entry['language']['name'] == 'en'),
                             "No description available"),
                         color=discord.Color.gold())
-                    embed.set_thumbnail(
-                        url=item_data['sprites']
-                        ['default'])  # Assuming item has a default image
+                    embed.set_thumbnail(url=item_data['sprites']['default'])
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
 
-            # Attempt to fetch ability data
             async with self.session.get(
                     f"{self.pokeapi_url}/ability/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -214,7 +197,6 @@ class Pokemon(commands.Cog):
                     ]
                     pokemon_text = ", ".join(pokemon_with_ability) + (
                         "..." if len(ability_data['pokemon']) > 10 else "")
-
                     embed = discord.Embed(
                         title=f"{ability_data['name'].title()} Ability",
                         description=description,
@@ -225,14 +207,13 @@ class Pokemon(commands.Cog):
                     embed.set_thumbnail(
                         url=
                         "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ability-capsule.png"
-                    )  # Example static image
+                    )
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
 
-            # Attempt to fetch berry data
             async with self.session.get(
                     f"{self.pokeapi_url}/berry/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -253,7 +234,6 @@ class Pokemon(commands.Cog):
                         await ctx.send(embed=embed)
                     return
 
-            # Attempt to fetch move data
             async with self.session.get(
                     f"{self.pokeapi_url}/move/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -267,7 +247,6 @@ class Pokemon(commands.Cog):
                     pp = move_data['pp']
                     move_type = move_data['type']['name'].title()
                     damage_class = move_data['damage_class']['name'].title()
-
                     embed = discord.Embed(
                         title=f"{move_data['name'].title()} Move",
                         description=description,
@@ -281,14 +260,13 @@ class Pokemon(commands.Cog):
                     embed.set_thumbnail(
                         url=
                         "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/tm.png"
-                    )  # Example static image
+                    )
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
 
-            # If no matches are found
             if is_interaction:
                 await ctx.interaction.followup.send(
                     f"No results found for '{pokemon_name}'")
@@ -319,7 +297,6 @@ class Pokemon(commands.Cog):
         Usage: /wtp
         After starting, type your guess in the chat.""")
     async def wtp(self, ctx: commands.Context):
-        """Play a game of Who's That Pokémon? Guess the Pokémon from its silhouette!"""
         pokemon_data = await self.get_random_pokemon()
         pokemon_name = pokemon_data['name']
         pokemon_image = pokemon_data['sprites']['other']['official-artwork'][
@@ -353,7 +330,6 @@ class Pokemon(commands.Cog):
                                                 timeout=25.0,
                                                 check=check_guess)
 
-                # Exact match required for the guess
                 if guess.content.lower() == pokemon_name.lower():
                     embed = discord.Embed(
                         title="**Who's That Pokémon?**",
@@ -404,7 +380,6 @@ class Pokemon(commands.Cog):
                 break
 
     async def get_random_pokemon(self) -> dict:
-        """Fetch a random Pokémon from the PokeAPI."""
         async with self.session.get(
                 f"{self.pokeapi_url}/pokemon?limit=898") as resp:
             data = await resp.json()
@@ -414,7 +389,6 @@ class Pokemon(commands.Cog):
             return await resp.json()
 
     async def create_silhouette(self, image_url: str) -> BytesIO:
-        """Create a silhouette from a Pokémon image."""
         async with self.session.get(image_url) as resp:
             image_data = await resp.read()
 
