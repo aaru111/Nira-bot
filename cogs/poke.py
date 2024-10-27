@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Union, Tuple, Dict
 import discord
 from discord.ext import commands
 import aiohttp
@@ -14,9 +14,9 @@ from modules.pokemod import *
 
 class Pokemon(commands.Cog):
 
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.pokeapi_url = "https://pokeapi.co/api/v2"
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot: commands.Bot = bot
+        self.pokeapi_url: str = "https://pokeapi.co/api/v2"
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def cog_load(self) -> None:
@@ -32,56 +32,30 @@ class Pokemon(commands.Cog):
         if not current:
             return []
 
-        normalized_current = current.replace(" ", "-").lower()
+        normalized_current: str = current.replace(" ", "-").lower()
 
         if not hasattr(self, '_pokemon_names_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/pokemon?limit=898") as resp:
-                data = await resp.json()
-                base_names = {pokemon['name'] for pokemon in data['results']}
-
-            async with self.session.get(
-                    f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
-                form_data = await resp.json()
-                form_names = {form['name'] for form in form_data['results']}
-
-            self._pokemon_names_cache = [(name, "pokemon")
-                                         for name in base_names | form_names]
+            await self.cache_pokemon_names()
 
         if not hasattr(self, '_items_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/item?limit=1000") as resp:
-                item_data = await resp.json()
-                self._items_cache = [(item['name'], "item")
-                                     for item in item_data['results']]
+            await self.cache_items()
 
         if not hasattr(self, '_abilities_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/ability?limit=300") as resp:
-                ability_data = await resp.json()
-                self._abilities_cache = [(ability['name'], "ability")
-                                         for ability in ability_data['results']
-                                         ]
+            await self.cache_abilities()
 
         if not hasattr(self, '_berries_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/berry?limit=300") as resp:
-                berry_data = await resp.json()
-                self._berries_cache = [(berry['name'], "berry")
-                                       for berry in berry_data['results']]
+            await self.cache_berries()
 
         if not hasattr(self, '_moves_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/move?limit=1000") as resp:
-                move_data = await resp.json()
-                self._moves_cache = [(move['name'], "move")
-                                     for move in move_data['results']]
+            await self.cache_moves()
 
-        combined_cache = (self._pokemon_names_cache + self._items_cache +
-                          self._abilities_cache + self._berries_cache +
-                          self._moves_cache)
+        combined_cache: List[Tuple[str, str]] = (self._pokemon_names_cache +
+                                                 self._items_cache +
+                                                 self._abilities_cache +
+                                                 self._berries_cache +
+                                                 self._moves_cache)
 
-        exact_matches = [
+        exact_matches: List[app_commands.Choice[str]] = [
             app_commands.Choice(name=f"{name} ({category})", value=name)
             for name, category in combined_cache
             if normalized_current in name.replace(" ", "-").lower()
@@ -89,39 +63,82 @@ class Pokemon(commands.Cog):
         if exact_matches:
             return exact_matches[:25]
 
-        cache_names = [
+        cache_names: List[str] = [
             name.replace(" ", "-").lower() for name, _ in combined_cache
         ]
-        close_matches = get_close_matches(normalized_current,
-                                          cache_names,
-                                          n=25,
-                                          cutoff=0.4)
+        close_matches: List[str] = get_close_matches(normalized_current,
+                                                     cache_names,
+                                                     n=25,
+                                                     cutoff=0.4)
         return [
             app_commands.Choice(name=f"{name} ({category})", value=name)
             for name, category in combined_cache
             if name.replace(" ", "-").lower() in close_matches
         ]
 
-    async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
-        if not hasattr(self, '_pokemon_names_cache'):
-            async with self.session.get(
-                    f"{self.pokeapi_url}/pokemon?limit=898") as resp:
-                data = await resp.json()
-            self._pokemon_names_cache = [
-                pokemon['name'] for pokemon in data['results']
+    async def cache_pokemon_names(self) -> None:
+        async with self.session.get(
+                f"{self.pokeapi_url}/pokemon?limit=898") as resp:
+            data: Dict[str, Union[List[Dict[str, str]],
+                                  str]] = await resp.json()
+            base_names: set = {pokemon['name'] for pokemon in data['results']}
+
+        async with self.session.get(
+                f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
+            form_data: Dict[str, Union[List[Dict[str, str]],
+                                       str]] = await resp.json()
+            form_names: set = {form['name'] for form in form_data['results']}
+
+        self._pokemon_names_cache: List[Tuple[str, str]] = [
+            (name, "pokemon") for name in base_names | form_names
+        ]
+
+    async def cache_items(self) -> None:
+        async with self.session.get(
+                f"{self.pokeapi_url}/item?limit=1000") as resp:
+            item_data: Dict[str, Union[List[Dict[str, str]],
+                                       str]] = await resp.json()
+            self._items_cache: List[Tuple[str, str]] = [
+                (item['name'], "item") for item in item_data['results']
             ]
 
-            async with self.session.get(
-                    f"{self.pokeapi_url}/pokemon-form?limit=2000") as resp:
-                form_data = await resp.json()
-            form_names = [form['name'] for form in form_data['results']]
+    async def cache_abilities(self) -> None:
+        async with self.session.get(
+                f"{self.pokeapi_url}/ability?limit=300") as resp:
+            ability_data: Dict[str, Union[List[Dict[str, str]],
+                                          str]] = await resp.json()
+            self._abilities_cache: List[Tuple[str, str]] = [
+                (ability['name'], "ability")
+                for ability in ability_data['results']
+            ]
 
-            self._pokemon_names_cache.extend(form_names)
+    async def cache_berries(self) -> None:
+        async with self.session.get(
+                f"{self.pokeapi_url}/berry?limit=300") as resp:
+            berry_data: Dict[str, Union[List[Dict[str, str]],
+                                        str]] = await resp.json()
+            self._berries_cache: List[Tuple[str, str]] = [
+                (berry['name'], "berry") for berry in berry_data['results']
+            ]
 
-        matches = get_close_matches(pokemon_name.lower(),
-                                    self._pokemon_names_cache,
-                                    n=1,
-                                    cutoff=0.6)
+    async def cache_moves(self) -> None:
+        async with self.session.get(
+                f"{self.pokeapi_url}/move?limit=1000") as resp:
+            move_data: Dict[str, Union[List[Dict[str, str]],
+                                       str]] = await resp.json()
+            self._moves_cache: List[Tuple[str, str]] = [
+                (move['name'], "move") for move in move_data['results']
+            ]
+
+    async def find_closest_pokemon(self, pokemon_name: str) -> Optional[str]:
+        if not hasattr(self, '_pokemon_names_cache'):
+            await self.cache_pokemon_names()
+
+        matches: List[str] = get_close_matches(
+            pokemon_name.lower(),
+            [name for name, _ in self._pokemon_names_cache],
+            n=1,
+            cutoff=0.6)
         return matches[0] if matches else None
 
     @commands.hybrid_command(
@@ -138,11 +155,12 @@ class Pokemon(commands.Cog):
         "The name or number of the Pokémon, item, ability, berry, or move to lookup"
     )
     @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
-    async def pokedex(self, ctx: commands.Context, *, pokemon_name: str):
-        is_interaction = hasattr(ctx,
-                                 'interaction') and ctx.interaction is not None
+    async def pokedex(self, ctx: commands.Context, *,
+                      pokemon_name: str) -> None:
+        is_interaction: bool = hasattr(
+            ctx, 'interaction') and ctx.interaction is not None
 
-        normalized_name = pokemon_name.replace(" ", "-").lower()
+        normalized_name: str = pokemon_name.replace(" ", "-").lower()
 
         try:
             if is_interaction:
@@ -151,9 +169,11 @@ class Pokemon(commands.Cog):
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon/{normalized_name}") as resp:
                 if resp.status == 200:
-                    pokemon_data = await resp.json()
+                    pokemon_data: Dict[str, Union[Dict[str, Union[str,
+                                                                  List[Dict]]],
+                                                  str]] = await resp.json()
                     view = PokemonInfoView(pokemon_data)
-                    embed = await view.create_main_embed()
+                    embed: discord.Embed = await view.create_main_embed()
                     embed.set_thumbnail(url=pokemon_data['sprites']['other']
                                         ['official-artwork']['front_default'])
                     if is_interaction:
@@ -166,7 +186,8 @@ class Pokemon(commands.Cog):
             async with self.session.get(
                     f"{self.pokeapi_url}/item/{normalized_name}") as resp:
                 if resp.status == 200:
-                    item_data = await resp.json()
+                    item_data: Dict[str, Union[str, List[Dict[str, Union[
+                        str, int]]]]] = await resp.json()
                     embed = discord.Embed(
                         title=f"{item_data['name'].title()}",
                         description=next(
@@ -185,17 +206,19 @@ class Pokemon(commands.Cog):
             async with self.session.get(
                     f"{self.pokeapi_url}/ability/{normalized_name}") as resp:
                 if resp.status == 200:
-                    ability_data = await resp.json()
-                    description = next(
+                    ability_data: Dict[str,
+                                       Union[str,
+                                             List[Dict]]] = await resp.json()
+                    description: str = next(
                         (entry['effect']
                          for entry in ability_data['effect_entries']
                          if entry['language']['name'] == 'en'),
                         "No description available")
-                    pokemon_with_ability = [
+                    pokemon_with_ability: List[str] = [
                         pokemon['pokemon']['name'].title()
                         for pokemon in ability_data['pokemon'][:10]
                     ]
-                    pokemon_text = ", ".join(pokemon_with_ability) + (
+                    pokemon_text: str = ", ".join(pokemon_with_ability) + (
                         "..." if len(ability_data['pokemon']) > 10 else "")
                     embed = discord.Embed(
                         title=f"{ability_data['name'].title()} Ability",
@@ -217,8 +240,8 @@ class Pokemon(commands.Cog):
             async with self.session.get(
                     f"{self.pokeapi_url}/berry/{normalized_name}") as resp:
                 if resp.status == 200:
-                    berry_data = await resp.json()
-                    berry_name = berry_data['name'].title()
+                    berry_data: Dict[str, Union[str, int]] = await resp.json()
+                    berry_name: str = berry_data['name'].title()
                     embed = discord.Embed(
                         title=f"{berry_name} Berry",
                         description=
@@ -237,16 +260,19 @@ class Pokemon(commands.Cog):
             async with self.session.get(
                     f"{self.pokeapi_url}/move/{normalized_name}") as resp:
                 if resp.status == 200:
-                    move_data = await resp.json()
-                    description = next(
+                    move_data: Dict[str,
+                                    Union[str, int,
+                                          List[Dict]]] = await resp.json()
+                    description: str = next(
                         (entry['effect']
                          for entry in move_data['effect_entries']
                          if entry['language']['name'] == 'en'),
                         "No description available")
-                    power = move_data['power'] or "N/A"
-                    pp = move_data['pp']
-                    move_type = move_data['type']['name'].title()
-                    damage_class = move_data['damage_class']['name'].title()
+                    power: Union[str, int] = move_data['power'] or "N/A"
+                    pp: int = move_data['pp']
+                    move_type: str = move_data['type']['name'].title()
+                    damage_class: str = move_data['damage_class'][
+                        'name'].title()
                     embed = discord.Embed(
                         title=f"{move_data['name'].title()} Move",
                         description=description,
@@ -296,18 +322,19 @@ class Pokemon(commands.Cog):
 
         Usage: /wtp
         After starting, type your guess in the chat.""")
-    async def wtp(self, ctx: commands.Context):
-        pokemon_data = await self.get_random_pokemon()
-        pokemon_name = pokemon_data['name']
-        pokemon_image = pokemon_data['sprites']['other']['official-artwork'][
-            'front_default']
+    async def wtp(self, ctx: commands.Context) -> None:
+        pokemon_data: Dict[str, Union[str,
+                                      Dict]] = await self.get_random_pokemon()
+        pokemon_name: str = pokemon_data['name']
+        pokemon_image: str = pokemon_data['sprites']['other'][
+            'official-artwork']['front_default']
 
         if not pokemon_image:
             await ctx.send(
                 "Sorry, couldn't load Pokémon image. Please try again!")
             return
 
-        silhouette = await self.create_silhouette(pokemon_image)
+        silhouette: BytesIO = await self.create_silhouette(pokemon_image)
 
         embed = discord.Embed(title="**Who's That Pokémon?**",
                               description="Can you guess who this Pokémon is?",
@@ -316,19 +343,19 @@ class Pokemon(commands.Cog):
         embed.set_footer(text="Attempts remaining: 3")
 
         view = PokemonGuessView(pokemon_data, ctx.author)
-        message = await ctx.send(embed=embed,
-                                 file=discord.File(silhouette,
-                                                   filename="pokemon.png"),
-                                 view=view)
+        message: discord.Message = await ctx.send(embed=embed,
+                                                  file=discord.File(
+                                                      silhouette,
+                                                      filename="pokemon.png"),
+                                                  view=view)
 
-        def check_guess(m):
+        def check_guess(m: discord.Message) -> bool:
             return m.author == ctx.author and m.channel == ctx.channel
 
         while view.attempts > 0:
             try:
-                guess = await self.bot.wait_for('message',
-                                                timeout=25.0,
-                                                check=check_guess)
+                guess: discord.Message = await self.bot.wait_for(
+                    'message', timeout=25.0, check=check_guess)
 
                 if guess.content.lower() == pokemon_name.lower():
                     embed = discord.Embed(
@@ -379,18 +406,19 @@ class Pokemon(commands.Cog):
                 await message.edit(embed=embed, attachments=[], view=new_view)
                 break
 
-    async def get_random_pokemon(self) -> dict:
+    async def get_random_pokemon(self) -> Dict[str, Union[str, Dict]]:
         async with self.session.get(
                 f"{self.pokeapi_url}/pokemon?limit=898") as resp:
-            data = await resp.json()
-            pokemon = random.choice(data['results'])
+            data: Dict[str, Union[List[Dict[str, str]],
+                                  str]] = await resp.json()
+            pokemon: Dict[str, str] = random.choice(data['results'])
 
         async with self.session.get(pokemon['url']) as resp:
             return await resp.json()
 
     async def create_silhouette(self, image_url: str) -> BytesIO:
         async with self.session.get(image_url) as resp:
-            image_data = await resp.read()
+            image_data: bytes = await resp.read()
 
         with Image.open(BytesIO(image_data)) as img:
             img = img.convert('RGBA')
@@ -408,5 +436,5 @@ class Pokemon(commands.Cog):
             return output
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Pokemon(bot))
