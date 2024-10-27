@@ -121,7 +121,9 @@ class PokemonInfoSelect(discord.ui.Select):
         discord.SelectOption(label="Main Info", value="main", emoji="📋"),
         discord.SelectOption(label="Stats", value="stats", emoji="📊"),
         discord.SelectOption(label="Moves", value="moves", emoji="⚔️"),
-        discord.SelectOption(label="Locations", value="locations", emoji="🗺️")
+        discord.SelectOption(label="Locations", value="locations", emoji="🗺️"),
+        discord.SelectOption(label="Shiny", value="shiny",
+                             emoji="✨")  # New Shiny option
     ]
     super().__init__(placeholder="Select information to view...",
                      options=options)
@@ -129,6 +131,8 @@ class PokemonInfoSelect(discord.ui.Select):
 
   async def callback(self, interaction: discord.Interaction):
     view = self.view
+
+    # Check which option was selected and update the embed accordingly
     if self.values[0] == "main":
       embed = await view.create_main_embed()
     elif self.values[0] == "stats":
@@ -137,6 +141,9 @@ class PokemonInfoSelect(discord.ui.Select):
       embed = await view.create_moves_embed()
     elif self.values[0] == "locations":
       embed = await view.create_locations_embed()
+    elif self.values[0] == "shiny":
+      embed = await view.create_shiny_embed()  # New method for Shiny
+
     await interaction.response.edit_message(embed=embed, view=view)
 
 
@@ -157,6 +164,22 @@ class PokemonInfoView(discord.ui.View):
                                 label="▶",
                                 custom_id="next"))
     self.current_page = "main"
+
+  async def create_shiny_embed(self) -> discord.Embed:
+    # Get shiny and normal images
+    shiny_image = self.pokemon_data['sprites']['other']['official-artwork'][
+        'front_shiny']
+    normal_image = self.pokemon_data['sprites']['other']['official-artwork'][
+        'front_default']
+
+    # Define the embed and set images
+    embed = discord.Embed(title=f"{self.pokemon_data['name'].title()} (Shiny)",
+                          description="Shiny version",
+                          color=discord.Color.gold())
+    embed.set_image(url=shiny_image)  # Shiny as main image
+    embed.set_thumbnail(url=normal_image)  # Normal as thumbnail
+
+    return embed
 
   async def create_loading_embed(self) -> discord.Embed:
     """Creates a loading state embed"""
