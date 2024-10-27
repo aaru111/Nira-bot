@@ -112,7 +112,6 @@ class CountButton(discord.ui.Button):
   async def callback(self, interaction: discord.Interaction):
     modal = PokemonNumberInput(self.view)
     await interaction.response.send_modal(modal)
-    await interaction.response.defer()
 
 
 class PokemonInfoSelect(discord.ui.Select):
