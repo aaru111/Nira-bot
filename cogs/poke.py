@@ -8,11 +8,32 @@ from PIL import Image
 import asyncio
 from difflib import get_close_matches
 from discord import app_commands
+from colorthief import ColorThief
 
 from modules.pokemod import *
 
 
 class Pokemon(commands.Cog):
+    TYPE_COLORS = {
+        "normal": discord.Color.light_grey(),
+        "fire": discord.Color.red(),
+        "water": discord.Color.blue(),
+        "electric": discord.Color.gold(),
+        "grass": discord.Color.green(),
+        "ice": discord.Color.teal(),
+        "fighting": discord.Color.dark_red(),
+        "poison": discord.Color.purple(),
+        "ground": discord.Color.dark_gold(),
+        "flying": discord.Color.blue(),
+        "psychic": discord.Color.magenta(),
+        "bug": discord.Color.dark_green(),
+        "rock": discord.Color.dark_grey(),
+        "ghost": discord.Color.dark_purple(),
+        "dragon": discord.Color.dark_blue(),
+        "dark": discord.Color.darker_grey(),
+        "steel": discord.Color.greyple(),
+        "fairy": discord.Color.pink()
+    }
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
@@ -141,6 +162,28 @@ class Pokemon(commands.Cog):
             cutoff=0.6)
         return matches[0] if matches else None
 
+    async def get_embed_color_from_sprite(self, url: str) -> discord.Color:
+        """
+        Fetches the dominant color from an image URL to set the embed color.
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        image_data = await response.read()
+                        color_thief = ColorThief(BytesIO(image_data))
+                        dominant_color = color_thief.get_color(quality=1)
+                        return discord.Color.from_rgb(*dominant_color)
+        except Exception as e:
+            print(f"Failed to fetch color: {e}")
+            return discord.Color.default()
+
+    def get_type_color(self, type_name: str) -> discord.Color:
+        """
+        Returns a discord.Color based on the Pokémon type.
+        """
+        return self.TYPE_COLORS.get(type_name.lower(), discord.Color.default())
+
     @commands.hybrid_command(
         name="pokedex",
         aliases=["pd", "dex"],
@@ -188,6 +231,10 @@ class Pokemon(commands.Cog):
                 if resp.status == 200:
                     item_data: Dict[str, Union[str, List[Dict[str, Union[
                         str, int]]]]] = await resp.json()
+                    sprite_url = item_data['sprites']['default']
+                    embed_color = await self.get_embed_color_from_sprite(
+                        sprite_url)
+
                     embed = discord.Embed(
                         title=f"{item_data['name'].title()}",
                         description=next(
@@ -195,8 +242,8 @@ class Pokemon(commands.Cog):
                              for entry in item_data['effect_entries']
                              if entry['language']['name'] == 'en'),
                             "No description available"),
-                        color=discord.Color.gold())
-                    embed.set_thumbnail(url=item_data['sprites']['default'])
+                        color=embed_color)
+                    embed.set_thumbnail(url=sprite_url)
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
@@ -220,17 +267,18 @@ class Pokemon(commands.Cog):
                     ]
                     pokemon_text: str = ", ".join(pokemon_with_ability) + (
                         "..." if len(ability_data['pokemon']) > 10 else "")
+                    sprite_url = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ability-capsule.png"
+                    embed_color = await self.get_embed_color_from_sprite(
+                        sprite_url)
+
                     embed = discord.Embed(
                         title=f"{ability_data['name'].title()} Ability",
                         description=description,
-                        color=discord.Color.purple())
+                        color=embed_color)
                     embed.add_field(name="Pokémon with this Ability",
                                     value=pokemon_text,
                                     inline=False)
-                    embed.set_thumbnail(
-                        url=
-                        "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ability-capsule.png"
-                    )
+                    embed.set_thumbnail(url=sprite_url)
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
@@ -242,15 +290,16 @@ class Pokemon(commands.Cog):
                 if resp.status == 200:
                     berry_data: Dict[str, Union[str, int]] = await resp.json()
                     berry_name: str = berry_data['name'].title()
+                    sprite_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/{berry_data['name']}-berry.png"
+                    embed_color = await self.get_embed_color_from_sprite(
+                        sprite_url)
+
                     embed = discord.Embed(
                         title=f"{berry_name} Berry",
                         description=
                         f"Size: {berry_data['size']} | Growth time: {berry_data['growth_time']}",
-                        color=discord.Color.red())
-                    embed.set_thumbnail(
-                        url=
-                        f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/{berry_data['name']}-berry.png"
-                    )
+                        color=embed_color)
+                    embed.set_thumbnail(url=sprite_url)
                     if is_interaction:
                         await ctx.interaction.followup.send(embed=embed)
                     else:
@@ -273,10 +322,12 @@ class Pokemon(commands.Cog):
                     move_type: str = move_data['type']['name'].title()
                     damage_class: str = move_data['damage_class'][
                         'name'].title()
+                    type_color = self.get_type_color(move_data['type']['name'])
+
                     embed = discord.Embed(
                         title=f"{move_data['name'].title()} Move",
                         description=description,
-                        color=discord.Color.blue())
+                        color=type_color)
                     embed.add_field(name="Power", value=power, inline=True)
                     embed.add_field(name="PP", value=pp, inline=True)
                     embed.add_field(name="Type", value=move_type, inline=True)
