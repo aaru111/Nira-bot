@@ -1,8 +1,8 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, SearchView
-from modules.mangamod import MangaMod
+from .modules.animemod import AniListModule, AniListView, LogoutView, ListTypeSelect, CompareButton, SearchView
+from .modules.mangamod import MangaMod
 from typing import List
 
 

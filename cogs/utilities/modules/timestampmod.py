@@ -6,7 +6,6 @@ from datetime import datetime
 import discord
 from dateutil.parser import ParserError, parse
 from discord import app_commands
-from discord.ext import commands
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .timezones import abbrevs_pytz

@@ -1,7 +1,9 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from utils.wel import get_welcome_card
+
+from .utils.wel import get_welcome_card
+
 from database import Database
 
 
@@ -185,7 +187,7 @@ class Welcome(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.choices(message_type=[
         app_commands.Choice(name="Edit Default Message", value="default"),
-        app_commands.Choice(name="Custom", value="custom")    
+        app_commands.Choice(name="Custom", value="custom")
     ])
     async def set_message(self, interaction: discord.Interaction,
                           message_type: app_commands.Choice[str]):
@@ -224,8 +226,8 @@ class Welcome(commands.Cog):
 
         if is_default:
             self.default_welcome_message = message
-            await interaction.followup.send(
-                "Updated default welcome message.", ephemeral=True)
+            await interaction.followup.send("Updated default welcome message.",
+                                            ephemeral=True)
         else:
             await self.db.execute(
                 "UPDATE welcome SET message = $1 WHERE guild_id = $2",

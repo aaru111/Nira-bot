@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord import Member
 import aiohttp
 import os
 import asyncio
@@ -11,10 +12,10 @@ from typing import Optional, List, Dict
 from collections import defaultdict
 import time
 import requests
-from modules.asciify import asciify
 from typing import Union
-from modules.emojify import emojify_image
-from discord import Member
+
+from .modules.asciify import asciify
+from .modules.emojify import emojify_image
 
 
 # OCR Service for text recognition

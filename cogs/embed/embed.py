@@ -5,12 +5,13 @@ import aiohttp
 import random
 from urllib.parse import urlparse
 import webcolors
-from utils.custom_colors import custom_colors
 
 # Import all classes and methods from embedmod.py
-from modules.embedmod import (AuthorModal, BodyModal, ImagesModal, FooterModal,
-                              ScheduleModal, create_embed_view)
-from modules.embedtemp import get_template, templates
+from .modules.embedmod import (AuthorModal, BodyModal, ImagesModal,
+                               FooterModal, ScheduleModal, create_embed_view)
+from .modules.embedtemp import get_template, templates
+
+from .utils.custom_colors import custom_colors
 
 
 class EmbedCreator(commands.Cog):

@@ -8,12 +8,13 @@ from typing import Optional, List
 from urllib.parse import quote
 from abc import ABC, abstractmethod
 
-from modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
-from modules.weathermod import create_weather_embed
-from modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
-from modules.shortnermod import URLShortenerCore
+from .modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
+from .modules.weathermod import create_weather_embed
+from .modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
+from .modules.shortnermod import URLShortenerCore
+from .modules.timestampmod import DatetimeTransformer, TimezoneTransformer, TimezoneTransformerError, make_timestamps_embed, TIMESTAMP_STYLE
+
 from database import db
-from modules.timestampmod import DatetimeTransformer, TimezoneTransformer, TimezoneTransformerError, make_timestamps_embed, TIMESTAMP_STYLE
 
 # Retrieve the Bitly API token from environment variables
 BITLY_TOKEN = os.getenv("BITLY_API")
@@ -297,7 +298,9 @@ class Utilities(commands.Cog):
         style="The style to format the datetime with.",
     )
     @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.rename(dt="datetime", tz="timezone")
     @app_commands.choices(style=TIMESTAMP_STYLE)
     async def timestamp(

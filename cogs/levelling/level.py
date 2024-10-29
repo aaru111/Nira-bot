@@ -9,7 +9,8 @@ import time
 from typing import Optional, Dict, Union
 import os
 import base64
-from modules.levelmod import *
+
+from .modules.levelmod import *
 
 
 class Leveling(commands.Cog):

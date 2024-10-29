@@ -6,11 +6,13 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import os
-from modules.collatz import is_collatz_conjecture
+
 import aiofiles
 from typing import Optional, List, Dict, Tuple, Any, Union
-from modules.mememod import MemeView, MemeModule
-from modules.horoscopemod import HoroscopeModule, ZodiacSign, HoroscopeError
+
+from .modules.collatz import is_collatz_conjecture
+from .modules.mememod import MemeView, MemeModule
+from .modules.horoscopemod import HoroscopeModule, ZodiacSign, HoroscopeError
 
 # Global variables for reuse
 DEFAULT_EMBED_COLOR: int = 0x2f3136

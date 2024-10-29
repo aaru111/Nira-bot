@@ -2,13 +2,14 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, Modal, TextInput
 from discord import ButtonStyle, Interaction
-from utils.helpembed import get_help_embed
 import asyncio
 import re
 from discord.utils import format_dt
 from datetime import timedelta
 from math import ceil
 from typing import Optional
+
+from ..utils.helpembed import get_help_embed
 
 
 class BaseView(discord.ui.View):

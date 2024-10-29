@@ -5,8 +5,9 @@ from typing import List, Optional, Union, Any, Dict, TypeVar
 import inspect
 import math
 import asyncio
-from utils.mentionable_tree import MentionableTree
 import aiohttp
+
+from .utils.mentionable_tree import MentionableTree
 
 # Global variables for easy modification
 DEFAULT_EMBED_COLOR: discord.Color = discord.Color.brand_red()
@@ -285,7 +286,9 @@ class HelpCog(commands.Cog):
                              description="Shows help for bot commands")
     @app_commands.describe(command="The command to get help for")
     @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def help_command(self,
                            ctx: commands.Context[BotT],
                            command: Optional[str] = None) -> None:

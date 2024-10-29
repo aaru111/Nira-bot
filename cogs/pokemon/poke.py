@@ -10,7 +10,7 @@ from difflib import get_close_matches
 from discord import app_commands
 from colorthief import ColorThief
 
-from modules.pokemod import *
+from .modules.pokemod import *
 
 
 class Pokemon(commands.Cog):

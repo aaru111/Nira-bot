@@ -1,5 +1,5 @@
 import discord
-from utils.custom_colors import custom_colors
+from ..utils.custom_colors import custom_colors
 import random
 
 
