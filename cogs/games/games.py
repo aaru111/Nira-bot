@@ -34,6 +34,22 @@ class Games(commands.Cog):
         self.memory_games: Dict[int, MemoryGameView] = {}
         self.active_chess_games: Dict[int, ChessGame] = {}
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.twenty_48_emojis = {
+            "0": "<:0_:1301049383747326022>",
+            "2": "<:2_:1301049395734904872>",
+            "4": "<:4_:1301049404001620002>",
+            "8": "<:8_:1301049412541485116>",
+            "16": "<:16:1301049420065800222>",
+            "32": "<:32:1301049427854626838>",
+            "64": "<:64:1301049435941240892>",
+            "128": "<:128:1301049444979965952>",
+            "256": "<:256:1301049458456399943>",
+            "512": "<:512:1301049474545618964>",
+            "1024": "<:1024:1301049484079271976>",
+            "2048": "<:2048:1301049493742948407>",
+            "4096": "<:4096:1301049503557619712>",
+            "8192": "<:8192:1301049514555342850>",
+        }
 
     async def cog_unload(self) -> None:
         """Clean up resources when the cog is unloaded."""
@@ -442,9 +458,26 @@ class Games(commands.Cog):
         else:
             return PlayerStats(player)
 
-    @commands.hybrid_command(name="wordle")
+    @commands.hybrid_command(
+        name="wordle",
+        brief="Play a Wordle game.",
+        description=
+        "Guess the 5-letter word in 6 tries. Green=correct spot, yellow=right letter wrong spot."
+    )
     async def wordle(self, ctx: commands.Context[commands.Bot]):
         game = button_games.BetaWordle()
+        await game.start(ctx)
+
+    @commands.hybrid_command(
+        name="twenty48",
+        brief="Play a 2048 game.",
+        aliases=['2048', 't48'],
+        description=
+        "Slide and combine matching numbers to reach 2048. Use arrow buttons to move tiles on the board."
+    )
+    async def twenty48(self, ctx: commands.Context[commands.Bot]):
+        game = button_games.BetaTwenty48(self.twenty_48_emojis,
+                                         render_image=True)
         await game.start(ctx)
 
 
