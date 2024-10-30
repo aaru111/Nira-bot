@@ -8,6 +8,7 @@ from discord.ext.commands import Context
 from discord.reaction import Reaction
 from discord.member import Member
 from discord.abc import Messageable
+from discord_games import button_games
 import aiohttp
 import asyncio
 import time
@@ -15,7 +16,7 @@ import io
 
 from typing import Optional, Dict
 
-# Importing modules used in the games 
+# Importing modules used in the games
 from .modules.tetrismod import TetrisGame
 from .modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from .modules.triviamod import TriviaView
@@ -440,6 +441,11 @@ class Games(commands.Cog):
             return player_stats
         else:
             return PlayerStats(player)
+
+    @commands.hybrid_command(name="wordle")
+    async def wordle(self, ctx: commands.Context[commands.Bot]):
+        game = button_games.BetaWordle()
+        await game.start(ctx)
 
 
 async def setup(bot: commands.Bot) -> None:
