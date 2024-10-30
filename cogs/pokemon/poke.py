@@ -47,6 +47,27 @@ class Pokemon(commands.Cog):
         if self.session:
             await self.session.close()
 
+    async def find_closest_match(self, name: str,
+                                 category: str) -> Optional[str]:
+        if category == "pokemon":
+            cache = self._pokemon_names_cache
+        elif category == "item":
+            cache = self._items_cache
+        elif category == "ability":
+            cache = self._abilities_cache
+        elif category == "berry":
+            cache = self._berries_cache
+        elif category == "move":
+            cache = self._moves_cache
+        else:
+            return None
+
+        matches = get_close_matches(name.lower(),
+                                    [item[0].lower() for item in cache],
+                                    n=1,
+                                    cutoff=0.6)
+        return matches[0] if matches else None
+
     async def pokemon_autocomplete(
             self, interaction: discord.Interaction,
             current: str) -> List[app_commands.Choice[str]]:
@@ -191,10 +212,10 @@ class Pokemon(commands.Cog):
         "Look up detailed information about a Pokémon, item, ability, berry, or move in the Pokédex",
         brief="Search the Pokédex",
         help="""
-                         Search for a Pokémon, item, ability, berry, or move in the Pokédex and view detailed information.
-                         Usage: !pokedex <name>
-                         Example: !pokedex flamethrower
-                         """)
+                     Search for a Pokémon, item, ability, berry, or move in the Pokédex and view detailed information.
+                     Usage: !pokedex <name>
+                     Example: !pokedex flamethrower
+                     """)
     @app_commands.describe(
         pokemon_name=
         "The name or number of the Pokémon, item, ability, berry, or move to look up"
@@ -209,7 +230,28 @@ class Pokemon(commands.Cog):
         else:
             await ctx.typing()
 
+        # Ensure all caches are initialized
+        if not hasattr(self, '_pokemon_names_cache'):
+            await self.cache_pokemon_names()
+        if not hasattr(self, '_items_cache'):
+            await self.cache_items()
+        if not hasattr(self, '_abilities_cache'):
+            await self.cache_abilities()
+        if not hasattr(self, '_berries_cache'):
+            await self.cache_berries()
+        if not hasattr(self, '_moves_cache'):
+            await self.cache_moves()
+
         normalized_name: str = pokemon_name.replace(" ", "-").lower()
+
+        categories = ["pokemon", "item", "ability", "berry", "move"]
+
+        for category in categories:
+            closest_match = await self.find_closest_match(
+                normalized_name, category)
+            if closest_match:
+                normalized_name = closest_match
+                break
 
         try:
             async with self.session.get(
