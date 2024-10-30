@@ -1,9 +1,108 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from typing import Optional, List, Literal
 from database import db, Database
 import asyncpg
 import aiohttp
+
+
+class TableSelect(discord.ui.Select):
+
+    def __init__(self, tables: List[str], placeholder: str):
+        options = [discord.SelectOption(label=table) for table in tables]
+        super().__init__(placeholder=placeholder,
+                         min_values=1,
+                         max_values=1,
+                         options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        table = self.values[0]
+        view = ActionView(table, self.view.tables)
+        await interaction.response.edit_message(
+            content=f"Selected table: {table}\nChoose an action:", view=view)
+
+
+class TableView(discord.ui.View):
+
+    def __init__(self, tables: List[str]):
+        super().__init__()
+        self.tables = tables
+        for i in range(0, len(tables), 25):
+            self.add_item(
+                TableSelect(
+                    tables[i:i + 25],
+                    f"Select a table ({i+1}-{min(i+25, len(tables))})"))
+
+
+class ActionSelect(discord.ui.Select):
+
+    def __init__(self, table: str):
+        self.table = table
+        options = [
+            discord.SelectOption(label="Delete all rows", value="delete"),
+            discord.SelectOption(label="Drop table", value="drop"),
+            discord.SelectOption(label="Show table structure",
+                                 value="structure")
+        ]
+        super().__init__(placeholder="Choose an action",
+                         min_values=1,
+                         max_values=1,
+                         options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        action = self.values[0]
+        if action == "delete":
+            query = f"DELETE FROM {self.table};"
+            await db.execute(query)
+            await interaction.response.edit_message(
+                content=f"All rows from {self.table} have been deleted.",
+                view=self.view)
+        elif action == "drop":
+            query = f"DROP TABLE IF EXISTS {self.table};"
+            await db.execute(query)
+            # Remove the dropped table from the list
+            self.view.tables.remove(self.table)
+            if self.view.tables:
+                new_view = TableView(self.view.tables)
+                await interaction.response.edit_message(
+                    content=
+                    f"The table {self.table} has been dropped. Select another table:",
+                    view=new_view)
+            else:
+                await interaction.response.edit_message(
+                    content=
+                    f"The table {self.table} has been dropped. No more tables available.",
+                    view=None)
+        elif action == "structure":
+            query = f"""
+            SELECT column_name, data_type, character_maximum_length
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE table_name = $1;
+            """
+            results = await db.fetch(query, self.table)
+            structure = "\n".join([
+                f"{r['column_name']} - {r['data_type']}({r['character_maximum_length'] or ''})"
+                for r in results
+            ])
+            await interaction.response.edit_message(
+                content=f"Structure of {self.table}:\n```\n{structure}\n```",
+                view=self.view)
+
+
+class ActionView(discord.ui.View):
+
+    def __init__(self, table: str, tables: List[str]):
+        super().__init__()
+        self.add_item(ActionSelect(table))
+        self.tables = tables
+
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.grey)
+    async def back_button(self, interaction: discord.Interaction,
+                          button: discord.ui.Button):
+        view = TableView(self.tables)
+        await interaction.response.edit_message(
+            content="Select a table to manage:", view=view)
 
 
 class Owner(commands.Cog):
@@ -184,6 +283,29 @@ class Owner(commands.Cog):
             else:
                 ret += 1
         await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
+
+    @app_commands.command()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def manage_database(self, interaction: discord.Interaction):
+        """Manage database tables (Owner only)"""
+        if interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message(
+                "This command is only available to the bot owner.",
+                ephemeral=True)
+            return
+
+        query = """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE';
+        """
+        tables = await self.db.fetch(query)
+        table_names = [table['table_name'] for table in tables]
+
+        view = TableView(table_names)
+        await interaction.response.send_message("Select a table to manage:",
+                                                view=view)
 
 
 async def setup(bot: commands.Bot) -> None:
