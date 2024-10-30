@@ -8,7 +8,10 @@ from discord.ext.commands import Context
 from discord.reaction import Reaction
 from discord.member import Member
 from discord.abc import Messageable
+
 from discord_games import button_games
+import discord_games as games
+
 import aiohttp
 import asyncio
 import time
@@ -478,6 +481,11 @@ class Games(commands.Cog):
     async def twenty48(self, ctx: commands.Context[commands.Bot]):
         game = button_games.BetaTwenty48(self.twenty_48_emojis,
                                          render_image=True)
+        await game.start(ctx)
+
+    @commands.command(name="hangman")
+    async def hangman(self, ctx: commands.Context[commands.Bot]):
+        game = button_games.BetaHangman()
         await game.start(ctx)
 
 
