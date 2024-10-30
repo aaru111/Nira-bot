@@ -213,7 +213,7 @@ class HelpCog(commands.Cog):
         # Instance variables that can be overridden
         self.embed_color: discord.Color = DEFAULT_EMBED_COLOR
         self.embed_title: str = DEFAULT_EMBED_TITLE.format(
-            bot_name=bot.user.name if bot.user else "Chronix")
+            bot_name=bot.user.name if bot.user else "N.I.R.A")
         self.embed_footer: str = DEFAULT_EMBED_FOOTER
         self.owner_only_message: str = DEFAULT_OWNER_ONLY_MESSAGE
         self.no_category_name: str = DEFAULT_NO_CATEGORY_NAME
