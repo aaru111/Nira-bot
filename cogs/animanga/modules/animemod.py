@@ -764,7 +764,7 @@ class AniListModule:
             'gray': "<a:dot_white:1289188727897194496>"
         }
         return color_emoji_map.get(profile_color.lower(),
-                                   "<a:purple_Dot:1289933999824703628>")
+                                   "<a:purple_Dot:1289181871087030273>")
 
     def format_comparison(self, name1: str, name2: str,
                           value1: Union[int, float], value2: Union[int, float],
