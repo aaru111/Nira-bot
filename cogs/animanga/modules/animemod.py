@@ -1271,19 +1271,29 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
+        # Send initial loading message
+        loading_message = await interaction.followup.send(
+            "Loading profiles... Please wait.", ephemeral=True)
+
         user_id = interaction.user.id
         if user_id not in self.module.user_tokens:
-            await interaction.followup.send(
-                "You need to connect your AniList account first.",
-                ephemeral=True)
+            await loading_message.edit(
+                content="You need to connect your AniList account first.")
             return
 
         compare_value = self.compare_input.value
 
         try:
+            # Update loading message
+            await loading_message.edit(content="Fetching your profile...")
+
             # Fetch current user's stats
             current_user_stats = await self.module.fetch_anilist_data(
                 self.module.user_tokens[user_id])
+
+            # Update loading message
+            await loading_message.edit(content="Fetching comparison profile..."
+                                       )
 
             # Fetch comparison user's stats
             if compare_value.isdigit():
@@ -1293,9 +1303,10 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
                     compare_user_stats = await self.module.fetch_anilist_data(
                         self.module.user_tokens[compare_user_id])
                 else:
-                    await interaction.followup.send(
-                        "The specified Discord user hasn't connected their AniList account.",
-                        ephemeral=True)
+                    await loading_message.edit(
+                        content=
+                        "The specified Discord user hasn't connected their AniList account."
+                    )
                     return
             else:
                 # It's an AniList username
@@ -1303,20 +1314,27 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
                     compare_value)
 
             if not compare_user_stats:
-                await interaction.followup.send(
-                    "Couldn't find AniList data for the specified user.",
-                    ephemeral=True)
+                await loading_message.edit(
+                    content="Couldn't find AniList data for the specified user."
+                )
                 return
+
+            # Update loading message
+            await loading_message.edit(content="Comparing profiles...")
 
             comparison_embed, graph_file = await self.module.compare_stats(
                 current_user_stats, compare_user_stats)
+
+            # Delete the loading message
+            await loading_message.delete()
+
+            # Send the comparison results
             await interaction.followup.send(embed=comparison_embed,
                                             file=graph_file)
 
         except Exception as e:
-            await interaction.followup.send(
-                f"An error occurred during comparison: {str(e)}",
-                ephemeral=True)
+            await loading_message.edit(
+                content=f"An error occurred during comparison: {str(e)}")
 
 
 class LogoutView(discord.ui.View):
