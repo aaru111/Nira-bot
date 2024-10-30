@@ -155,8 +155,9 @@ class PokemonInfoView(discord.ui.View):
     async def create_shiny_embed(self) -> discord.Embed:
         shiny_image = self.pokemon_data['sprites']['other'][
             'official-artwork']['front_shiny']
-        normal_image = self.pokemon_data['sprites']['other'][
-            'official-artwork']['front_default']
+        normal_image = self.pokemon_data['sprites']['versions']['generation-v'][
+            'black-white']['animated']['front_default'] or self.pokemon_data[
+                'sprites']['other']['official-artwork']['front_default']
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} (Shiny)",
             description="Shiny version",
@@ -173,7 +174,9 @@ class PokemonInfoView(discord.ui.View):
         if self.pokemon_data and self.pokemon_data['sprites']['other'][
                 'official-artwork']['front_default']:
             loading_embed.set_thumbnail(
-                url=self.pokemon_data['sprites']['other']['official-artwork']
+                url=self.pokemon_data['sprites']['versions']['generation-v']
+                ['black-white']['animated']['front_default']
+                or self.pokemon_data['sprites']['other']['official-artwork']
                 ['front_default'])
         loading_embed.add_field(name="Status",
                                 value="⌛ Loading...",
@@ -214,8 +217,11 @@ class PokemonInfoView(discord.ui.View):
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Base Stats",
             color=pokemon_color)
-        embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
-                            ['official-artwork']['front_default'])
+        embed.set_thumbnail(
+            url=self.pokemon_data['sprites']['versions']['generation-v']
+            ['black-white']['animated']['front_default']
+            or self.pokemon_data['sprites']['other']['official-artwork']
+            ['front_default'])
         stats_text = ""
         max_stat = max(stat['base_stat']
                        for stat in self.pokemon_data['stats'])
@@ -237,8 +243,11 @@ class PokemonInfoView(discord.ui.View):
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Moves",
             color=pokemon_color)
-        embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
-                            ['official-artwork']['front_default'])
+        embed.set_thumbnail(
+            url=self.pokemon_data['sprites']['versions']['generation-v']
+            ['black-white']['animated']['front_default']
+            or self.pokemon_data['sprites']['other']['official-artwork']
+            ['front_default'])
         level_up_moves = []
         tm_moves = []
         egg_moves = []
@@ -281,8 +290,11 @@ class PokemonInfoView(discord.ui.View):
         embed = discord.Embed(
             title=f"{self.pokemon_data['name'].title()} - Locations",
             color=pokemon_color)
-        embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
-                            ['official-artwork']['front_default'])
+        embed.set_thumbnail(
+            url=self.pokemon_data['sprites']['versions']['generation-v']
+            ['black-white']['animated']['front_default']
+            or self.pokemon_data['sprites']['other']['official-artwork']
+            ['front_default'])
         async with aiohttp.ClientSession() as session:
             async with session.get(
                     f"https://pokeapi.co/api/v2/pokemon/{self.pokemon_data['id']}/encounters"
@@ -318,8 +330,11 @@ class PokemonInfoView(discord.ui.View):
             title=
             f"{gen_num} - {self.pokemon_data['name'].title()} #{self.pokemon_data['id']}",
             color=pokemon_color)
-        embed.set_thumbnail(url=self.pokemon_data['sprites']['other']
-                            ['official-artwork']['front_default'])
+        embed.set_thumbnail(
+            url=self.pokemon_data['sprites']['versions']['generation-v']
+            ['black-white']['animated']['front_default']
+            or self.pokemon_data['sprites']['other']['official-artwork']
+            ['front_default'])
 
         def get_evo_details(evolution_details):
             if not evolution_details:
