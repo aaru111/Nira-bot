@@ -331,6 +331,11 @@ class Utilities(commands.Cog):
         else:
             interaction.extras["error_handled"] = False
 
+    @app_commands.command()
+    async def say(self, interaction: discord.Interaction, content: str):
+        await interaction.response.defer()
+        await interaction.followup.send(content)
+
 
 async def setup(bot: commands.Bot) -> None:
     cog = Utilities(bot)
