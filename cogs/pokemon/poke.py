@@ -262,8 +262,11 @@ class Pokemon(commands.Cog):
                                                   str]] = await resp.json()
                     view = PokemonInfoView(pokemon_data)
                     embed: discord.Embed = await view.create_main_embed()
-                    embed.set_thumbnail(url=pokemon_data['sprites']['other']
-                                        ['official-artwork']['front_default'])
+                    embed.set_thumbnail(
+                        url=pokemon_data['sprites']['versions']['generation-v']
+                        ['black-white']['animated']['front_default']
+                        or pokemon_data['sprites']['other']
+                        ['official-artwork']['front_default'])
 
                     if is_interaction:
                         await ctx.followup.send(embed=embed, view=view)
