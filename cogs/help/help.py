@@ -176,17 +176,26 @@ class HelpView(discord.ui.View):
 
     def get_prefix(self) -> str:
         if isinstance(self.ctx, commands.Context):
-            return self.ctx.prefix or '.'
-        return '/'
+            prefix = self.ctx.prefix
+            if isinstance(prefix, list):
+                regular_prefixes = [p for p in prefix if p != '/']
+                return regular_prefixes[0] if regular_prefixes else '.'
+            return prefix if prefix != '/' else '.'
+        return '.'
 
     def get_command_name(self, command: CommandType) -> str:
-        if isinstance(command, app_commands.Command) or (isinstance(
-                command, commands.Command) and command.parent is None):
-            if isinstance(command, app_commands.Command):
-                return f"/{command.name}"
+        prefix = self.get_prefix()
+
+        if isinstance(command, app_commands.Command):
+            return f"/{command.name}"
+        elif isinstance(command, commands.Command):
+            if isinstance(command, commands.HybridCommand):
+
+                return f"[/{command.name} | {prefix}{command.name}]"
             else:
-                return f"{self.get_prefix()}{command.name}"
-        return f"{self.get_prefix()}{command.name}"
+
+                return f"{prefix}{command.name}"
+        return f"{prefix}{command.name}"
 
     def get_user(self) -> Union[discord.User, discord.Member]:
         return self.ctx.author if isinstance(
@@ -292,8 +301,15 @@ class HelpCog(commands.Cog):
     async def help_command(self,
                            ctx: commands.Context[BotT],
                            command: Optional[str] = None) -> None:
+
         prefix = await self.bot.get_prefix(ctx.message)
-        prefix = prefix[0] if isinstance(prefix, list) else prefix
+
+        if isinstance(prefix, list):
+            regular_prefixes = [p for p in prefix if p != '/']
+            prefix = regular_prefixes[0] if regular_prefixes else prefix[0]
+        else:
+            prefix = prefix if prefix != '/' else '!'
+
         if command:
             await self.send_command_help(ctx, command.lstrip('/'), prefix)
         else:
