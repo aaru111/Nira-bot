@@ -36,7 +36,7 @@ class UrbanDictionarySelect(ui.Select):
 class UrbanDictionaryView(ui.View):
 
     def __init__(self, definitions, dropdown):
-        super().__init__(timeout=30)
+        super().__init__(timeout=1200)
         self.definitions = definitions
         self.add_item(dropdown)
         self.message = None
