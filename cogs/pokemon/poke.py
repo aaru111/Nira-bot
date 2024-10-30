@@ -190,25 +190,28 @@ class Pokemon(commands.Cog):
         description=
         "Look up detailed information about a Pokémon, item, ability, berry, or move in the Pokédex",
         brief="Search the Pokédex",
-        help=
-        """Search for a Pokémon, item, ability, berry, or move in the Pokédex and view detailed information.
-        Usage: !pokedex <name> Example: !pokedex flamethrower""")
+        help="""
+                         Search for a Pokémon, item, ability, berry, or move in the Pokédex and view detailed information.
+                         Usage: !pokedex <name>
+                         Example: !pokedex flamethrower
+                         """)
     @app_commands.describe(
         pokemon_name=
-        "The name or number of the Pokémon, item, ability, berry, or move to lookup"
+        "The name or number of the Pokémon, item, ability, berry, or move to look up"
     )
     @app_commands.autocomplete(pokemon_name=pokemon_autocomplete)
     async def pokedex(self, ctx: commands.Context, *,
                       pokemon_name: str) -> None:
-        is_interaction: bool = hasattr(
-            ctx, 'interaction') and ctx.interaction is not None
+        is_interaction: bool = isinstance(ctx, discord.Interaction)
+
+        if is_interaction:
+            await ctx.response.defer()
+        else:
+            await ctx.typing()
 
         normalized_name: str = pokemon_name.replace(" ", "-").lower()
 
         try:
-            if is_interaction:
-                await ctx.interaction.response.defer()
-
             async with self.session.get(
                     f"{self.pokeapi_url}/pokemon/{normalized_name}") as resp:
                 if resp.status == 200:
@@ -219,9 +222,9 @@ class Pokemon(commands.Cog):
                     embed: discord.Embed = await view.create_main_embed()
                     embed.set_thumbnail(url=pokemon_data['sprites']['other']
                                         ['official-artwork']['front_default'])
+
                     if is_interaction:
-                        await ctx.interaction.followup.send(embed=embed,
-                                                            view=view)
+                        await ctx.followup.send(embed=embed, view=view)
                     else:
                         await ctx.send(embed=embed, view=view)
                     return
@@ -234,7 +237,6 @@ class Pokemon(commands.Cog):
                     sprite_url = item_data['sprites']['default']
                     embed_color = await self.get_embed_color_from_sprite(
                         sprite_url)
-
                     embed = discord.Embed(
                         title=f"{item_data['name'].title()}",
                         description=next(
@@ -244,8 +246,9 @@ class Pokemon(commands.Cog):
                             "No description available"),
                         color=embed_color)
                     embed.set_thumbnail(url=sprite_url)
+
                     if is_interaction:
-                        await ctx.interaction.followup.send(embed=embed)
+                        await ctx.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
@@ -270,7 +273,6 @@ class Pokemon(commands.Cog):
                     sprite_url = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ability-capsule.png"
                     embed_color = await self.get_embed_color_from_sprite(
                         sprite_url)
-
                     embed = discord.Embed(
                         title=f"{ability_data['name'].title()} Ability",
                         description=description,
@@ -279,8 +281,9 @@ class Pokemon(commands.Cog):
                                     value=pokemon_text,
                                     inline=False)
                     embed.set_thumbnail(url=sprite_url)
+
                     if is_interaction:
-                        await ctx.interaction.followup.send(embed=embed)
+                        await ctx.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
@@ -293,15 +296,15 @@ class Pokemon(commands.Cog):
                     sprite_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/{berry_data['name']}-berry.png"
                     embed_color = await self.get_embed_color_from_sprite(
                         sprite_url)
-
                     embed = discord.Embed(
                         title=f"{berry_name} Berry",
                         description=
                         f"Size: {berry_data['size']} | Growth time: {berry_data['growth_time']}",
                         color=embed_color)
                     embed.set_thumbnail(url=sprite_url)
+
                     if is_interaction:
-                        await ctx.interaction.followup.send(embed=embed)
+                        await ctx.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
@@ -323,7 +326,6 @@ class Pokemon(commands.Cog):
                     damage_class: str = move_data['damage_class'][
                         'name'].title()
                     type_color = self.get_type_color(move_data['type']['name'])
-
                     embed = discord.Embed(
                         title=f"{move_data['name'].title()} Move",
                         description=description,
@@ -338,22 +340,22 @@ class Pokemon(commands.Cog):
                         url=
                         "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/tm.png"
                     )
+
                     if is_interaction:
-                        await ctx.interaction.followup.send(embed=embed)
+                        await ctx.followup.send(embed=embed)
                     else:
                         await ctx.send(embed=embed)
                     return
 
             if is_interaction:
-                await ctx.interaction.followup.send(
+                await ctx.followup.send(
                     f"No results found for '{pokemon_name}'")
             else:
                 await ctx.send(f"No results found for '{pokemon_name}'")
 
         except Exception as e:
             if is_interaction:
-                await ctx.interaction.followup.send(
-                    f"An error occurred: {str(e)}")
+                await ctx.followup.send(f"An error occurred: {str(e)}")
             else:
                 await ctx.send(f"An error occurred: {str(e)}")
 
