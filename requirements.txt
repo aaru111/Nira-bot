@@ -33,6 +33,7 @@ defusedxml==0.7.1
 discord-components==0.0.0.1
 discord.py==2.4.0
 DiscordUtils==1.3.4
+discord_games
 docopt==0.6.2
 emoji==2.12.1
 executing==2.0.1
