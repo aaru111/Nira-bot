@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import io
 from datetime import datetime
 import logging
+import asyncio
 
 from database import db
 
@@ -1285,23 +1286,20 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
 
         try:
             # Update loading message
-            await loading_message.edit(content="Fetching your profile...")
+            await loading_message.edit(content="Fetching profiles...")
 
-            # Fetch current user's stats
-            current_user_stats = await self.module.fetch_anilist_data(
-                self.module.user_tokens[user_id])
+            # Fetch both user's stats concurrently
+            current_user_task = asyncio.create_task(
+                self.module.fetch_anilist_data(
+                    self.module.user_tokens[user_id]))
 
-            # Update loading message
-            await loading_message.edit(content="Fetching comparison profile..."
-                                       )
-
-            # Fetch comparison user's stats
             if compare_value.isdigit():
                 # It's a Discord user ID
                 compare_user_id = int(compare_value)
                 if compare_user_id in self.module.user_tokens:
-                    compare_user_stats = await self.module.fetch_anilist_data(
-                        self.module.user_tokens[compare_user_id])
+                    compare_user_task = asyncio.create_task(
+                        self.module.fetch_anilist_data(
+                            self.module.user_tokens[compare_user_id]))
                 else:
                     await loading_message.edit(
                         content=
@@ -1310,8 +1308,19 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
                     return
             else:
                 # It's an AniList username
-                compare_user_stats = await self.module.fetch_anilist_data_by_username(
-                    compare_value)
+                compare_user_task = asyncio.create_task(
+                    self.module.fetch_anilist_data_by_username(compare_value))
+
+            # Wait for both tasks to complete
+            current_user_stats, compare_user_stats = await asyncio.gather(
+                current_user_task, compare_user_task)
+
+            if not current_user_stats:
+                await loading_message.edit(
+                    content=
+                    "Failed to fetch your AniList data. Please try reconnecting your account."
+                )
+                return
 
             if not compare_user_stats:
                 await loading_message.edit(
