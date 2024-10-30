@@ -10,7 +10,6 @@ from discord.member import Member
 from discord.abc import Messageable
 
 from discord_games import button_games
-import discord_games as games
 
 import aiohttp
 import asyncio
