@@ -75,7 +75,7 @@ class ActionSelect(discord.ui.Select):
                     f"The table {self.table} has been dropped. No more tables available.",
                     view=None)
         elif action == "structure":
-            query = f"""
+            query = """
             SELECT column_name, data_type, character_maximum_length
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE table_name = $1;
@@ -286,6 +286,7 @@ class Owner(commands.Cog):
 
     @app_commands.command()
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def manage_database(self, interaction: discord.Interaction):
         """Manage database tables (Owner only)"""
         if interaction.user.id != self.bot.owner_id:
