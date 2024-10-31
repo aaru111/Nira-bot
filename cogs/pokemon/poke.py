@@ -265,8 +265,8 @@ class Pokemon(commands.Cog):
                     embed.set_thumbnail(
                         url=pokemon_data['sprites']['versions']['generation-v']
                         ['black-white']['animated']['front_default']
-                        or pokemon_data['sprites']['other']
-                        ['official-artwork']['front_default'])
+                        or pokemon_data['sprites']['other']['official-artwork']
+                        ['front_default'])
 
                     if is_interaction:
                         await ctx.followup.send(embed=embed, view=view)
@@ -404,22 +404,11 @@ class Pokemon(commands.Cog):
             else:
                 await ctx.send(f"An error occurred: {str(e)}")
 
-    @commands.hybrid_command(
-        name="wtp",
-        aliases=["whosthat", "whosthatpokemon"],
-        description="Play a game of Who's That Pokémon?",
-        brief="Play Who's That Pokémon?",
-        help=
-        """Start a game of Who's That Pokémon where you need to guess the Pokémon from its silhouette.
-
-        Rules:
-        - You have 3 attempts to guess correctly
-        - You have 25 seconds to make each guess
-        - The spelling must be exact
-        - Only the person who started the game can make guesses
-
-        Usage: /wtp
-        After starting, type your guess in the chat.""")
+    @commands.hybrid_command(name="wtp",
+                             aliases=["whosthat", "whosthatpokemon"],
+                             description="Play a game of Who's That Pokémon?",
+                             brief="Play Who's That Pokémon?")
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def wtp(self, ctx: commands.Context) -> None:
         pokemon_data: Dict[str, Union[str,
                                       Dict]] = await self.get_random_pokemon()
