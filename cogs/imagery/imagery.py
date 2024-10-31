@@ -16,6 +16,7 @@ from typing import Union
 
 from .modules.asciify import asciify
 from .modules.emojify import emojify_image
+from .modules.image_search_engine import ImageSearchEngine
 
 
 # OCR Service for text recognition
@@ -187,7 +188,6 @@ class PlantView(BasePaginator):
                                                     ephemeral=True)
 
 
-# Main Imagery Cog
 class Imagery(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
@@ -197,6 +197,7 @@ class Imagery(commands.Cog):
         self.api_url = "https://my-api.plantnet.org/v2/identify/all"
         self.cooldowns = defaultdict(lambda: 0)
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+        self.search_engine = ImageSearchEngine()
 
     async def cog_unload(self):
         await self.session.close()
@@ -460,6 +461,86 @@ class Imagery(commands.Cog):
                       new_width: int = 100):
         await ctx.defer()
         await asciify(ctx, link, new_width)
+
+    @app_commands.command(
+        name="reverse",
+        description="Reverse search an image across multiple search engines")
+    @app_commands.describe(image="Upload an image to search",
+                           url="Or provide an image URL to search")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
+    async def reverse_search(self,
+                             interaction: discord.Interaction,
+                             image: Optional[discord.Attachment] = None,
+                             url: Optional[str] = None):
+        if not await self.cooldown_check(interaction):
+            await interaction.response.send_message(
+                "Please wait 5 seconds before using this command again.",
+                ephemeral=True)
+            return
+
+        if not image and not url:
+            await interaction.response.send_message(
+                "Please provide either an image or an image URL.",
+                ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        try:
+            # Get the image URL
+            image_url = image.url if image else url
+
+            # Validate image
+            if not await self.search_engine.validate_image(image_url):
+                await interaction.followup.send(
+                    "The provided URL does not seem to be a valid image.",
+                    ephemeral=True)
+                return
+
+            # Get search results
+            results = await self.search_engine.search_image(image_url)
+
+            # Create embed response
+            embed = discord.Embed(
+                title="🔍 Reverse Image Search Results",
+                description=
+                "Click the links below to view results on each platform:",
+                color=discord.Color.blue())
+
+            for engine, search_url in results.items():
+                embed.add_field(name=engine.title(),
+                                value=f"[Click here]({search_url})",
+                                inline=False)
+
+            embed.set_thumbnail(url=image_url)
+            embed.set_footer(
+                text="💡 Results may vary based on the search engine's database"
+            )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            self.logger.error(f"Error in reverse_search: {str(e)}")
+            await interaction.followup.send(
+                "An error occurred while processing your request. Please try again later.",
+                ephemeral=True)
+
+    @reverse_search.error
+    async def reverse_search_error(self, interaction: discord.Interaction,
+                                   error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"Please wait {error.retry_after:.2f}s before using this command again.",
+                ephemeral=True)
+        else:
+            self.logger.error(
+                f"Unhandled error in reverse_search: {str(error)}")
+            await interaction.response.send_message(
+                "An unexpected error occurred. Please try again later.",
+                ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
