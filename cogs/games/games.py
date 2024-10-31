@@ -396,6 +396,7 @@ class Games(commands.Cog):
         await channel.send(embed=help_embed)
 
     @commands.hybrid_command()
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def chess(self, ctx: commands.Context,
                     opponent: discord.Member) -> None:
         """Start a chess game against another player."""
@@ -422,6 +423,7 @@ class Games(commands.Cog):
         await ctx.send(embed=embed, file=file, view=view)
 
     @commands.hybrid_command()
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def chesslb(self,
                       ctx: commands.Context,
                       player: Optional[discord.Member] = None) -> None:
@@ -466,6 +468,7 @@ class Games(commands.Cog):
         description=
         "Guess the 5-letter word in 6 tries. Green=correct spot, yellow=right letter wrong spot."
     )
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def wordle(self, ctx: commands.Context[commands.Bot]):
         game = button_games.BetaWordle()
         await game.start(ctx)
