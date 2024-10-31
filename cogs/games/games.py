@@ -482,7 +482,7 @@ class Games(commands.Cog):
                                          render_image=True)
         await game.start(ctx)
 
-    @commands.command(name="hangman")
+    @commands.hybrid_command(name="hangman")
     async def hangman(self, ctx: commands.Context[commands.Bot]):
         game = button_games.BetaHangman()
         await game.start(ctx)
