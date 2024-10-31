@@ -413,48 +413,93 @@ class Pokemon(commands.Cog):
                                    dms=True,
                                    private_channels=True)
     async def wtp(self, ctx: commands.Context) -> None:
-        pokemon_data: Dict[str, Union[str,
-                                      Dict]] = await self.get_random_pokemon()
-        pokemon_name: str = pokemon_data['name']
-        pokemon_image: str = pokemon_data['sprites']['other'][
-            'official-artwork']['front_default']
+        if isinstance(ctx, discord.Interaction):
+            await ctx.response.defer()
+            response_hook = ctx.followup
+        else:
+            await ctx.typing()
+            response_hook = ctx
 
-        if not pokemon_image:
-            await ctx.send(
-                "Sorry, couldn't load Pokémon image. Please try again!")
-            return
+        try:
+            pokemon_data: Dict[str,
+                               Union[str,
+                                     Dict]] = await self.get_random_pokemon()
+            pokemon_name: str = pokemon_data['name']
+            pokemon_image: str = pokemon_data['sprites']['other'][
+                'official-artwork']['front_default']
 
-        silhouette: BytesIO = await self.create_silhouette(pokemon_image)
+            if not pokemon_image:
+                await response_hook.send(
+                    "Sorry, couldn't load Pokémon image. Please try again!")
+                return
 
-        embed = discord.Embed(title="**Who's That Pokémon?**",
-                              description="Can you guess who this Pokémon is?",
-                              color=discord.Color.blue())
-        embed.set_image(url="attachment://pokemon.png")
-        embed.set_footer(text="Attempts remaining: 3")
+            silhouette: BytesIO = await self.create_silhouette(pokemon_image)
 
-        view = PokemonGuessView(pokemon_data, ctx.author)
-        message: discord.Message = await ctx.send(embed=embed,
-                                                  file=discord.File(
-                                                      silhouette,
-                                                      filename="pokemon.png"),
-                                                  view=view)
+            embed = discord.Embed(
+                title="**Who's That Pokémon?**",
+                description="Can you guess who this Pokémon is?",
+                color=discord.Color.blue())
+            embed.set_image(url="attachment://pokemon.png")
+            embed.set_footer(text="Attempts remaining: 3")
 
-        await view.wait()
+            view = PokemonGuessView(pokemon_data, ctx.author)
+            message: discord.Message = await response_hook.send(
+                embed=embed,
+                file=discord.File(silhouette, filename="pokemon.png"),
+                view=view)
 
-        def check_guess(m: discord.Message) -> bool:
-            return m.author == ctx.author and m.channel == ctx.channel
+            await view.wait()
 
-        while view.attempts > 0:
-            try:
-                guess: discord.Message = await self.bot.wait_for(
-                    'message', timeout=25.0, check=check_guess)
+            def check_guess(m: discord.Message) -> bool:
+                return m.author == ctx.author and m.channel == ctx.channel
 
-                if guess.content.lower() == pokemon_name.lower():
+            while view.attempts > 0:
+                try:
+                    guess: discord.Message = await self.bot.wait_for(
+                        'message', timeout=25.0, check=check_guess)
+
+                    if guess.content.lower() == pokemon_name.lower():
+                        embed = discord.Embed(
+                            title="**Who's That Pokémon?**",
+                            description=
+                            f"Correct! The Pokémon was: {pokemon_name.title()}!",
+                            color=discord.Color.green())
+                        embed.set_image(url=pokemon_image)
+
+                        new_view = discord.ui.View()
+                        new_view.add_item(
+                            SeePokedexButton(pokemon_data, ctx.author))
+                        await message.edit(embed=embed,
+                                           attachments=[],
+                                           view=new_view)
+                        break
+
+                    view.attempts -= 1
+                    if view.attempts > 0:
+                        embed.set_footer(
+                            text=f"Attempts remaining: {view.attempts}")
+                        await message.edit(embed=embed)
+                    else:
+                        embed = discord.Embed(
+                            title="**Who's That Pokémon?**",
+                            description=
+                            f"Game Over! The Pokémon was: {pokemon_name.title()}!",
+                            color=discord.Color.red())
+                        embed.set_image(url=pokemon_image)
+
+                        new_view = discord.ui.View()
+                        new_view.add_item(
+                            SeePokedexButton(pokemon_data, ctx.author))
+                        await message.edit(embed=embed,
+                                           attachments=[],
+                                           view=new_view)
+
+                except asyncio.TimeoutError:
                     embed = discord.Embed(
                         title="**Who's That Pokémon?**",
                         description=
-                        f"Correct! The Pokémon was: {pokemon_name.title()}!",
-                        color=discord.Color.green())
+                        f"You took too long to answer... The Pokémon was: {pokemon_name.title()}!",
+                        color=discord.Color.red())
                     embed.set_image(url=pokemon_image)
 
                     new_view = discord.ui.View()
@@ -465,38 +510,12 @@ class Pokemon(commands.Cog):
                                        view=new_view)
                     break
 
-                view.attempts -= 1
-                if view.attempts > 0:
-                    embed.set_footer(
-                        text=f"Attempts remaining: {view.attempts}")
-                    await message.edit(embed=embed)
-                else:
-                    embed = discord.Embed(
-                        title="**Who's That Pokémon?**",
-                        description=
-                        f"Game Over! The Pokémon was: {pokemon_name.title()}!",
-                        color=discord.Color.red())
-                    embed.set_image(url=pokemon_image)
-
-                    new_view = discord.ui.View()
-                    new_view.add_item(
-                        SeePokedexButton(pokemon_data, ctx.author))
-                    await message.edit(embed=embed,
-                                       attachments=[],
-                                       view=new_view)
-
-            except asyncio.TimeoutError:
-                embed = discord.Embed(
-                    title="**Who's That Pokémon?**",
-                    description=
-                    f"You took too long to answer... The Pokémon was: {pokemon_name.title()}!",
-                    color=discord.Color.red())
-                embed.set_image(url=pokemon_image)
-
-                new_view = discord.ui.View()
-                new_view.add_item(SeePokedexButton(pokemon_data, ctx.author))
-                await message.edit(embed=embed, attachments=[], view=new_view)
-                break
+        except Exception as e:
+            error_message = f"An error occurred while playing Who's That Pokémon: {str(e)}"
+            if isinstance(ctx, discord.Interaction):
+                await ctx.followup.send(error_message)
+            else:
+                await ctx.send(error_message)
 
     async def get_random_pokemon(self) -> Dict[str, Union[str, Dict]]:
         async with self.session.get(
