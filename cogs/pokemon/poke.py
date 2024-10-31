@@ -436,6 +436,8 @@ class Pokemon(commands.Cog):
                                                       filename="pokemon.png"),
                                                   view=view)
 
+        await view.wait()
+
         def check_guess(m: discord.Message) -> bool:
             return m.author == ctx.author and m.channel == ctx.channel
 

@@ -477,13 +477,13 @@ class GiveUpButton(discord.ui.Button):
             f"You gave up... The Pokémon was: {self.view.pokemon_name.title()}!",
             color=discord.Color.red())
         embed.set_image(url=self.view.pokemon_image)
-        view = View()
-        view.add_item(
+        new_view = discord.ui.View()
+        new_view.add_item(
             SeePokedexButton(self.view.pokemon_data,
                              self.view.original_author))
         await interaction.response.edit_message(embed=embed,
                                                 attachments=[],
-                                                view=view)
+                                                view=new_view)
         self.view.stop()
 
 
@@ -500,11 +500,83 @@ class SeePokedexButton(discord.ui.Button):
             await interaction.response.send_message("This isn't your game!",
                                                     ephemeral=True)
             return
-        self.disabled = True
+
         view = PokemonInfoView(self.pokemon_data)
         embed = await view.create_main_embed()
+
+        self.disabled = True
         await interaction.response.edit_message(view=self.view)
+
         await interaction.followup.send(embed=embed, view=view)
+
+
+class GuessButton(discord.ui.Button):
+
+    def __init__(self):
+        super().__init__(label="Guess", style=discord.ButtonStyle.primary)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.view.original_author:
+            await interaction.response.send_message("This isn't your game!",
+                                                    ephemeral=True)
+            return
+
+        modal = GuessModal(self.view)
+        await interaction.response.send_modal(modal)
+
+
+class GuessModal(discord.ui.Modal, title="Guess the Pokémon"):
+    guess = discord.ui.TextInput(label="Enter your guess",
+                                 placeholder="e.g. Pikachu")
+
+    def __init__(self, view):
+        super().__init__()
+        self.pokemon_view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if self.guess.value.lower() == self.pokemon_view.pokemon_name.lower():
+            embed = discord.Embed(
+                title="**Who's That Pokémon?**",
+                description=
+                f"Correct! The Pokémon was: {self.pokemon_view.pokemon_name.title()}!",
+                color=discord.Color.green())
+            embed.set_image(url=self.pokemon_view.pokemon_image)
+
+            new_view = discord.ui.View()
+            new_view.add_item(
+                SeePokedexButton(self.pokemon_view.pokemon_data,
+                                 self.pokemon_view.original_author))
+            await interaction.response.edit_message(embed=embed,
+                                                    attachments=[],
+                                                    view=new_view)
+            self.pokemon_view.stop()
+        else:
+            self.pokemon_view.attempts -= 1
+            if self.pokemon_view.attempts > 0:
+                embed = discord.Embed(
+                    title="**Who's That Pokémon?**",
+                    description="Can you guess who this Pokémon is?",
+                    color=discord.Color.blue())
+                embed.set_image(url="attachment://pokemon.png")
+                embed.set_footer(
+                    text=f"Attempts remaining: {self.pokemon_view.attempts}")
+                await interaction.response.edit_message(embed=embed)
+            else:
+                embed = discord.Embed(
+                    title="**Who's That Pokémon?**",
+                    description=
+                    f"Game Over! The Pokémon was: {self.pokemon_view.pokemon_name.title()}!",
+                    color=discord.Color.red())
+                embed.set_image(url=self.pokemon_view.pokemon_image)
+
+                new_view = discord.ui.View()
+                new_view.add_item(
+                    SeePokedexButton(self.pokemon_view.pokemon_data,
+                                     self.pokemon_view.original_author))
+                await interaction.response.edit_message(embed=embed,
+                                                        attachments=[],
+                                                        view=new_view)
+                self.pokemon_view.stop()
 
 
 class PokemonGuessView(discord.ui.View):
@@ -512,7 +584,7 @@ class PokemonGuessView(discord.ui.View):
     def __init__(self,
                  pokemon_data: Dict,
                  original_author: discord.Member,
-                 timeout: float = 25.0):
+                 timeout: float = 60.0):
         super().__init__(timeout=timeout)
         self.pokemon_data = pokemon_data
         self.pokemon_name = pokemon_data['name'].lower()
@@ -520,6 +592,7 @@ class PokemonGuessView(discord.ui.View):
             'official-artwork']['front_default']
         self.attempts = 3
         self.original_author = original_author
+        self.add_item(GuessButton())
         self.add_item(GiveUpButton())
 
     async def stop_game(self,
@@ -530,7 +603,7 @@ class PokemonGuessView(discord.ui.View):
             embed = discord.Embed(
                 title="**Who's That Pokémon?**",
                 description=
-                f"You gave up... The Pokémon was: {self.pokemon_name.title()}!",
+                f"You gave up... The Pokémon was: `{self.pokemon_name.title()}`!",
                 color=discord.Color.red())
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.pokemon_image) as resp:
