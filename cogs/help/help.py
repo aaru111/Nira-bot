@@ -157,7 +157,7 @@ class HelpView(discord.ui.View):
                               color=self.cog.embed_color)
 
         for command in page_commands:
-            mention = self.cog.bot.tree.find_mention_for(
+            mention = await self.cog.bot.tree.find_mention_for(
                 command) if isinstance(self.cog.bot.tree,
                                        MentionableTree) else None
             embed.add_field(
@@ -376,7 +376,7 @@ class HelpCog(commands.Cog):
             ) else f"{'/' if isinstance(command, app_commands.Command) else prefix}{command.qualified_name}"
 
             # Add the command description here
-            description = command.description or command.help or 'No description available.'
+            description = command.description or 'No description available.'
             embed.description = f"{arrow_emoji}{mention}\n-# ╰> {description}"
 
             flag_converter = getattr(command, 'flags', None)
