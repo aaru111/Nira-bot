@@ -174,7 +174,7 @@ class HelpView(discord.ui.View):
         )
         return embed
 
-    def get_prefix(self) -> str:
+    def get_prefix(self):
         if isinstance(self.ctx, commands.Context):
             prefix = self.ctx.prefix
             if isinstance(prefix, list):
