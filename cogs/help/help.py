@@ -157,7 +157,7 @@ class HelpView(discord.ui.View):
                               color=self.cog.embed_color)
 
         for command in page_commands:
-            mention = await self.cog.bot.tree.find_mention_for(
+            mention = self.cog.bot.tree.find_mention_for(
                 command) if isinstance(self.cog.bot.tree,
                                        MentionableTree) else None
             embed.add_field(
