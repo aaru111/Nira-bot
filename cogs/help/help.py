@@ -302,6 +302,11 @@ class HelpCog(commands.Cog):
                            ctx: commands.Context[BotT],
                            command: Optional[str] = None) -> None:
 
+        if ctx.interaction:
+            await ctx.defer()
+        else:
+            await ctx.typing()
+
         prefix = await self.bot.get_prefix(ctx.message)
 
         if isinstance(prefix, list):
