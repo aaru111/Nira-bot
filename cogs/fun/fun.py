@@ -461,12 +461,12 @@ class Fun(commands.Cog):
         app_commands.Choice(name="Meme", value="meme")
     ])
     async def slap(self,
-                   interaction: discord.Interaction,
+                   ctx: commands.Context,
                    who: Union[discord.Member, discord.User],
                    style: Optional[str] = "anime",
                    reason: Optional[str] = None) -> None:
         """Command to slap a user with a reason and choose a style of slap GIF."""
-        await interaction.response.defer()
+        await ctx.defer()
         gif_url: str = await self.fetch_slap_gif(style)
 
         default_reason_list: List[str] = [
@@ -479,12 +479,11 @@ class Fun(commands.Cog):
         embed: discord.Embed = discord.Embed(
             colour=discord.Color.random(),
             description=
-            f"# {interaction.user.mention} slaps {who.mention} for being {reason}"
-        )
-        embed.set_author(name=interaction.user.display_name,
-                         icon_url=interaction.user.display_avatar.url)
+            f"# {ctx.author.mention} slaps {who.mention} for being {reason}")
+        embed.set_author(name=ctx.author.display_name,
+                         icon_url=ctx.author.display_avatar.url)
         embed.set_image(url=gif_url)
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed)
 
     @commands.hybrid_command(name='neko',
                              description="Send a neko image or gif")
