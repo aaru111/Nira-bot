@@ -408,7 +408,10 @@ class Pokemon(commands.Cog):
                              aliases=["whosthat", "whosthatpokemon"],
                              description="Play a game of Who's That Pokémon?",
                              brief="Play Who's That Pokémon?")
-    @app_commands.allowed_installs(guilds=True, users=False)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def wtp(self, ctx: commands.Context) -> None:
         pokemon_data: Dict[str, Union[str,
                                       Dict]] = await self.get_random_pokemon()
