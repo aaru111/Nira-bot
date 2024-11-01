@@ -7,12 +7,10 @@ from discord.message import Message
 from discord.ext.commands import Context
 from discord.reaction import Reaction
 from discord.member import Member
-from discord.abc import Messageable
 
 from discord_games import button_games
 
 import aiohttp
-import asyncio
 import time
 import io
 

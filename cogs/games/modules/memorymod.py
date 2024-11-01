@@ -3,7 +3,6 @@ from discord import ui
 import random
 from datetime import timedelta, datetime
 import asyncio
-from discord.ext import commands
 
 
 class MemoryGameButton(discord.ui.Button):

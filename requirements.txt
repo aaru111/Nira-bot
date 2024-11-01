@@ -8,8 +8,6 @@ astunparse==1.6.3
 async-timeout==4.0.3
 asyncio==3.4.3
 asyncpg==0.29.0
-asyncpraw==7.7.1
-asyncprawcore==2.4.0
 attrs==23.2.0
 backcall==0.2.0
 beautifulsoup4==4.12.3
