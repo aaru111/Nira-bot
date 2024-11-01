@@ -19,7 +19,7 @@ import io
 from typing import Optional, Dict
 
 # Importing modules used in the games
-from .modules.tetrismod import TetrisGame
+from .modules.tetrismod import Tetris
 from .modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from .modules.triviamod import TriviaView
 from .modules.memorymod import MemoryGameView
@@ -31,7 +31,6 @@ class Games(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
-        self.tetris_games: Dict[int, TetrisGame] = {}
         self.ttt_games: Dict[frozenset[int], TicTacToeGame] = {}
         self.memory_games: Dict[int, MemoryGameView] = {}
         self.active_chess_games: Dict[int, ChessGame] = {}
@@ -57,118 +56,20 @@ class Games(commands.Cog):
         """Clean up resources when the cog is unloaded."""
         await self.session.close()
 
-    # Tetris Game Command and Methods
-    @commands.command(name="tetris")
-    async def tetris(self, ctx: commands.Context) -> None:
-        if ctx.author.id in self.tetris_games:
-            await ctx.send(
-                "You're already in a game! Use the 🛑 reaction to end it.")
-            return
-
-        game: TetrisGame = TetrisGame()
-        self.tetris_games[ctx.author.id] = game
-
-        embed: Embed = discord.Embed(title="Tetris Game", color=0x00ff00)
-        embed.add_field(name="\u200b",
-                        value="Press ▶️ to start!",
-                        inline=False)
-        embed.add_field(name="Score", value="0", inline=True)
-        embed.add_field(name="Level", value="1", inline=True)
-        embed.add_field(name="Lines", value="0", inline=True)
-        embed.add_field(name="Next Piece", value="?", inline=True)
-        embed.set_footer(
-            text=
-            "▶️: Start | ⬅️: Left | ➡️: Right | 🔽: Soft Drop | ⏬: Hard Drop\n🔄: Rotate | ⏸️: Pause | 🛑: End | ❓: Help"
-        )
-
-        message: Message = await ctx.send(embed=embed)
-        # Add reactions for controls
-        reactions = ["▶️", "⬅️", "➡️", "🔽", "⏬", "🔄", "⏸️", "🛑", "❓"]
-        for reaction in reactions:
-            await message.add_reaction(reaction)
-
-    async def game_loop(self, user_id: int, message: Message) -> None:
-        game: TetrisGame = self.tetris_games[user_id]
-        game.new_piece()
-        await self.update_game(user_id, message)
-        while not game.game_over and user_id in self.tetris_games:
-            if not game.paused:
-                await asyncio.sleep(game.get_fall_speed())
-                if not game.move(0, 1):
-                    game.merge_piece()
-                    lines_cleared: int = game.clear_lines()
-                    if lines_cleared > 0:
-                        game.score += lines_cleared * 100
-                        game.level_up(lines_cleared)
-                        await self.update_game(user_id, message)
-                    if game.game_over:
-                        await self.end_tetris_game(user_id, message,
-                                                   "Game Over!")
-                        return
-                    game.new_piece()
-                await self.update_game(user_id, message)
-            else:
-                await asyncio.sleep(0.1)
-
-    async def update_game(self, user_id: int, message: Message) -> None:
-        if user_id not in self.tetris_games:
-            return
-        game: TetrisGame = self.tetris_games[user_id]
-        embed: Embed = message.embeds[0]
-        embed.color = 0x0000ff if game.paused else 0x00ff00  # Blue when paused, green otherwise
-        embed.set_field_at(0, name="\u200b", value=game.render(), inline=False)
-        embed.set_field_at(1, name="Score", value=str(game.score), inline=True)
-        embed.set_field_at(2, name="Level", value=str(game.level), inline=True)
-        embed.set_field_at(3,
-                           name="Lines",
-                           value=str(game.lines_cleared),
-                           inline=True)
-        next_piece_preview: str = "\n".join("".join(
-            game.cell_to_emoji(cell) for cell in row)
-                                            for row in game.next_piece.shape)
-        embed.set_field_at(4,
-                           name="Next Piece",
-                           value=next_piece_preview,
-                           inline=True)
-        await message.edit(embed=embed)
-
-    async def end_tetris_game(self, user_id: int, message: Message,
-                              end_message: str) -> None:
-        if user_id not in self.tetris_games:
-            return
-        game: TetrisGame = self.tetris_games[user_id]
-        embed: Embed = message.embeds[0]
-        embed.title = end_message
-        embed.color = 0xff0000
-        embed.set_field_at(0, name="\u200b", value=game.render(), inline=False)
-        embed.set_field_at(1,
-                           name="Final Score",
-                           value=str(game.score),
-                           inline=True)
-        embed.set_field_at(2,
-                           name="Level Reached",
-                           value=str(game.level),
-                           inline=True)
-        embed.set_field_at(3,
-                           name="Lines Cleared",
-                           value=str(game.lines_cleared),
-                           inline=True)
-        await message.edit(embed=embed)
-        del self.tetris_games[user_id]
+    # Tetris Game Command
+    @commands.hybrid_command(name="tetris", brief="Play a game of Tetris")
+    async def tetris(self, ctx: commands.Context[commands.Bot]):
+        game = Tetris()
+        await game.start(ctx)
 
     # TicTacToe Game Command and Methods
-    @app_commands.command(name="ttt",
-                          description="Start a new Tic Tac Toe game")
+    @app_commands.command(name="ttt", description="Start a new Tic Tac Toe game")
     @app_commands.describe(
-        opponent=
-        "The user you want to play against (leave empty to play against the bot)",
+        opponent="The user you want to play against (leave empty to play against the bot)",
         player_x="Custom emoji for player X (optional)",
         player_o="Custom emoji for player O (optional)")
-    async def tic_tac_toe(self,
-                          interaction: Interaction,
-                          opponent: Optional[Member] = None,
-                          player_x: Optional[str] = None,
-                          player_o: Optional[str] = None) -> None:
+    async def tic_tac_toe(self, interaction: Interaction, opponent: Optional[Member] = None,
+                          player_x: Optional[str] = None, player_o: Optional[str] = None) -> None:
         if opponent is None:
             opponent = interaction.guild.me if interaction.guild else None
 
@@ -189,7 +90,7 @@ class Games(commands.Cog):
         if player_key in self.ttt_games:
             old_game: TicTacToeGame = self.ttt_games[player_key]
             for item in old_game.board_view.children:
-                if isinstance(item, RematchButton):
+                if isinstance(item, discord.ui.Button) and item.custom_id == "rematch":
                     item.disabled = True
             await old_game.message.edit(view=old_game.board_view)
 
@@ -306,65 +207,14 @@ class Games(commands.Cog):
             await ctx.send(
                 "Invalid time limit. Please provide a number between 1 and 6.")
 
-    # Shared event listener for reactions (handling Tetris and Memory game)
+    # Shared event listener for reactions (handling Memory game)
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: Reaction, user: Member) -> None:
         if user.bot:
             return
 
-        # Handling Tetris reactions
-        if user.id in self.tetris_games:
-            game: TetrisGame = self.tetris_games[user.id]
-            moved: bool = False
-
-            if reaction.emoji == "▶️" and not game.started:
-                game.started = True
-                await self.game_loop(user.id, reaction.message)
-                return
-            elif not game.started:
-                await reaction.remove(user)
-                return
-            elif reaction.emoji == "⬅️":
-                moved = game.move(-1, 0)
-            elif reaction.emoji == "➡️":
-                moved = game.move(1, 0)
-            elif reaction.emoji == "🔽":
-                moved = game.move(0, 1)
-            elif reaction.emoji == "⏬":
-                drop_distance: int = game.hard_drop()
-                game.score += drop_distance * 2
-                game.merge_piece()
-                lines_cleared: int = game.clear_lines()
-                if lines_cleared > 0:
-                    game.score += lines_cleared * 100
-                    game.level_up(lines_cleared)
-                    await self.update_game(user.id, reaction.message)
-                if game.game_over:
-                    await self.end_tetris_game(user.id, reaction.message,
-                                               "Game Over!")
-                    return
-                game.new_piece()
-                moved = True
-            elif reaction.emoji == "🔄":
-                moved = game.rotate()
-            elif reaction.emoji == "⏸️":
-                game.paused = not game.paused
-                moved = True  # Force update to change color
-            elif reaction.emoji == "🛑":
-                await self.end_tetris_game(user.id, reaction.message,
-                                           "Game Ended")
-                return
-            elif reaction.emoji == "❓":
-                await self.show_help(reaction.message.channel)
-                return
-
-            if moved:
-                await self.update_game(user.id, reaction.message)
-
-            await reaction.remove(user)
-
         # Handling Memory Game reactions
-        elif reaction.emoji == "💡":
+        if reaction.emoji == "💡":
             game: Optional[MemoryGameView] = self.memory_games.get(user.id)
             if game:
                 if user.id != game.ctx.author.id:
@@ -376,24 +226,6 @@ class Games(commands.Cog):
                     if reaction.me and reaction.count == 2:
                         await reaction.remove(user)
                         await game.show_hint()
-
-    async def show_help(self, channel: Messageable) -> None:
-        help_embed: Embed = discord.Embed(title="Tetris Help", color=0x0000ff)
-        help_embed.add_field(
-            name="How to Play",
-            value=("• ▶️: Start the game\n"
-                   "• ⬅️: Move left\n"
-                   "• ➡️: Move right\n"
-                   "• 🔽: Soft drop (move down faster)\n"
-                   "• ⏬: Hard drop (instantly drop to bottom)\n"
-                   "• 🔄: Rotate piece\n"
-                   "• ⏸️: Pause/Resume game\n"
-                   "• 🛑: End game\n"
-                   "• Clear lines to score points and level up!\n"
-                   "• Game speeds up as you level up.\n"
-                   "• Game ends if pieces stack up to the top."),
-            inline=False)
-        await channel.send(embed=help_embed)
 
     @commands.hybrid_command()
     @app_commands.allowed_installs(guilds=True, users=False)
