@@ -56,18 +56,24 @@ class Games(commands.Cog):
 
     # Tetris Game Command
     @commands.hybrid_command(name="tetris", brief="Play a game of Tetris")
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def tetris(self, ctx: commands.Context[commands.Bot]):
         game = Tetris()
         await game.start(ctx)
 
     # TicTacToe Game Command and Methods
-    @app_commands.command(name="ttt", description="Start a new Tic Tac Toe game")
+    @app_commands.command(name="ttt",
+                          description="Start a new Tic Tac Toe game")
     @app_commands.describe(
-        opponent="The user you want to play against (leave empty to play against the bot)",
+        opponent=
+        "The user you want to play against (leave empty to play against the bot)",
         player_x="Custom emoji for player X (optional)",
         player_o="Custom emoji for player O (optional)")
-    async def tic_tac_toe(self, interaction: Interaction, opponent: Optional[Member] = None,
-                          player_x: Optional[str] = None, player_o: Optional[str] = None) -> None:
+    async def tic_tac_toe(self,
+                          interaction: Interaction,
+                          opponent: Optional[Member] = None,
+                          player_x: Optional[str] = None,
+                          player_o: Optional[str] = None) -> None:
         if opponent is None:
             opponent = interaction.guild.me if interaction.guild else None
 
@@ -88,7 +94,9 @@ class Games(commands.Cog):
         if player_key in self.ttt_games:
             old_game: TicTacToeGame = self.ttt_games[player_key]
             for item in old_game.board_view.children:
-                if isinstance(item, discord.ui.Button) and item.custom_id == "rematch":
+                if isinstance(
+                        item,
+                        discord.ui.Button) and item.custom_id == "rematch":
                     item.disabled = True
             await old_game.message.edit(view=old_game.board_view)
 

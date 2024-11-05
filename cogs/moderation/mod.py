@@ -356,6 +356,10 @@ class Moderation(commands.Cog):
         await self.session.close()
 
     @commands.hybrid_command()
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def avatar(self,
                      ctx: commands.Context,
                      user: Optional[discord.User] = None):
