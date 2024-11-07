@@ -30,10 +30,10 @@ class DefaultWelcomeModal(discord.ui.Modal,
                                    style=discord.TextStyle.long,
                                    required=True)
 
-    def __init__(self, cog):
+    def __init__(self, cog, default_message):
         super().__init__()
         self.cog = cog
-        self.message.default = self.cog.default_welcome_message
+        self.message.default = default_message
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -150,19 +150,22 @@ class Welcome(commands.Cog):
                 is_enabled BOOLEAN DEFAULT TRUE,
                 embed_color INTEGER DEFAULT 3447003,
                 dm_enabled BOOLEAN DEFAULT FALSE,
-                channel_enabled BOOLEAN DEFAULT TRUE
+                channel_enabled BOOLEAN DEFAULT TRUE,
+                default_message TEXT
             )
             """)
         columns = [("is_enabled", "BOOLEAN DEFAULT TRUE"),
                    ("embed_color", "INTEGER DEFAULT 3447003"),
                    ("dm_enabled", "BOOLEAN DEFAULT FALSE"),
-                   ("channel_enabled", "BOOLEAN DEFAULT TRUE")]
+                   ("channel_enabled", "BOOLEAN DEFAULT TRUE"),
+                   ("default_message", "TEXT")]
+
         for column, data_type in columns:
             await self.db.execute(f"""
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                                   WHERE table_name='welcome' AND column_name='{column}') THEN
+                                 WHERE table_name='welcome' AND column_name='{column}') THEN
                         ALTER TABLE welcome ADD COLUMN {column} {data_type};
                     END IF;
                 END$$;
@@ -176,9 +179,7 @@ class Welcome(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         await self.db.execute(
             "INSERT INTO welcome (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET channel_id = $2",
-            interaction.guild.id,
-            channel.id,
-        )
+            interaction.guild.id, channel.id)
         await interaction.followup.send(
             f"Set welcome channel to {channel.mention}", ephemeral=True)
 
@@ -202,7 +203,9 @@ class Welcome(commands.Cog):
             modal = WelcomeModal(self)
             await interaction.response.send_modal(modal)
         else:  # default
-            modal = DefaultWelcomeModal(self)
+            default_message = check[0].get(
+                'default_message') or self.default_welcome_message
+            modal = DefaultWelcomeModal(self, default_message)
             await interaction.response.send_modal(modal)
 
     async def set_message_callback(self,
@@ -212,8 +215,7 @@ class Welcome(commands.Cog):
         if not message.strip():
             await self.db.execute(
                 "UPDATE welcome SET message = NULL WHERE guild_id = $1",
-                interaction.guild.id,
-            )
+                interaction.guild.id)
             await interaction.followup.send(
                 "Welcome message reset to default.", ephemeral=True)
             return
@@ -225,15 +227,15 @@ class Welcome(commands.Cog):
             return
 
         if is_default:
-            self.default_welcome_message = message
+            await self.db.execute(
+                "UPDATE welcome SET default_message = $1 WHERE guild_id = $2",
+                message, interaction.guild.id)
             await interaction.followup.send("Updated default welcome message.",
                                             ephemeral=True)
         else:
             await self.db.execute(
-                "UPDATE welcome SET message = $1 WHERE guild_id = $2",
-                message,
-                interaction.guild.id,
-            )
+                "UPDATE welcome SET message = $1 WHERE guild_id = $2", message,
+                interaction.guild.id)
             await interaction.followup.send(
                 f"Set custom welcome message to: {message}", ephemeral=True)
 
@@ -356,11 +358,15 @@ class Welcome(commands.Cog):
             "SELECT * FROM welcome WHERE guild_id = $1", member.guild.id)
         if not record or not record[0]['is_enabled']:
             return False
+
         channel_id = record[0]['channel_id']
         message = record[0].get('message')
         embed_color = discord.Color(record[0]['embed_color'])
         dm_enabled = record[0]['dm_enabled']
         channel_enabled = record[0]['channel_enabled']
+        default_message = record[0].get(
+            'default_message') or self.default_welcome_message
+
         channel = member.guild.get_channel(channel_id)
         if not channel_enabled and not dm_enabled:
             return False
@@ -383,7 +389,7 @@ class Welcome(commands.Cog):
 
         default_embed = discord.Embed(
             title=f"Welcome to {placeholders['server']}! 🎉",
-            description=self.default_welcome_message.format(**placeholders),
+            description=default_message.format(**placeholders),
             color=embed_color,
         )
 
