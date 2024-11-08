@@ -145,7 +145,7 @@ class AniManga(commands.Cog):
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
         # Modified title to include type and format
-        title = f"{media['title']['romaji']} ({media['type']})({media['format']})"
+        title = f"{media['title']['romaji']} ({media['type']}) [{media['format']}]"
 
         embed = discord.Embed(title=title,
                               url=media.get('siteUrl', 'https://anilist.co'),
@@ -198,8 +198,12 @@ class AniManga(commands.Cog):
         if media['description']:
             description = self.anilist_module.clean_anilist_text(
                 media['description'])
+
+            short_desc = description[:200] + "... " if len(
+                description) > 200 else description
+            desc_with_link = f"{short_desc}[[read more]({media['siteUrl']})]"
             embed.add_field(name="Description",
-                            value=description[:1024],
+                            value=desc_with_link,
                             inline=False)
 
         return embed
