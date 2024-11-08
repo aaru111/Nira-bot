@@ -144,7 +144,10 @@ class AniManga(commands.Cog):
         embed_color = int(profile_color.lstrip('#'), 16)
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
-        embed = discord.Embed(title=f"{media['title']['romaji']}",
+        # Modified title to include type and format
+        title = f"{media['title']['romaji']} ({media['type']})({media['format']})"
+
+        embed = discord.Embed(title=title,
                               url=media.get('siteUrl', 'https://anilist.co'),
                               color=embed_color)
         embed.set_thumbnail(url=media['coverImage']['large'])
@@ -152,12 +155,6 @@ class AniManga(commands.Cog):
         if media['bannerImage']:
             embed.set_image(url=media['bannerImage'])
 
-        embed.add_field(name="Type",
-                        value=f"-# {emoji}{media['type']}",
-                        inline=True)
-        embed.add_field(name="Format",
-                        value=f"-# {emoji}{media['format']}",
-                        inline=True)
         embed.add_field(name="Status",
                         value=f"-# {emoji}{media['status']}",
                         inline=True)
@@ -209,7 +206,9 @@ class AniManga(commands.Cog):
 
     @commands.hybrid_command(name='manga')
     @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     async def manga(self, ctx: commands.Context, *, query: str) -> None:
         """
         Command to search and read a manga using the MangaDex API.
