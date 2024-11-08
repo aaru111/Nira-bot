@@ -934,7 +934,7 @@ class AniListModule:
         else:
             anime_score_bar = '█' * int(
                 anime_score / 10) + '░' * (10 - int(anime_score / 10))
-            anime_score_value = f"-# {emoji} **{anime_score:.2f} // 100**\n-# ╰> {anime_score_bar}"
+            anime_score_value = f"-# {emoji} **{anime_score:.2f} // 100**\n-# ╰{anime_score_bar}"
 
         manga_value = (f"-# {emoji} Count: {manga_stats['count']}\n"
                        f"-# {emoji} Chapters: {manga_stats['chaptersRead']}\n"
@@ -946,7 +946,7 @@ class AniListModule:
         else:
             manga_score_bar = '█' * int(
                 manga_score / 10) + '░' * (10 - int(manga_score / 10))
-            manga_score_value = f"-# {emoji} **{manga_score:.2f} // 100**\n-# ╰> {manga_score_bar}"
+            manga_score_value = f"-# {emoji} **{manga_score:.2f} // 100**\n-# ╰{manga_score_bar}"
 
         embed.add_field(name="Anime Stats", value=anime_value, inline=True)
         embed.add_field(name="Anime Score",
