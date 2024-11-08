@@ -188,7 +188,7 @@ class AniManga(commands.Cog):
 
         if media['genres']:
             genres_links = ", ".join([
-                f"[{genre}](https://anilist.co/search/anime?genres={genre})"
+                f"[{genre}](https://anilist.co/search/anime?genres={genre.replace(' ', '%20')})"
                 for genre in media['genres']
             ])
             embed.add_field(name="Genres",
