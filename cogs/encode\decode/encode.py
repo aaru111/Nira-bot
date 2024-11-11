@@ -36,17 +36,9 @@ class EncodingCog(commands.Cog):
         return ''.join(format(ord(char), '08b') for char in text)
 
     @staticmethod
-    def is_binary(text: str) -> bool:
-        text = ''.join(text.split())
-        return all(bit in '01'
-                   for bit in text) and len(text) % 8 == 0 and len(text) > 0
-
-    @staticmethod
     def binary_to_text(binary_str: str) -> str:
         try:
             binary_str = ''.join(binary_str.split())
-            if not all(bit in '01' for bit in binary_str):
-                raise ValueError("Invalid binary string")
             if len(binary_str) % 8 != 0:
                 raise ValueError("Binary string length must be multiple of 8")
             return ''.join(
@@ -70,32 +62,30 @@ class EncodingCog(commands.Cog):
             raise ValueError("Invalid base64 string")
 
     def try_decode(self, text: str) -> Tuple[Optional[str], Optional[str]]:
-        if self.is_binary(text):
-            try:
-                decoded = self.binary_to_text(text)
-                return decoded, "binary"
-            except ValueError:
-                pass
-
         decode_methods = {
+            "binary": self.binary_to_text,
             "base64": self.base64_to_text,
             "hex": self.hex_to_text
         }
 
         for method, func in decode_methods.items():
             try:
-                return func(text), method
+                decoded = func(text)
+                return decoded, method
             except ValueError:
                 continue
         return None, None
 
+    async def respond_with_error(self, interaction: discord.Interaction,
+                                 message: str):
+        await interaction.followup.send(f"❌ {message}", ephemeral=True)
+
     @app_commands.command(
         name="encode",
-        description="Encode text to base64 or hex (supports up to 5 layers)")
-    @app_commands.describe(
-        text="The text to encode",
-        encoding="Choose encoding type (base64, hex, or binary)",
-        layers="Number of encoding layers (default: 1, max: 5)")
+        description="Encode text to base64, hex, or binary (up to 5 layers)")
+    @app_commands.describe(text="The text to encode",
+                           encoding="Choose encoding type",
+                           layers="Number of encoding layers (1-5)")
     @app_commands.choices(encoding=[
         app_commands.Choice(name="base64", value="base64"),
         app_commands.Choice(name="hex", value="hex"),
@@ -107,45 +97,38 @@ class EncodingCog(commands.Cog):
                      encoding: str,
                      layers: Optional[int] = 1):
         await interaction.response.defer(ephemeral=True)
-
         text = self.cleanup_text(text)
-        if len(text) > self.MAX_INPUT_LENGTH:
-            return await interaction.followup.send(
-                f"❌ Input text exceeds {self.MAX_INPUT_LENGTH} characters.",
-                ephemeral=True)
 
-        if layers > self.MAX_ENCODE_LAYERS:
-            return await interaction.followup.send(
-                f"❌ Maximum allowed encoding layers is {self.MAX_ENCODE_LAYERS}.",
-                ephemeral=True)
+        if len(text) > self.MAX_INPUT_LENGTH:
+            return await self.respond_with_error(
+                interaction,
+                f"Input text exceeds {self.MAX_INPUT_LENGTH} characters.")
 
         layers = min(max(1, layers), self.MAX_ENCODE_LAYERS)
+        encode_funcs = {
+            "base64": lambda x: base64.b64encode(x.encode()).decode(),
+            "hex": self.text_to_hex,
+            "binary": self.text_to_binary
+        }
+
         current_text = text
         encode_steps = [f"**Original:** {self.truncate_text(text, 100)}"]
 
         try:
-            if encoding == "base64":
-                encode_func = lambda x: base64.b64encode(x.encode()).decode()
-            elif encoding == "hex":
-                encode_func = self.text_to_hex
-            else:
-                encode_func = self.text_to_binary
-
+            encode_func = encode_funcs[encoding]
             for i in range(layers):
                 current_text = encode_func(current_text)
-
                 if len(current_text) > self.MAX_OUTPUT_LENGTH:
-                    return await interaction.followup.send(
-                        "❌ Output text too long after encoding. Reduce layers.",
-                        ephemeral=True)
-
+                    return await self.respond_with_error(
+                        interaction,
+                        "Output text too long after encoding. Reduce layers.")
                 encode_steps.append(
                     f"**Layer {i + 1}:** {self.truncate_text(current_text, 100)}"
                 )
 
         except Exception as e:
-            return await interaction.followup.send(
-                f"❌ Error during encoding: {e}", ephemeral=True)
+            return await self.respond_with_error(
+                interaction, f"Error during encoding: {e}")
 
         response = "\n".join(
             encode_steps
@@ -156,19 +139,17 @@ class EncodingCog(commands.Cog):
 
     @app_commands.command(
         name="decode",
-        description=
-        "Decode text (automatically detects and decodes all layers of base64/hex)"
-    )
+        description="Decode text with automatic format detection")
     @app_commands.describe(encoded_text="The encoded text to decode")
     async def decode(self, interaction: discord.Interaction,
                      encoded_text: str):
         await interaction.response.defer(ephemeral=True)
-
         encoded_text = self.cleanup_text(encoded_text)
+
         if len(encoded_text) > self.MAX_INPUT_LENGTH:
-            return await interaction.followup.send(
-                f"❌ Input text exceeds {self.MAX_INPUT_LENGTH} characters.",
-                ephemeral=True)
+            return await self.respond_with_error(
+                interaction,
+                f"Input text exceeds {self.MAX_INPUT_LENGTH} characters.")
 
         current_text = encoded_text
         decode_steps = []
@@ -177,31 +158,27 @@ class EncodingCog(commands.Cog):
             decoded, method = self.try_decode(current_text)
             if decoded is None:
                 break
-
             decode_steps.append(
                 f"{len(decode_steps) + 1}. ({method}) {self.truncate_text(decoded, 100)}"
             )
             current_text = decoded
-
             if len(current_text) > self.MAX_OUTPUT_LENGTH:
-                return await interaction.followup.send(
-                    "❌ Decoded output too long.", ephemeral=True)
+                return await self.respond_with_error(
+                    interaction, "Decoded output too long.")
 
-        if not decode_steps:
-            response = "❌ Unable to decode the provided text."
-        else:
-            response = f"✅ Decoded {len(decode_steps)} layers:\n" + "\n".join(
-                decode_steps)
-            response += f"\n\n**Final Decoded Result:**\n{self.format_output(current_text)}"
-
+        response = "❌ Unable to decode the provided text." if not decode_steps else \
+            f"✅ Decoded {len(decode_steps)} layers:\n" + "\n".join(decode_steps) + \
+            f"\n\n**Final Decoded Result:**\n{self.format_output(current_text)}"
         await interaction.followup.send(response, ephemeral=True)
 
     @encode.error
     @decode.error
     async def error_handler(self, interaction: discord.Interaction,
                             error: app_commands.AppCommandError):
-        error_message = f"❌ Error: {str(error.original) if isinstance(error, app_commands.CommandInvokeError) else str(error)}"
-        await interaction.followup.send(error_message, ephemeral=True)
+        await self.respond_with_error(
+            interaction,
+            str(error.original) if isinstance(
+                error, app_commands.CommandInvokeError) else str(error))
 
 
 async def setup(bot: commands.Bot):
