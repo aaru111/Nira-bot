@@ -11,14 +11,15 @@ class EncodingCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.MAX_ENCODE_LAYERS = 25
+        self.MAX_ENCODE_LAYERS = 5  # Changed from 25 to 5
         self.MAX_INPUT_LENGTH = 10240
         self.MAX_OUTPUT_LENGTH = 10240
+        # Compile regex for efficiency
+        self.code_block_re = re.compile(r'```\w*\n?|\n?```')
 
-    @staticmethod
-    def cleanup_text(text: str) -> str:
+    def cleanup_text(self, text: str) -> str:
         """Remove Discord markdown code block syntax."""
-        return re.sub(r'```\w*\n?|\n?```', '', text).strip()
+        return self.code_block_re.sub('', text).strip()
 
     @staticmethod
     def truncate_text(text: str, max_length: int = 1000) -> str:
@@ -43,20 +44,6 @@ class EncodingCog(commands.Cog):
         except (ValueError, binascii.Error) as e:
             raise ValueError(f"Invalid hex string: {e}")
 
-    def try_decode(self, text: str) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Attempt to decode text using both base64 and hex.
-        Returns tuple (decoded_text, method) or (None, None) if decoding fails.
-        """
-        for method, decode_func in [("base64", self.base64_to_text),
-                                    ("hex", self.hex_to_text)]:
-            try:
-                decoded = decode_func(text)
-                return decoded, method
-            except ValueError:
-                continue
-        return None, None
-
     @staticmethod
     def base64_to_text(text: str) -> str:
         """Decode base64 string to text."""
@@ -65,13 +52,31 @@ class EncodingCog(commands.Cog):
         except (binascii.Error, UnicodeDecodeError):
             raise ValueError("Invalid base64 string")
 
+    def try_decode(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Attempt to decode text using both base64 and hex.
+        Returns tuple (decoded_text, method) or (None, None) if decoding fails.
+        """
+        decode_methods = {
+            "base64": self.base64_to_text,
+            "hex": self.hex_to_text
+        }
+        for method, func in decode_methods.items():
+            try:
+                return func(text), method
+            except ValueError:
+                continue
+        return None, None
+
     @app_commands.command(
         name="encode",
-        description="Encode text to base64 or hex (supports multiple layers)")
+        description="Encode text to base64 or hex (supports up to 5 layers)"
+    )  # Updated description
     @app_commands.describe(
         text="The text to encode",
         encoding="Choose encoding type (base64 or hex)",
-        layers="Number of encoding layers (default: 1, max: 25)")
+        layers="Number of encoding layers (default: 1, max: 5)"
+    )  # Updated description
     @app_commands.choices(encoding=[
         app_commands.Choice(name="base64", value="base64"),
         app_commands.Choice(name="hex", value="hex")
@@ -89,15 +94,22 @@ class EncodingCog(commands.Cog):
                 f"❌ Input text exceeds {self.MAX_INPUT_LENGTH} characters.",
                 ephemeral=True)
 
+        if layers > self.MAX_ENCODE_LAYERS:
+            return await interaction.followup.send(
+                f"❌ Maximum allowed encoding layers is {self.MAX_ENCODE_LAYERS}.",
+                ephemeral=True)
+
         layers = min(max(1, layers), self.MAX_ENCODE_LAYERS)
         current_text = text
         encode_steps = [f"**Original:** {self.truncate_text(text, 100)}"]
 
         try:
+            encode_func = (base64.b64encode
+                           if encoding == "base64" else self.text_to_hex)
             for i in range(layers):
-                current_text = (base64.b64encode(
-                    current_text.encode()).decode() if encoding == "base64"
-                                else self.text_to_hex(current_text))
+                current_text = (encode_func(current_text.encode()).decode()
+                                if encoding == "base64" else
+                                encode_func(current_text))
 
                 if len(current_text) > self.MAX_OUTPUT_LENGTH:
                     return await interaction.followup.send(
@@ -121,7 +133,9 @@ class EncodingCog(commands.Cog):
 
     @app_commands.command(
         name="decode",
-        description="Decode text (supports multiple layers for base64/hex)")
+        description=
+        "Decode text (automatically detects and decodes all layers of base64/hex)"
+    )
     @app_commands.describe(encoded_text="The encoded text to decode")
     async def decode(self, interaction: discord.Interaction,
                      encoded_text: str):
@@ -136,13 +150,15 @@ class EncodingCog(commands.Cog):
         current_text = encoded_text
         decode_steps = []
 
-        for i in range(self.MAX_ENCODE_LAYERS):
+        # No maximum layer limit for decoding
+        while True:
             decoded, method = self.try_decode(current_text)
             if decoded is None:
                 break
 
             decode_steps.append(
-                f"{i + 1}. ({method}) {self.truncate_text(decoded, 100)}")
+                f"{len(decode_steps) + 1}. ({method}) {self.truncate_text(decoded, 100)}"
+            )
             current_text = decoded
 
             if len(current_text) > self.MAX_OUTPUT_LENGTH:
