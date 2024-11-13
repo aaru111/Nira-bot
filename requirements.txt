@@ -87,6 +87,7 @@ PyNaCl==1.5.0
 pyparsing==3.2.0
 pypng==0.20220715.0
 python-dateutil==2.9.0.post0
+python-Levenshtein
 pyttsx3==2.90
 pytz==2024.1
 pyzmq==26.1.0
