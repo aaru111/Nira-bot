@@ -141,15 +141,24 @@ class Utilities(commands.Cog):
                 f"An error occurred while processing your request: {str(e)}",
                 ephemeral=True)
 
-    @commands.hybrid_command(name="translate",
-                             description="Translate text to any language")
+    @commands.hybrid_command(
+        name="translate",
+        description="Translate text to any language (defaults to English)")
     @app_commands.describe(
         text="The text you want to translate",
-        language="The target language to translate to (type to search)")
+        language=
+        "The target language to translate to (optional, defaults to English)")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True,
+                                   dms=True,
+                                   private_channels=True)
     @app_commands.autocomplete(language=language_autocomplete)
-    async def translate(self, ctx: commands.Context, language: str, *,
-                        text: str):
-        """Translate text to any language using fuzzy matching"""
+    async def translate(self,
+                        ctx: commands.Context,
+                        *,
+                        text: str,
+                        language: Optional[str] = 'en'):
+        """Translate text to any language using fuzzy matching (defaults to English)"""
         await ctx.defer()
 
         try:
