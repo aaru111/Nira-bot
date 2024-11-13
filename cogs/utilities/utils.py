@@ -14,6 +14,7 @@ from .modules.urbanmod import UrbanDictionaryView, create_definition_embed, crea
 from .modules.shortnermod import URLShortenerCore
 from .modules.timestampmod import DatetimeTransformer, TimezoneTransformer, TimezoneTransformerError, make_timestamps_embed, TIMESTAMP_STYLE
 from .modules.encodemod import encode_text, decode_text
+from .modules.translatemod import TranslationCore
 
 from database import db
 
@@ -65,17 +66,21 @@ class Utilities(commands.Cog):
         self.embed_creator = WikiEmbedCreator()
         self.url_shortener_core = URLShortenerCore(BITLY_TOKEN or "",
                                                    RATE_LIMIT, RESET_INTERVAL)
+        self.translation_core = TranslationCore()
+
         self.db_manager = PostgreSQLManager()
 
     async def cog_load(self):
         """Initialize resources when the cog is loaded."""
         await self.url_shortener_core.initialize_session()
+
         await self.db_manager.initialize()
 
     async def cog_unload(self):
         """Cleanup resources when the cog is unloaded."""
         await self.session.close()
         await self.url_shortener_core.close_session()
+
         await db.close()
 
     async def wiki_autocomplete(
@@ -86,6 +91,13 @@ class Utilities(commands.Cog):
             app_commands.Choice(name=suggestion, value=suggestion)
             for suggestion in suggestions[:25]
         ]
+
+    async def language_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return self.translation_core.get_language_suggestions(current)
 
     @commands.hybrid_command(name="wiki",
                              description="Search Wikipedia for information")
@@ -128,6 +140,29 @@ class Utilities(commands.Cog):
             await ctx.send(
                 f"An error occurred while processing your request: {str(e)}",
                 ephemeral=True)
+
+    @commands.hybrid_command(name="translate",
+                             description="Translate text to any language")
+    @app_commands.describe(
+        text="The text you want to translate",
+        language="The target language to translate to (type to search)")
+    @app_commands.autocomplete(language=language_autocomplete)
+    async def translate(self, ctx: commands.Context, language: str, *,
+                        text: str):
+        """Translate text to any language using fuzzy matching"""
+        await ctx.defer()
+
+        try:
+            # Perform translation
+            translation = await self.translation_core.translate_text(
+                text, language)
+
+            # Create and send embed
+            embed = self.translation_core.create_translation_embed(translation)
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            await ctx.send(f"Translation failed: {str(e)}", ephemeral=True)
 
     @app_commands.command(
         name="encode",
