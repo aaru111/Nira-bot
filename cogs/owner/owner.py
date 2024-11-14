@@ -2,9 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional, List, Literal
-from database import db, Database
-import asyncpg
+from database import db
 import aiohttp
+import io
 
 
 class TableSelect(discord.ui.Select):
@@ -43,7 +43,8 @@ class ActionSelect(discord.ui.Select):
             discord.SelectOption(label="Delete all rows", value="delete"),
             discord.SelectOption(label="Drop table", value="drop"),
             discord.SelectOption(label="Show table structure",
-                                 value="structure")
+                                 value="structure"),
+            discord.SelectOption(label="Show table values", value="values")
         ]
         super().__init__(placeholder="Choose an action",
                          min_values=1,
@@ -92,6 +93,64 @@ class ActionSelect(discord.ui.Select):
                     content=
                     f"Structure of {self.table}:\n```\n{structure}\n```",
                     view=self.view)
+
+            elif action == "values":
+                query = f"SELECT * FROM {self.table};"
+                results = await db.fetch(query)
+
+                if not results:
+                    await interaction.response.edit_message(
+                        content=f"The table {self.table} is empty.",
+                        view=self.view)
+                    return
+
+                # Get headers and their lengths
+                headers = list(results[0].keys())
+                # Convert all values to strings and get maximum lengths
+                str_results = []
+                col_widths = {header: len(header) for header in headers}
+
+                for row in results:
+                    str_row = {}
+                    for header in headers:
+                        value = str(row[header])
+                        str_row[header] = value
+                        col_widths[header] = max(col_widths[header],
+                                                 len(value))
+                    str_results.append(str_row)
+
+                # Create the formatted output
+                output = []
+
+                # Create header separator
+                separator = "+" + "+".join(
+                    "-" * (width + 2) for width in col_widths.values()) + "+"
+
+                # Add headers
+                header_line = "|"
+                for header in headers:
+                    header_line += f" {header:{col_widths[header]}} |"
+
+                output.append(separator)
+                output.append(header_line)
+                output.append(separator)
+
+                # Add values
+                for row in str_results:
+                    value_line = "|"
+                    for header in headers:
+                        value_line += f" {row[header]:{col_widths[header]}} |"
+                    output.append(value_line)
+
+                output.append(separator)
+
+                # Create file
+                file_content = "\n".join(output)
+                file = discord.File(io.StringIO(file_content),
+                                    filename=f"{self.table}_values.txt")
+
+                await interaction.response.send_message(
+                    f"Here are the values from table {self.table}:", file=file)
 
         except Exception as e:
             await interaction.response.edit_message(
