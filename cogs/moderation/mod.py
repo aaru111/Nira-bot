@@ -765,40 +765,88 @@ class Moderation(commands.Cog):
         view = RoleInfoView(role)
         await ctx.send(embed=embed, view=view)
 
-    @commands.hybrid_command(name="userinfo",
-                             aliases=["user", "stats"],
-                             description="Displays user information.")
-    async def userinfo(self, ctx, member: discord.Member = None):
-        """If member is not provided, use the author of the context"""
-        if member is None:
-            member = ctx.author
-        # Create an embed with the user's information
-        embed = discord.Embed(
-            title=f"{member.display_name}'s User Information",
-            description="All info about the user",
-            color=discord.Color.blue())
-        embed.set_author(name="User Info",
-                         icon_url=ctx.author.display_avatar.url)
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="Name", value=member.name, inline=False)
-        embed.add_field(name="NickName",
-                        value=member.display_name,
-                        inline=False)
-        embed.add_field(name="ID", value=member.id, inline=False)
-        embed.add_field(name="Top Role",
-                        value=member.top_role.mention,
-                        inline=False)
-        embed.add_field(name="Status",
-                        value=str(member.status).title(),
-                        inline=False)
-        embed.add_field(name="Bot User",
-                        value="Yes" if member.bot else "No",
-                        inline=False)
+    @commands.hybrid_command(
+        name="userinfo",
+        description="Show some information about the selected user")
+    @app_commands.describe(member="Select the wished member!")
+    async def userinfo(self, ctx, member: discord.Member):
+        await ctx.defer(ephemeral=False)
+        user = await self.bot.fetch_user(member.id)
+        banner_url = user.banner.url if user.banner else None
+        profile_image = user.avatar.url if user.avatar else user.default_avatar.url
+        if bool(member.premium_since) == "True":
+            boosts_server = "Yes"
+        else:
+            boosts_server = "No"
+
+        top_role = member.top_role.mention
+        highest_role_color = member.top_role.color if member.top_role.color != discord.Color.default(
+        ) else None
+        highest_role_color_hex = highest_role_color if highest_role_color else "Default `(#000000)`"
+
+        embed = discord.Embed(color=discord.Color(int('fce38f', 16)))
+        embed.set_author(name=member.display_name, icon_url=profile_image)
+        embed.set_thumbnail(url=profile_image)
+        embed.set_image(url=banner_url)
+
         embed.add_field(
-            name="ID Creation",
-            value=member.created_at.strftime("%A, %d. %B %Y at %H:%M:%S"),
+            name="Username",
+            value=f"[{member.name}](https://discordapp.com/users/{member.id})",
             inline=False)
-        # Send the embed in the context channel
+        embed.add_field(name="User ID", value=member.id, inline=False)
+        embed.add_field(name="Boosts Server",
+                        value=boosts_server,
+                        inline=False)
+        embed.add_field(name="Account Created",
+                        value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                        inline=False)
+        embed.add_field(name="Joined Server",
+                        value=member.joined_at.strftime("%Y-%m-%d %H:%M:%S"),
+                        inline=False)
+        embed.add_field(name="Top Role", value=top_role, inline=False)
+        embed.add_field(name="Highest Role Color",
+                        value=f"{highest_role_color_hex}",
+                        inline=False)
+        activity_member = ctx.guild.get_member(member.id)
+        if activity_member.activity is not None:
+            if activity_member.activity.type == discord.ActivityType.listening:
+                artist = activity_member.activity.artist
+                song_title = activity_member.activity.title
+                album = activity_member.activity.album
+                activity_name = activity_member.activity.name
+                embed.add_field(name="Activity",
+                                value=activity_name,
+                                inline=False)
+                embed.add_field(
+                    name="Listening to",
+                    value=
+                    f"- **Title:** `{song_title}` \n- **Artist:** `{artist}` \n- **Album:** `{album}`",
+                    inline=False)
+
+            elif activity_member.activity.type == discord.ActivityType.playing:
+                embed.add_field(name="Activity",
+                                value=f"{activity_member.activity.name}",
+                                inline=False)
+                embed.add_field(
+                    name="Details",
+                    value=
+                    f"- {activity_member.activity.details} \n- {activity_member.activity.state}"
+                    or "Not provided",
+                    inline=False)
+
+            elif activity_member.activity.type != discord.ActivityType.custom:
+                activity_name = activity_member.activity.name
+                embed.add_field(name="Activity",
+                                value=activity_name,
+                                inline=False)
+
+
+#
+            else:
+                pass
+        else:
+            pass
+
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(
