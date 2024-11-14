@@ -526,61 +526,43 @@ class ticket_views(discord.ui.View):
     )
     async def close_ticket(self, interaction: discord.Interaction,
                            button: discord.ui.Button):
-        ticket = await DataManager.get_ticket_data(self.panel_id,
-                                                   interaction.channel.id)
-        if ticket["closed"] == True:
-            await interaction.response.send_message(
+        await interaction.response.defer()
+        await DataManager.close_ticket(self.panel_id, interaction.channel.id)
+        panel_data = await DataManager.get_panel_data(self.panel_id)
+
+        for user in await interaction.channel.fetch_members():
+            member = interaction.guild.get_member(user.id)
+            if member:
+                if any(role.id in panel_data["panel_moderators"]
+                       for role in member.roles):
+                    continue
+                else:
+                    await interaction.channel.remove_user(member)
+            else:
+                continue
+
+        try:
+            user = self.bot.get_user(self.user_id)
+            await interaction.channel.remove_user(user)
+
+            await interaction.channel.send(
                 embed=discord.Embed(
-                    title="Ticket Already Closed!",
-                    description="This ticket has already been closed",
+                    title="Ticket Closed",
+                    description=f"Ticket closed by {interaction.user.mention}",
                     colour=discord.Colour.red(),
                 ),
-                ephemeral=True,
-            )
+                view=closed_ticket_views(self.bot, self.panel_id, self.user_id,
+                                         interaction.message.id))
 
-        elif ticket["closed"] == False:
-            await interaction.response.defer()
-            await DataManager.close_ticket(self.panel_id,
-                                           interaction.channel.id)
-            panel_data = await DataManager.get_panel_data(self.panel_id)
-            for user in await interaction.channel.fetch_members():
-                member = interaction.guild.get_member(user.id)
-                if member:
-                    if any(role.id in panel_data["panel_moderators"]
-                           for role in member.roles):
-                        continue
-                    else:
-                        await interaction.channel.remove_user(member)
-                else:
-                    continue
-            try:
-                user = self.bot.get_user(self.user_id)
-                await interaction.channel.remove_user(user)
-
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        title="Ticket Closed",
-                        description=
-                        f"Ticket closed by {interaction.user.mention}",
-                        colour=discord.Colour.red(),
-                    ),
-                    view=closed_ticket_views(self.bot, self.panel_id,
-                                             self.user_id,
-                                             interaction.message.id),
-                )
-
-            except AttributeError:
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        title="Ticket Closed",
-                        description=
-                        f"Ticket closed by {interaction.user.mention}",
-                        colour=discord.Colour.red(),
-                    ),
-                    view=closed_ticket_views(self.bot, self.panel_id,
-                                             self.user_id,
-                                             interaction.message.id),
-                )
+        except AttributeError:
+            await interaction.channel.send(
+                embed=discord.Embed(
+                    title="Ticket Closed",
+                    description=f"Ticket closed by {interaction.user.mention}",
+                    colour=discord.Colour.red(),
+                ),
+                view=closed_ticket_views(self.bot, self.panel_id, self.user_id,
+                                         interaction.message.id))
 
 
 class panel_views(discord.ui.View):
