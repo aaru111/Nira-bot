@@ -119,7 +119,7 @@ class create_role_dropdown(discord.ui.RoleSelect):
         await self.message.edit(embed=discord.Embed(
             title=f"{panel_data['panel_title']}",
             description=f"{panel_data['panel_description']}" +
-            f"\n\nCurrent Panel Moderators: " + ",".join([
+            "\n\nCurrent Panel Moderators: " + ",".join([
                 f"<@&{role.id}>" for role in interaction.guild.roles if role.id
                 in [int(value) for value in interaction.data["values"]]
             ]),
@@ -158,7 +158,7 @@ class edit_role_dropdown(discord.ui.RoleSelect):
         await self.interaction.edit_original_response(embed=discord.Embed(
             title=self.paneledit.panel_title,
             description=self.paneledit.panel_description +
-            f"\n\nCurrent Panel Moderators: " + ",".join([
+            "\n\nCurrent Panel Moderators: " + ",".join([
                 f"<@&{role.id}>" for role in interaction.guild.roles if role.id
                 in [int(value) for value in interaction.data["values"]]
             ]),
