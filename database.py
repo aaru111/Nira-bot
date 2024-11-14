@@ -64,6 +64,27 @@ class Database:
             losses INTEGER DEFAULT 0
         );
         """
+        create_ticket_panels_table: str = """
+        CREATE TABLE IF NOT EXISTS ticket_panels(
+            id BIGINT PRIMARY KEY,
+            channel_id BIGINT NOT NULL,
+            guild_id BIGINT NOT NULL,
+            limit_per_user INTEGER DEFAULT 1,
+            panel_title TEXT NOT NULL,
+            panel_description TEXT NOT NULL,
+            panel_moderators BIGINT[] DEFAULT ARRAY[]::BIGINT[],
+            deleted BOOLEAN DEFAULT FALSE
+        );
+        """
+
+        create_tickets_table: str = """
+        CREATE TABLE IF NOT EXISTS tickets(
+            panel_id BIGINT REFERENCES ticket_panels(id),
+            ticket_id BIGINT PRIMARY KEY,
+            ticket_creator BIGINT NOT NULL,
+            closed BOOLEAN DEFAULT FALSE
+        );
+        """
         try:
             if self.pool is None:
                 raise ValueError("Database pool is not initialized")
@@ -74,6 +95,8 @@ class Database:
                     await conn.execute(create_tracked_messages_table)
                     await conn.execute(create_anilist_tokens_table)
                     await conn.execute(create_player_stats_table)
+                    await conn.execute(create_ticket_panels_table)
+                    await conn.execute(create_tickets_table)
         except asyncpg.UniqueViolationError as e:
             print(f"Unique violation error while creating tables: {e}")
             raise
