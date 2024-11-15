@@ -1,5 +1,6 @@
 from typing import Optional, Dict, List
-from database import db
+
+from helpers.database import db
 
 
 class TicketManager:

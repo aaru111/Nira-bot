@@ -1,6 +1,7 @@
 import discord
-from ..utils.custom_colors import custom_colors
 import random
+
+from ..utils.custom_colors import custom_colors
 
 
 def get_help_embed(page: int) -> discord.Embed:

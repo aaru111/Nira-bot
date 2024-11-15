@@ -5,7 +5,8 @@ import chess.svg
 import io
 from cairosvg import svg2png
 import logging
-from database import db
+
+from helpers.database import db
 
 logging.basicConfig(filename='dropdown_debug.log',
                     level=logging.INFO,

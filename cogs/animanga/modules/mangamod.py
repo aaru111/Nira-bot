@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
+from typing import List, Dict, Tuple, Optional, Any
 import aiohttp
 import re
-from typing import List, Dict, Tuple, Optional, Any
 
 
 class MangaMod:

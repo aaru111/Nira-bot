@@ -10,10 +10,11 @@ __all__ = [
     "SetupView",
 ]
 import discord
-from database import db
 from typing import Optional, Dict, List
 import os
 import base64
+
+from helpers.database import db
 
 
 

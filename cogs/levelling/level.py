@@ -4,12 +4,12 @@ from discord.ext import commands
 import random
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import io
-from database import db
 import time
 from typing import Optional, Dict, Union
 import os
 import base64
 
+from helpers.database import db
 from .modules.levelmod import *
 
 

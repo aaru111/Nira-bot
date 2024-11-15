@@ -16,13 +16,14 @@ import io
 
 from typing import Optional, Dict
 
-# Importing modules used in the games
+
 from .modules.tetrismod import Tetris
 from .modules.tttmod import TicTacToeGame, AcceptDeclineButtons
 from .modules.triviamod import TriviaView
 from .modules.memorymod import MemoryGameView
 from .modules.chessmod import ChessGame, ChessView, PlayerStats
-from database import db
+
+from helpers.database import db
 
 
 class Games(commands.Cog):

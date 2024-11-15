@@ -1,5 +1,4 @@
 from enum import IntEnum
-import discord
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup, Tag
 from typing import Optional, Tuple, List

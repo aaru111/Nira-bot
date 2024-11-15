@@ -16,14 +16,13 @@ from .modules.timestampmod import DatetimeTransformer, TimezoneTransformer, Time
 from .modules.encodemod import encode_text, decode_text
 from .modules.translatemod import TranslationCore
 
-from database import db
+from helpers.database import db
 
-# Retrieve the Bitly API token from environment variables
 BITLY_TOKEN = os.getenv("BITLY_API")
-# In-memory storage for user rate limits (user_id -> (last_reset_time, count))
+
 user_rate_limits = {}
-RATE_LIMIT = 5  # Max number of URL shortenings per user within the reset interval
-RESET_INTERVAL = 60 * 60  # Reset interval in seconds (e.g., 1 hour)
+RATE_LIMIT = 5
+RESET_INTERVAL = 60 * 60
 
 
 # DatabaseManager interface for abstracting database operations

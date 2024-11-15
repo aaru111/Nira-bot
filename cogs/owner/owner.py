@@ -2,9 +2,10 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional, List, Literal
-from database import db
 import aiohttp
 import io
+
+from helpers.database import db
 
 
 class TableSelect(discord.ui.Select):

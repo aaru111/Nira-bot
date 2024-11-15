@@ -10,7 +10,7 @@ from datetime import datetime
 import logging
 import asyncio
 
-from database import db
+from helpers.database import db
 
 LOGOUT_BUTTON_TIMEOUT = 30
 ITEMS_PER_PAGE = 6

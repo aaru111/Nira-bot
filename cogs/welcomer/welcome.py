@@ -4,7 +4,7 @@ from discord import app_commands
 
 from .utils.wel import get_welcome_card
 
-from database import Database
+from helpers.database import Database
 
 
 class WelcomeModal(discord.ui.Modal, title="Set Welcome Message"):

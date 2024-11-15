@@ -6,7 +6,7 @@ import random
 from urllib.parse import urlparse
 import webcolors
 
-# Import all classes and methods from embedmod.py
+
 from .modules.embedmod import (AuthorModal, BodyModal, ImagesModal,
                                FooterModal, ScheduleModal, create_embed_view)
 from .modules.embedtemp import get_template, templates

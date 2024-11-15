@@ -7,7 +7,8 @@ import asyncio
 from typing import Dict, Any, Set, List, Optional, Tuple
 from abc import ABC, abstractmethod
 import aiohttp
-from database import db
+
+from helpers.database import db
 
 # Rate limits
 RATE_LIMIT_INTERVAL = 2

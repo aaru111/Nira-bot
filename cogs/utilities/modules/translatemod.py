@@ -1,4 +1,3 @@
-
 from typing import Dict, List
 from discord import Embed, app_commands
 from googletrans import Translator, LANGUAGES

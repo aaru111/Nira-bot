@@ -4,7 +4,6 @@ import textwrap
 from abc import ABC, abstractmethod
 import discord
 from typing import Any, Tuple, List
-import asyncio
 
 class CustomWikipediaAPI:
     BASE_URL = "https://en.wikipedia.org/w/api.php"
