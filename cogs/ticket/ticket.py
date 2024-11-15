@@ -919,7 +919,7 @@ class ticket(commands.GroupCog):
                 return await interaction.response.send_message(
                     embed=discord.Embed(
                         description=
-                        "<:white_cross:1096791282023669860> This ticket has already been closed",
+                        "<a:cross:1306989166491471903> This ticket has already been closed",
                         colour=discord.Colour.red(),
                     ),
                     ephemeral=True,
@@ -963,7 +963,7 @@ class ticket(commands.GroupCog):
             return await interaction.response.send_message(
                 embed=discord.Embed(
                     description=
-                    "<:white_cross:1096791282023669860> This is not a ticket",
+                    "<a:cross:1306989166491471903> This is not a ticket",
                     colour=discord.Colour.red(),
                 ),
                 ephemeral=True,
@@ -984,7 +984,7 @@ class ticket(commands.GroupCog):
                 return await interaction.response.send_message(
                     embed=discord.Embed(
                         description=
-                        "<:white_cross:1096791282023669860> This ticket is already open",
+                        "<a:cross:1306989166491471903> This ticket is already open",
                         colour=discord.Colour.red(),
                     ),
                     ephemeral=True,
@@ -1006,7 +1006,7 @@ class ticket(commands.GroupCog):
             return await interaction.response.send_message(
                 embed=discord.Embed(
                     description=
-                    "<:white_cross:1096791282023669860> This is not a ticket",
+                    "<a:cross:1306989166491471903> This is not a ticket",
                     colour=discord.Colour.red(),
                 ),
                 ephemeral=True,
