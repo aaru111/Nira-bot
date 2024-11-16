@@ -839,9 +839,6 @@ class Moderation(commands.Cog):
                 embed.add_field(name="Activity",
                                 value=activity_name,
                                 inline=False)
-
-
-#
             else:
                 pass
         else:
@@ -855,39 +852,32 @@ class Moderation(commands.Cog):
     async def serverinfo(self, context: Context) -> None:
         """Get some useful (or not) information about the server."""
         guild = context.guild
-        roles = [f"• {role.mention}"
-                 for role in guild.roles]  # Add bullet before each role
+        roles = [f"• {role.mention}" for role in guild.roles]
         num_roles = len(roles)
         max_roles_per_field = 15
 
-        # Get server owner
         owner = guild.owner
 
-        # Embed setup
         embed = discord.Embed(
             title="**Server Information**",
             description=
             f"**Server Name:** {guild.name} -> Owner: {owner.display_name}",
             color=0xBEBEFE)
 
-        # Set server profile picture as thumbnail
         if guild.icon is not None:
             embed.set_thumbnail(url=guild.icon.url)
 
-        # Add roles to embed
         for i in range(0, min(num_roles, 15 * 25), max_roles_per_field):
             chunk = roles[i:i + max_roles_per_field]
             embed.add_field(name=f"Roles {i + 1} to {i + len(chunk)}",
                             value="\n".join(chunk),
                             inline=True)
 
-        # Notice if more roles than can be displayed
         if num_roles > 15 * 25:
             embed.add_field(name="Notice",
                             value=f"Displaying first {15 * 25} roles only.",
                             inline=False)
 
-        # Additional fields
         embed.add_field(name="Server ID", value=guild.id)
         embed.add_field(name="Member Count", value=guild.member_count)
         embed.add_field(name="Text/Voice Channels",
@@ -901,6 +891,29 @@ class Moderation(commands.Cog):
         description="Get some useful (or not) information about the bot.")
     async def botinfo(self, context: Context) -> None:
         """Get some useful (or not) information about the bot."""
+
+        prefix_commands = 0
+        slash_commands = 0
+        hybrid_commands = 0
+        context_menus = 0
+
+        for command in self.bot.commands:
+            if isinstance(command, commands.HybridCommand):
+                hybrid_commands += 1
+            elif command.name in [
+                    cmd.name for cmd in self.bot.tree.get_commands()
+            ]:
+                slash_commands += 1
+            else:
+                prefix_commands += 1
+
+        context_menus = len([
+            cmd for cmd in self.bot.tree.get_commands()
+            if isinstance(cmd, app_commands.ContextMenu)
+        ])
+
+        total_commands = prefix_commands + slash_commands + hybrid_commands + context_menus
+
         embed = discord.Embed(
             description="N.I.R.A -> NEURAL INTERACTIVE RESPONSIVE AGENT.",
             color=0xBEBEFE,
@@ -916,23 +929,19 @@ class Moderation(commands.Cog):
             name="Prefix:",
             value="/ (Slash Commands) or . command for normal commands",
             inline=False)
+
+        embed.add_field(name="Command Stats",
+                        value=f"```\n"
+                        f"Prefix Commands: {prefix_commands}\n"
+                        f"Slash Commands:  {slash_commands}\n"
+                        f"Hybrid Commands: {hybrid_commands}\n"
+                        f"Context Menus:   {context_menus}\n"
+                        f"Total Commands:  {total_commands}\n"
+                        f"```",
+                        inline=False)
+
         embed.set_footer(text=f"Requested by {context.author}")
         await context.send(embed=embed)
-
-    @commands.hybrid_command(
-        name="invite",
-        description="Get the invite link of the bot to be able to invite it.")
-    async def invite(self, context: Context) -> None:
-        """Get the invite link of the bot to be able to invite it."""
-        embed = discord.Embed(
-            description=
-            "Invite me by clicking [here](https://discord.gg/T5jgMenbQ8).",
-            color=0xD75BF4)
-        try:
-            await context.author.send(embed=embed)
-            await context.send("I sent you a private message!")
-        except discord.Forbidden:
-            await context.send(embed=embed)
 
     @automod_group.command(name="create_rule")
     @app_commands.describe(
