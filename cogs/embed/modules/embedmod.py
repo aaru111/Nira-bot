@@ -148,31 +148,47 @@ class AuthorModal(BaseModal):
 
 
 class BodyModal(BaseModal):
-
-    def __init__(self,
-                 embed: discord.Embed,
-                 bot: commands.Bot,
-                 is_edit: bool = False):
+    def __init__(self, embed: discord.Embed, bot: commands.Bot, is_edit: bool = False):
         super().__init__(title="Configure Body")
         self.embed = embed
         self.bot = bot
         self.is_edit = is_edit
-        self.titl = TextInput(label="Title",
-                              max_length=256,
-                              default=self.embed.title if is_edit else None,
-                              required=False)
+
+        # Title Input
+        self.titl = TextInput(
+            label="Title",
+            max_length=256,
+            default=self.embed.title if is_edit else None,
+            required=False,
+            placeholder="You can use emojis like :emoji_name: or <:emoji_name:id>"
+        )
+
+        # Description Input
         self.description = TextInput(
             label="Description",
             max_length=4000,
             style=discord.TextStyle.paragraph,
-            default=self.embed.description if is_edit else None)
-        self.url = TextInput(label="URL",
-                             required=False,
-                             default=self.embed.url if is_edit else None)
-        self.color = TextInput(label="Color (hex code, name, or 'random')",
-                               required=False,
-                               default=self.embed.color.value
-                               if is_edit and self.embed.color else None)
+            default=self.embed.description if is_edit else None,
+            placeholder="You can use emojis like :emoji_name: or <:emoji_name:id>"
+        )
+
+        # URL Input
+        self.url = TextInput(
+            label="URL",
+            required=False,
+            default=self.embed.url if is_edit else None,
+            placeholder="Enter a valid URL (optional)"
+        )
+
+        # Color Input
+        self.color = TextInput(
+            label="Color (hex code, name, or 'random')",
+            required=False,
+            default=self.embed.color.value if is_edit and self.embed.color else None,
+            placeholder="Example: #ff0000, red, or random"
+        )
+
+        # Add all inputs to the modal
         self.add_item(self.titl)
         self.add_item(self.description)
         self.add_item(self.url)
@@ -181,53 +197,96 @@ class BodyModal(BaseModal):
     async def handle_submit(self, interaction: discord.Interaction) -> None:
         await self._validate_and_set_body(interaction)
 
-    async def _validate_and_set_body(self,
-                                     interaction: discord.Interaction) -> None:
-        if self.url.value and not self.bot.get_cog(
-                "EmbedCreator").is_valid_url(self.url.value):
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    title="Error",
-                    description=f"Invalid URL in Body URL: {self.url.value}",
-                    color=discord.Color.red(),
-                ),
-                ephemeral=True,
-            )
-            return
+    async def _validate_and_set_body(self, interaction: discord.Interaction) -> None:
+        try:
+            # Validate URL if provided
+            if self.url.value and not self.bot.get_cog("EmbedCreator").is_valid_url(self.url.value):
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="Error",
+                        description=f"Invalid URL in Body URL: {self.url.value}",
+                        color=discord.Color.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        if self.color.value:
-            if self.color.value.lower() == "random":
-                self.embed.color = discord.Color.random()
-            elif self.bot.get_cog("EmbedCreator").is_valid_hex_color(
-                    self.color.value):
-                self.embed.color = discord.Color(
-                    int(self.color.value.strip("#"), 16))
-            else:
-                color = self.bot.get_cog("EmbedCreator").get_color_from_name(
-                    self.color.value)
-                if color:
-                    self.embed.color = color
+            # Handle color setting
+            if self.color.value:
+                if self.color.value.lower() == "random":
+                    self.embed.color = discord.Color.random()
+                elif self.bot.get_cog("EmbedCreator").is_valid_hex_color(self.color.value):
+                    self.embed.color = discord.Color(int(self.color.value.strip("#"), 16))
                 else:
+                    color = self.bot.get_cog("EmbedCreator").get_color_from_name(self.color.value)
+                    if color:
+                        self.embed.color = color
+                    else:
+                        await interaction.response.send_message(
+                            embed=discord.Embed(
+                                title="Error",
+                                description=f"Invalid color value: {self.color.value}",
+                                color=discord.Color.red(),
+                            ),
+                            ephemeral=True,
+                        )
+                        return
+
+            # Process title with emoji support
+            if self.titl.value:
+                processed_title = self.bot.get_cog("EmbedCreator").convert_emoji_string(self.titl.value)
+                if len(processed_title) > 256:
                     await interaction.response.send_message(
                         embed=discord.Embed(
                             title="Error",
-                            description=
-                            f"Invalid color value: {self.color.value}",
+                            description="Title length exceeds 256 characters after emoji processing.",
                             color=discord.Color.red(),
                         ),
                         ephemeral=True,
                     )
                     return
+                self.embed.title = processed_title
+            else:
+                self.embed.title = None
 
-        self.embed.title = self.titl.value
-        self.embed.description = self.description.value or None
-        self.embed.url = self.url.value or None
+            # Process description with emoji support
+            if self.description.value:
+                processed_description = self.bot.get_cog("EmbedCreator").convert_emoji_string(self.description.value)
+                if len(processed_description) > 4000:
+                    await interaction.response.send_message(
+                        embed=discord.Embed(
+                            title="Error",
+                            description="Description length exceeds 4000 characters after emoji processing.",
+                            color=discord.Color.red(),
+                        ),
+                        ephemeral=True,
+                    )
+                    return
+                self.embed.description = processed_description
+            else:
+                self.embed.description = None
 
-        await interaction.response.edit_message(content="✅ Body configured.",
-                                                embed=self.embed,
-                                                view=create_embed_view(
-                                                    self.embed,
-                                                    interaction.client))
+            # Set URL
+            self.embed.url = self.url.value or None
+
+            # Update the message with the new embed
+            await interaction.response.edit_message(
+                content="✅ Body configured successfully!",
+                embed=self.embed,
+                view=create_embed_view(self.embed, interaction.client)
+            )
+
+        except Exception as e:
+            # Log the error and send a user-friendly message
+            logging.error(f"Error in BodyModal._validate_and_set_body: {str(e)}")
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Error",
+                    description="An error occurred while processing your embed. Please try again.",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
 
 
 class ImagesModal(BaseModal):
