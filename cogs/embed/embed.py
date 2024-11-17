@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import webcolors
 import logging
 import io
+import json
 
 from .modules.embedmod import (AuthorModal, BodyModal, ImagesModal,
                                FooterModal, ScheduleModal, create_embed_view)
@@ -79,35 +80,9 @@ class EmbedCreator(commands.Cog):
 
             embed_dict = embed.to_dict()
 
-            def format_dict(d, indent=0):
-                formatted = "{"
-                for key, value in d.items():
-                    formatted += f'\n{" " * (indent + 4)}"{key}": '
-                    if isinstance(value, dict):
-                        formatted += format_dict(value, indent + 4)
-                    elif isinstance(value, list):
-                        if not value:
-                            formatted += "[]"
-                        else:
-                            formatted += "[\n"
-                            for item in value:
-                                if isinstance(item, dict):
-                                    formatted += f'{" " * (indent + 8)}{format_dict(item, indent + 8)},\n'
-                                else:
-                                    formatted += f'{" " * (indent + 8)}"{item}",\n'
-                            formatted += f'{" " * (indent + 4)}]'
-                    elif isinstance(value, str):
-
-                        escaped_value = value.replace('"', '\\"')
-                        formatted += f'"{escaped_value}"'
-                    elif value is None:
-                        formatted += "null"
-                    else:
-                        formatted += f"{value}"
-                    formatted += ","
-                formatted = formatted.rstrip(",")
-                formatted += f'\n{" " * indent}}}'
-                return formatted
+            def format_dict(d):
+                import json
+                return json.dumps(d, indent=4, ensure_ascii=False)
 
             formatted_code = format_dict(embed_dict)
 

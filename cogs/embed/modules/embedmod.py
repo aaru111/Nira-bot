@@ -8,7 +8,7 @@ from discord.utils import format_dt
 from datetime import timedelta
 from math import ceil
 from typing import Optional
-import ast
+import json
 
 from ..utils.helpembed import get_help_embed
 
@@ -530,45 +530,83 @@ class ImportEmbedModal(BaseModal):
                               required=True)
         self.add_item(self.code)
 
+    def clean_json_string(self, text: str) -> str:
+        try:
+            # First attempt: Try to evaluate as a Python dict literal
+            import ast
+            cleaned_dict = ast.literal_eval(text)
+
+            # Convert Python dict to proper JSON format
+            import json
+            return json.dumps(cleaned_dict)
+        except:
+            try:
+                # Second attempt: Manual cleaning
+                # Remove any potential BOM and whitespace
+                text = text.strip().lstrip('\ufeff')
+
+                # Basic cleanup
+                text = text.replace('\n', ' ')  # Remove newlines
+                text = text.replace('\r', ' ')  # Remove carriage returns
+                text = ' '.join(text.split())  # Normalize spaces
+
+                # Handle description field specially
+                desc_start = text.find('"description": "')
+                if desc_start != -1:
+                    # Find the end of the description (next quote after content)
+                    desc_end = text.find('",', desc_start + 15)
+                    if desc_end != -1:
+                        # Extract description content
+                        desc_content = text[desc_start + 15:desc_end]
+                        # Properly escape newlines
+                        desc_content = desc_content.replace('\\n', '\n')
+                        # Rebuild the text
+                        text = (text[:desc_start + 15] +
+                                desc_content.replace('\n', '\\n') +
+                                text[desc_end:])
+
+                # Parse as JSON to validate and format
+                import json
+                parsed = json.loads(text)
+                return json.dumps(parsed, ensure_ascii=False)
+            except:
+                raise ValueError("Could not clean and parse the JSON data")
+
     async def handle_submit(self, interaction: discord.Interaction) -> None:
         try:
-
+            # Get the input code
             code = self.code.value.strip()
 
-            code = '\n'.join(line.strip() for line in code.splitlines())
+            # Try to clean and parse the JSON
+            cleaned_json = self.clean_json_string(code)
+            embed_dict = json.loads(cleaned_json)
 
-            if not code.startswith('{'):
-                code = '{' + code
-            if not code.endswith('}'):
-                code = code + '}'
-
-            code = code.replace("'", '"')
-            code = re.sub(r',\s*}', '}', code)
-            code = re.sub(r',\s*]', ']', code)
-
-            embed_dict = ast.literal_eval(code)
-
+            # Create new embed from the dictionary
             embed = discord.Embed.from_dict(embed_dict)
 
+            # Update the bot's embed_creator cog with the new embed
             embed_creator = self.bot.get_cog("EmbedCreator")
             if embed_creator:
                 embed_creator.embed_object = embed
 
+            # Show preview with edit options
             await interaction.response.edit_message(
                 content="✅ Embed imported successfully! You can now edit it.",
                 embed=embed,
                 view=create_embed_view(embed, self.bot))
         except Exception as e:
-            await interaction.response.send_message(embed=discord.Embed(
+            # Create a more user-friendly error message
+            error_embed = discord.Embed(
                 title="Error Importing Embed",
-                description=(
-                    f"**Error:** {str(e)}\n\n"
-                    "**Please ensure:**\n"
-                    "1. You copied the entire code\n"
-                    "2. The code starts with '{' and ends with '}'\n"
-                    "3. All quotes and commas are properly placed\n"
-                    "4. You didn't accidentally add any extra characters"),
-                color=discord.Color.red()),
+                description=
+                ("The embed code couldn't be processed. Please try the following:\n\n"
+                 "1. Make sure you copied the entire code block\n"
+                 "2. Remove any extra spaces or newlines at the start and end\n"
+                 "3. Ensure the code starts with '{' and ends with '}'\n"
+                 "4. Try copying the code again from the original message\n\n"
+                 f"**Technical Error:** ```{str(e)}```"),
+                color=discord.Color.red())
+            await interaction.response.send_message(embed=error_embed,
                                                     ephemeral=True)
 
 
