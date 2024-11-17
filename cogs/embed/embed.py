@@ -6,12 +6,11 @@ import random
 from urllib.parse import urlparse
 import webcolors
 import logging
-
+import io
 
 from .modules.embedmod import (AuthorModal, BodyModal, ImagesModal,
                                FooterModal, ScheduleModal, create_embed_view)
 from .modules.embedtemp import get_template, templates
-
 from .utils.custom_colors import custom_colors
 
 
@@ -25,6 +24,116 @@ class EmbedCreator(commands.Cog):
     async def cog_unload(self):
         """Cleanup resources when the cog is unloaded."""
         await self.session.close()
+
+    @commands.hybrid_command(
+        name="stealembed",
+        description="Get the code of an embed to use with the embed creator")
+    @app_commands.describe(
+        message="The message link or ID containing the embed")
+    async def stealembed(self, ctx: commands.Context, message: str):
+        try:
+
+            if "discord.com/channels/" in message:
+                try:
+
+                    parts = message.split('/')
+                    guild_id = int(parts[-3])
+                    channel_id = int(parts[-2])
+                    message_id = int(parts[-1])
+
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        channel = await self.bot.fetch_channel(channel_id)
+
+                    message = await channel.fetch_message(message_id)
+                except (IndexError, ValueError):
+                    await ctx.send("Invalid message link format!",
+                                   ephemeral=True)
+                    return
+                except discord.NotFound:
+                    await ctx.send("Couldn't find that message or channel!",
+                                   ephemeral=True)
+                    return
+            else:
+
+                try:
+                    message_id = int(message)
+                    message = await ctx.channel.fetch_message(message_id)
+                except ValueError:
+                    await ctx.send(
+                        "Please provide a valid message ID or link!",
+                        ephemeral=True)
+                    return
+                except discord.NotFound:
+                    await ctx.send(
+                        "Couldn't find that message in this channel!",
+                        ephemeral=True)
+                    return
+
+            if not message.embeds:
+                await ctx.send("That message doesn't contain any embeds!",
+                               ephemeral=True)
+                return
+
+            embed = message.embeds[0]
+
+            embed_dict = embed.to_dict()
+
+            def format_dict(d, indent=0):
+                formatted = "{"
+                for key, value in d.items():
+                    formatted += f'\n{" " * (indent + 4)}"{key}": '
+                    if isinstance(value, dict):
+                        formatted += format_dict(value, indent + 4)
+                    elif isinstance(value, list):
+                        if not value:
+                            formatted += "[]"
+                        else:
+                            formatted += "[\n"
+                            for item in value:
+                                if isinstance(item, dict):
+                                    formatted += f'{" " * (indent + 8)}{format_dict(item, indent + 8)},\n'
+                                else:
+                                    formatted += f'{" " * (indent + 8)}"{item}",\n'
+                            formatted += f'{" " * (indent + 4)}]'
+                    elif isinstance(value, str):
+
+                        escaped_value = value.replace('"', '\\"')
+                        formatted += f'"{escaped_value}"'
+                    elif value is None:
+                        formatted += "null"
+                    else:
+                        formatted += f"{value}"
+                    formatted += ","
+                formatted = formatted.rstrip(",")
+                formatted += f'\n{" " * indent}}}'
+                return formatted
+
+            formatted_code = format_dict(embed_dict)
+
+            file = discord.File(io.StringIO(formatted_code),
+                                filename="embed_code.txt")
+
+            instructions = discord.Embed(
+                title="Embed Code Stolen!",
+                description=(
+                    "**To use this embed:**\n"
+                    "1. Open and copy the code from the attached file\n"
+                    "2. Use `/embed`\n"
+                    "3. Click the Import button\n"
+                    "4. Paste the code\n\n"
+                    "**Preview of the embed is shown below** ↓"),
+                color=discord.Color.green())
+
+            await ctx.send(embeds=[instructions, embed],
+                           file=file,
+                           ephemeral=True)
+
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to see that message!",
+                           ephemeral=True)
+        except Exception as e:
+            await ctx.send(f"An error occurred: {str(e)}", ephemeral=True)
 
     @app_commands.command(
         name="embed",

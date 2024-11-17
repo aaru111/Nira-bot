@@ -8,6 +8,7 @@ from discord.utils import format_dt
 from datetime import timedelta
 from math import ceil
 from typing import Optional
+import ast
 
 from ..utils.helpembed import get_help_embed
 
@@ -517,6 +518,70 @@ class ScheduleModal(Modal):
         )
 
 
+class ImportEmbedModal(BaseModal):
+
+    def __init__(self, bot: commands.Bot):
+        super().__init__(title="Import Embed")
+        self.bot = bot
+        self.code = TextInput(label="Embed Code",
+                              style=discord.TextStyle.paragraph,
+                              placeholder="Paste the embed code here...",
+                              max_length=4000,
+                              required=True)
+        self.add_item(self.code)
+
+    async def handle_submit(self, interaction: discord.Interaction) -> None:
+        try:
+
+            code = self.code.value.strip()
+
+            code = '\n'.join(line.strip() for line in code.splitlines())
+
+            if not code.startswith('{'):
+                code = '{' + code
+            if not code.endswith('}'):
+                code = code + '}'
+
+            code = code.replace("'", '"')
+            code = re.sub(r',\s*}', '}', code)
+            code = re.sub(r',\s*]', ']', code)
+
+            embed_dict = ast.literal_eval(code)
+
+            embed = discord.Embed.from_dict(embed_dict)
+
+            embed_creator = self.bot.get_cog("EmbedCreator")
+            if embed_creator:
+                embed_creator.embed_object = embed
+
+            await interaction.response.edit_message(
+                content="✅ Embed imported successfully! You can now edit it.",
+                embed=embed,
+                view=create_embed_view(embed, self.bot))
+        except Exception as e:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="Error Importing Embed",
+                description=(
+                    f"**Error:** {str(e)}\n\n"
+                    "**Please ensure:**\n"
+                    "1. You copied the entire code\n"
+                    "2. The code starts with '{' and ends with '}'\n"
+                    "3. All quotes and commas are properly placed\n"
+                    "4. You didn't accidentally add any extra characters"),
+                color=discord.Color.red()),
+                                                    ephemeral=True)
+
+
+class ImportButton(BaseButton):
+
+    def __init__(self, bot: commands.Bot):
+        super().__init__(label="Import", style=ButtonStyle.blurple, emoji="📥")
+        self.bot = bot
+
+    async def handle_callback(self, interaction: Interaction) -> None:
+        await interaction.response.send_modal(ImportEmbedModal(self.bot))
+
+
 class PlusButton(BaseButton):
 
     def __init__(self, embed: discord.Embed):
@@ -989,6 +1054,7 @@ def create_embed_view(embed: discord.Embed, bot: commands.Bot) -> View:
     view.add_item(select)
     view.add_item(FieldCountButton(embed))
     view.add_embed_buttons()
+    view.add_item(ImportButton(bot))
     return view
 
 
