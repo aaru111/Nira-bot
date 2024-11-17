@@ -689,14 +689,23 @@ class ResetButton(BaseButton):
         self.embed = embed
 
     async def handle_callback(self, interaction: Interaction) -> None:
-        new_embed = discord.Embed(description="** **")
-        new_embed.color = self.embed.color
-        self.embed = new_embed
+
+        self.embed = discord.Embed(description="** **")
+
+        self.embed.color = discord.Color.random()
+
+        view = create_embed_view(self.embed, interaction.client)
+
         await interaction.response.edit_message(
             content=
             "✅ Embed reset to default. You can start configuring it again.",
             embed=self.embed,
-            view=create_embed_view(self.embed, interaction.client))
+            view=view)
+
+        if hasattr(interaction.client, "get_cog"):
+            embed_creator = interaction.client.get_cog("EmbedCreator")
+            if embed_creator:
+                embed_creator.embed_object = self.embed
 
 
 class HelpButton(BaseButton):
