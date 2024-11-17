@@ -5,7 +5,8 @@ import aiohttp
 import random
 from urllib.parse import urlparse
 import webcolors
-import re
+import logging
+
 
 from .modules.embedmod import (AuthorModal, BodyModal, ImagesModal,
                                FooterModal, ScheduleModal, create_embed_view)
@@ -22,44 +23,8 @@ class EmbedCreator(commands.Cog):
         self.embed_object = None
 
     async def cog_unload(self):
-
+        """Cleanup resources when the cog is unloaded."""
         await self.session.close()
-
-    def convert_emoji_string(self, content: str) -> str:
-        """Convert custom emoji strings to proper Discord emoji format."""
-        if not content:
-            return content
-
-        # First, handle already formatted Discord emojis
-        def replace_formatted_emoji(match):
-            emoji_name = match.group(1)
-            emoji_id = match.group(2)
-            is_animated = match.group(0).startswith('<a:')
-            return f"<{'a' if is_animated else ''}:{emoji_name}:{emoji_id}>"
-
-        # Then, handle simple :emoji_name: format
-        def replace_simple_emoji(match):
-            emoji_name = match.group(1)
-            # Search for the emoji in all guilds the bot has access to
-            for guild in self.bot.guilds:
-                emoji = discord.utils.get(guild.emojis, name=emoji_name)
-                if emoji:
-                    return str(
-                        emoji
-                    )  # This will return the proper Discord emoji format
-            return f":{emoji_name}:"  # Return original format if emoji not found
-
-        # Pattern for formatted Discord emojis
-        formatted_pattern = r'<(?:a?):([^:]+):(\d+)>'
-        # Pattern for simple emoji format
-        simple_pattern = r':([^:\s]+):'
-
-        # First replace any already formatted emojis
-        content = re.sub(formatted_pattern, replace_formatted_emoji, content)
-        # Then handle simple format
-        content = re.sub(simple_pattern, replace_simple_emoji, content)
-
-        return content
 
     @app_commands.command(
         name="embed",
