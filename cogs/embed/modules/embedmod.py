@@ -536,18 +536,23 @@ class ImportEmbedModal(BaseModal):
     async def handle_submit(self, interaction: discord.Interaction) -> None:
         try:
             input_text = self.code.value.strip()
-            message_link = None
 
             if "discord.com/channels/" in input_text or input_text.isdigit():
                 embed = await self.handle_message_link(interaction, input_text)
                 if not embed:
                     return
+
                 message_link = input_text if "discord.com/channels/" in input_text else f"https://discord.com/channels/{interaction.guild_id}/{interaction.channel_id}/{input_text}"
+
+                await self.send_embed_code_dm(interaction.user, embed,
+                                              message_link)
+                success_message = "✅ Embed imported successfully! Check your DMs for the embed code."
             else:
 
                 try:
                     embed_dict = json.loads(input_text)
                     embed = discord.Embed.from_dict(embed_dict)
+                    success_message = "✅ Embed imported successfully!"
                 except json.JSONDecodeError:
                     await interaction.response.send_message(embed=discord.Embed(
                         title="Invalid Input",
@@ -561,14 +566,10 @@ class ImportEmbedModal(BaseModal):
             if embed_creator:
                 embed_creator.embed_object = embed
 
-            await self.send_embed_code_dm(interaction.user, embed,
-                                          message_link)
-
-            await interaction.response.edit_message(
-                content=
-                "✅ Embed imported successfully! Check your DMs for the embed code.",
-                embed=embed,
-                view=create_embed_view(embed, self.bot))
+            await interaction.response.edit_message(content=success_message,
+                                                    embed=embed,
+                                                    view=create_embed_view(
+                                                        embed, self.bot))
 
         except Exception as e:
             error_embed = discord.Embed(
@@ -623,10 +624,8 @@ class ImportEmbedModal(BaseModal):
                 "I don't have permission to see that message!", ephemeral=True)
             return None
 
-    async def send_embed_code_dm(self,
-                                 user: discord.User,
-                                 embed: discord.Embed,
-                                 message_link: str = None):
+    async def send_embed_code_dm(self, user: discord.User,
+                                 embed: discord.Embed, message_link: str):
         try:
             embed_dict = embed.to_dict()
             json_str = json.dumps(embed_dict, indent=4, ensure_ascii=False)
@@ -639,8 +638,7 @@ class ImportEmbedModal(BaseModal):
                 description=
                 ("Here's the JSON code for your imported embed.\n"
                  "You can use this code with the Import button to recreate this embed anytime!\n\n"
-                 f"**Original Message:** {message_link if message_link else 'N/A - Imported from code'}"
-                 ),
+                 f"**Original Message:** {message_link}"),
                 color=discord.Color.green())
 
             await user.send(embed=instructions, file=file)
