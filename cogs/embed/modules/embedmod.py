@@ -9,6 +9,7 @@ from datetime import timedelta
 from math import ceil
 from typing import Optional
 import json
+import io
 
 from ..utils.helpembed import get_help_embed
 
@@ -523,88 +524,136 @@ class ImportEmbedModal(BaseModal):
     def __init__(self, bot: commands.Bot):
         super().__init__(title="Import Embed")
         self.bot = bot
-        self.code = TextInput(label="Embed Code",
-                              style=discord.TextStyle.paragraph,
-                              placeholder="Paste the embed code here...",
-                              max_length=4000,
-                              required=True)
+        self.code = TextInput(
+            label="Embed Code or Message Link",
+            style=discord.TextStyle.paragraph,
+            placeholder=
+            "Paste JSON code or message link (e.g., https://discord.com/channels/...)",
+            max_length=4000,
+            required=True)
         self.add_item(self.code)
-
-    def clean_json_string(self, text: str) -> str:
-        try:
-
-            import ast
-            cleaned_dict = ast.literal_eval(text)
-
-            import json
-            return json.dumps(cleaned_dict)
-        except:
-            try:
-
-                text = text.strip().lstrip('\ufeff')
-
-                text = text.replace('\n', ' ')
-                text = text.replace('\r', ' ')
-                text = ' '.join(text.split())
-
-                desc_start = text.find('"description": "')
-                if desc_start != -1:
-
-                    desc_end = text.find('",', desc_start + 15)
-                    if desc_end != -1:
-
-                        desc_content = text[desc_start + 15:desc_end]
-
-                        desc_content = desc_content.replace('\\n', '\n')
-
-                        text = (text[:desc_start + 15] +
-                                desc_content.replace('\n', '\\n') +
-                                text[desc_end:])
-
-                import json
-                parsed = json.loads(text)
-                return json.dumps(parsed, ensure_ascii=False)
-            except:
-                raise ValueError("Could not clean and parse the JSON data")
 
     async def handle_submit(self, interaction: discord.Interaction) -> None:
         try:
+            input_text = self.code.value.strip()
 
-            code = self.code.value.strip()
+            # Check if input is a message link
+            if "discord.com/channels/" in input_text or input_text.isdigit():
+                embed = await self.handle_message_link(interaction, input_text)
+                if not embed:
+                    return
+            else:
+                # Try to parse as JSON
+                try:
+                    embed_dict = json.loads(input_text)
+                    embed = discord.Embed.from_dict(embed_dict)
+                except json.JSONDecodeError:
+                    await interaction.response.send_message(embed=discord.Embed(
+                        title="Invalid Input",
+                        description=
+                        "Please provide either a valid message link or JSON embed code.",
+                        color=discord.Color.red()),
+                                                            ephemeral=True)
+                    return
 
-            cleaned_json = self.clean_json_string(code)
-            embed_dict = json.loads(cleaned_json)
-
-            embed = discord.Embed.from_dict(embed_dict)
-
+            # Update the embed object in the EmbedCreator cog
             embed_creator = self.bot.get_cog("EmbedCreator")
             if embed_creator:
                 embed_creator.embed_object = embed
 
+            # Send the JSON code to user's DM
+            await self.send_embed_code_dm(interaction.user, embed)
+
             await interaction.response.edit_message(
-                content="✅ Embed imported successfully! You can now edit it.",
+                content=
+                "✅ Embed imported successfully! Check your DMs for the embed code.",
                 embed=embed,
                 view=create_embed_view(embed, self.bot))
-        except Exception as e:
 
+        except Exception as e:
             error_embed = discord.Embed(
                 title="Error Importing Embed",
                 description=
-                ("The embed code couldn't be processed. Please try the following:\n\n"
-                 "1. Make sure you copied the entire code block\n"
-                 "2. Remove any extra spaces or newlines at the start and end\n"
-                 "3. Ensure the code starts with '{' and ends with '}'\n"
-                 "4. Try copying the code again from the original message\n\n"
+                ("An error occurred while importing the embed. Please ensure:\n\n"
+                 "1. The message link is valid or the JSON code is properly formatted\n"
+                 "2. I have access to the channel containing the message\n"
+                 "3. The message contains an embed\n\n"
                  f"**Technical Error:** ```{str(e)}```"),
                 color=discord.Color.red())
             await interaction.response.send_message(embed=error_embed,
                                                     ephemeral=True)
 
+    async def handle_message_link(
+            self, interaction: discord.Interaction,
+            message_link: str) -> Optional[discord.Embed]:
+        try:
+            if "discord.com/channels/" in message_link:
+                parts = message_link.split('/')
+                guild_id = int(parts[-3])
+                channel_id = int(parts[-2])
+                message_id = int(parts[-1])
+
+                channel = self.bot.get_channel(channel_id)
+                if not channel:
+                    channel = await self.bot.fetch_channel(channel_id)
+            else:
+                # Handle message ID
+                channel = interaction.channel
+                message_id = int(message_link)
+
+            message = await channel.fetch_message(message_id)
+
+            if not message.embeds:
+                await interaction.response.send_message(
+                    "That message doesn't contain any embeds!", ephemeral=True)
+                return None
+
+            return message.embeds[0]
+
+        except (IndexError, ValueError):
+            await interaction.response.send_message(
+                "Invalid message link format!", ephemeral=True)
+            return None
+        except discord.NotFound:
+            await interaction.response.send_message(
+                "Couldn't find that message or channel!", ephemeral=True)
+            return None
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I don't have permission to see that message!", ephemeral=True)
+            return None
+
+    async def send_embed_code_dm(self, user: discord.User,
+                                 embed: discord.Embed):
+        try:
+            embed_dict = embed.to_dict()
+            json_str = json.dumps(embed_dict, indent=4, ensure_ascii=False)
+
+            file = discord.File(io.StringIO(json_str),
+                                filename="embed_code.json")
+
+            instructions = discord.Embed(
+                title="Embed Code",
+                description=
+                ("Here's the JSON code for your imported embed.\n"
+                 "You can use this code with the Import button to recreate this embed anytime!"
+                 ),
+                color=discord.Color.green())
+
+            await user.send(embed=instructions, file=file)
+
+        except discord.Forbidden:
+            # If we can't DM the user fuck it
+            pass
+
 
 class ImportButton(BaseButton):
 
     def __init__(self, bot: commands.Bot):
-        super().__init__(label="Import", style=ButtonStyle.blurple, emoji="📥")
+        super().__init__(label="Import",
+                         style=ButtonStyle.blurple,
+                         emoji="📥",
+                         row=3)
         self.bot = bot
 
     async def handle_callback(self, interaction: Interaction) -> None:
