@@ -536,14 +536,15 @@ class ImportEmbedModal(BaseModal):
     async def handle_submit(self, interaction: discord.Interaction) -> None:
         try:
             input_text = self.code.value.strip()
+            message_link = None
 
-            # Check if input is a message link
             if "discord.com/channels/" in input_text or input_text.isdigit():
                 embed = await self.handle_message_link(interaction, input_text)
                 if not embed:
                     return
+                message_link = input_text if "discord.com/channels/" in input_text else f"https://discord.com/channels/{interaction.guild_id}/{interaction.channel_id}/{input_text}"
             else:
-                # Try to parse as JSON
+
                 try:
                     embed_dict = json.loads(input_text)
                     embed = discord.Embed.from_dict(embed_dict)
@@ -556,13 +557,12 @@ class ImportEmbedModal(BaseModal):
                                                             ephemeral=True)
                     return
 
-            # Update the embed object in the EmbedCreator cog
             embed_creator = self.bot.get_cog("EmbedCreator")
             if embed_creator:
                 embed_creator.embed_object = embed
 
-            # Send the JSON code to user's DM
-            await self.send_embed_code_dm(interaction.user, embed)
+            await self.send_embed_code_dm(interaction.user, embed,
+                                          message_link)
 
             await interaction.response.edit_message(
                 content=
@@ -623,8 +623,10 @@ class ImportEmbedModal(BaseModal):
                 "I don't have permission to see that message!", ephemeral=True)
             return None
 
-    async def send_embed_code_dm(self, user: discord.User,
-                                 embed: discord.Embed):
+    async def send_embed_code_dm(self,
+                                 user: discord.User,
+                                 embed: discord.Embed,
+                                 message_link: str = None):
         try:
             embed_dict = embed.to_dict()
             json_str = json.dumps(embed_dict, indent=4, ensure_ascii=False)
@@ -636,14 +638,15 @@ class ImportEmbedModal(BaseModal):
                 title="Embed Code",
                 description=
                 ("Here's the JSON code for your imported embed.\n"
-                 "You can use this code with the Import button to recreate this embed anytime!"
+                 "You can use this code with the Import button to recreate this embed anytime!\n\n"
+                 f"**Original Message:** {message_link if message_link else 'N/A - Imported from code'}"
                  ),
                 color=discord.Color.green())
 
             await user.send(embed=instructions, file=file)
 
         except discord.Forbidden:
-            # If we can't DM the user fuck it
+            # If we can't DM the user, fuck it
             pass
 
 
