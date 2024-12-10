@@ -7,20 +7,49 @@ class EmojiSteal(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def send_paginated_message(self, ctx, message, max_length=1900):
-        """Send a long message in chunks to avoid Discord's character limit"""
-        lines = message.split('\n')
-        current_chunk = ""
+    async def send_long_list(self, ctx, title, list_items, color):
+        """Send a long list by splitting it into multiple messages if needed"""
+        # Maximum length for a single embed description
+        MAX_DESC_LENGTH = 4000
 
-        for line in lines:
-            if len(current_chunk) + len(line) + 1 > max_length:
-                await ctx.send(current_chunk)
-                current_chunk = line + '\n'
-            else:
-                current_chunk += line + '\n'
+        # Prepare the full list text
+        full_list_text = "\n".join(list_items)
 
-        if current_chunk:
-            await ctx.send(current_chunk)
+        # If the full list is short enough, send in a single embed
+        if len(full_list_text) <= MAX_DESC_LENGTH:
+            embed = discord.Embed(title=title, description=full_list_text, color=color)
+            return await ctx.send(embed=embed)
+
+        # If the list is too long, split it
+        current_list = []
+        current_length = 0
+        message_count = 0
+
+        for item in list_items:
+            # If adding this item would exceed the max length, send the current list
+            if current_length + len(item) + 1 > MAX_DESC_LENGTH:
+                message_count += 1
+                embed = discord.Embed(
+                    title=f"{title} (Part {message_count})", 
+                    description="\n".join(current_list), 
+                    color=color
+                )
+                await ctx.send(embed=embed)
+                current_list = []
+                current_length = 0
+
+            current_list.append(item)
+            current_length += len(item) + 1
+
+        # Send the last batch of items if any remain
+        if current_list:
+            message_count += 1
+            embed = discord.Embed(
+                title=f"{title} (Part {message_count})", 
+                description="\n".join(current_list), 
+                color=color
+            )
+            await ctx.send(embed=embed)
 
     @commands.command(name='emojisteal')
     async def emoji_steal(self, ctx):
@@ -29,12 +58,13 @@ class EmojiSteal(commands.Cog):
         guilds = self.bot.guilds
         guild_count = len(guilds)
 
-        # Display guild list
-        guild_message = "**Guild List:**\n"
+        # Prepare guild list
+        guild_list_text = []
         for i, guild in enumerate(guilds):
-            guild_message += f"`{i}` - {guild.name}\n"
-
-        await self.send_paginated_message(ctx, guild_message)
+            guild_list_text.append(f"`{i}` - {guild.name}")
+        
+        # Send guild list with special handling for long lists
+        await self.send_long_list(ctx, "**Guild List**", guild_list_text, discord.Color.blue())
 
         # Prompt for source guild
         def check_source(m):
@@ -66,12 +96,18 @@ class EmojiSteal(commands.Cog):
         if not sink_guild.me.guild_permissions.manage_emojis:
             return await ctx.send(f'Error: No permissions to manage emojis in {sink_guild.name}')
 
-        # Display emoji list
-        emoji_message = "**Emoji List:**\n"
+        # Prepare emoji list
+        emoji_list_text = []
         for i, emoji in enumerate(source_guild.emojis):
-            emoji_message += f"`{i}` - {emoji.name} (Animated: {'Yes' if emoji.animated else 'No'})\n"
-
-        await self.send_paginated_message(ctx, emoji_message)
+            emoji_list_text.append(f"`{i}` - {emoji} {emoji.name} (Animated: {'Yes' if emoji.animated else 'No'})")
+        
+        # Send emoji list with special handling for long lists
+        await self.send_long_list(
+            ctx, 
+            f"**Emoji List from {source_guild.name}**", 
+            emoji_list_text, 
+            discord.Color.green()
+        )
 
         # Check emoji slots
         free_slots = sink_guild.emoji_limit - len(sink_guild.emojis)
@@ -80,7 +116,7 @@ class EmojiSteal(commands.Cog):
 
         await ctx.send(f'{sink_guild.name} has {free_slots} free emoji slots. Enter comma-separated SRL_IDs to steal (or "all"):')
         emoji_selection = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author)
-
+        
         # Select emojis to steal
         if emoji_selection.content.lower() == 'all':
             emojis_to_steal = source_guild.emojis
@@ -98,14 +134,14 @@ class EmojiSteal(commands.Cog):
         # Steal emojis
         stolen_emojis = []
         progress_message = await ctx.send(f'Stealing emojis (0/{len(emojis_to_steal)})...')
-
+        
         async with aiohttp.ClientSession() as session:
             for i, emoji in enumerate(emojis_to_steal, 1):
                 try:
                     # Download the emoji image
                     async with session.get(emoji.url) as resp:
                         emoji_image = await resp.read()
-
+                    
                     # Create the emoji
                     stolen_emoji = await sink_guild.create_custom_emoji(name=emoji.name, image=emoji_image, reason='Stolen via EmojiSteal')
                     stolen_emojis.append(stolen_emoji)
@@ -113,7 +149,20 @@ class EmojiSteal(commands.Cog):
                 except discord.HTTPException as e:
                     await ctx.send(f'Failed to steal {emoji.name}: {e}')
 
-        await ctx.send(f'Stolen {len(stolen_emojis)} emojis from {source_guild.name} to {sink_guild.name}')
+        # Create an embed to show stolen emojis
+        stolen_embed = discord.Embed(
+            title="Emoji Steal Complete", 
+            description=f"Stolen {len(stolen_emojis)} emojis from {source_guild.name} to {sink_guild.name}", 
+            color=discord.Color.gold()
+        )
+        
+        # Add stolen emojis to the embed
+        stolen_list = " ".join(str(emoji) for emoji in stolen_emojis)
+        if stolen_list:
+            stolen_embed.add_field(name="Stolen Emojis", value=stolen_list, inline=False)
+
+        await progress_message.delete()
+        await ctx.send(embed=stolen_embed)
 
 async def setup(bot):
     await bot.add_cog(EmojiSteal(bot))
