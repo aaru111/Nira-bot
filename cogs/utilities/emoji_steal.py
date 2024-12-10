@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import aiohttp
-import math
 
 class EmojiSteal(commands.Cog):
     def __init__(self, bot):
@@ -62,7 +61,7 @@ class EmojiSteal(commands.Cog):
         guild_list_text = []
         for i, guild in enumerate(guilds):
             guild_list_text.append(f"`{i}` - {guild.name}")
-        
+
         # Send guild list with special handling for long lists
         await self.send_long_list(ctx, "**Guild List**", guild_list_text, discord.Color.blue())
 
@@ -100,7 +99,7 @@ class EmojiSteal(commands.Cog):
         emoji_list_text = []
         for i, emoji in enumerate(source_guild.emojis):
             emoji_list_text.append(f"`{i}` - {emoji} {emoji.name} (Animated: {'Yes' if emoji.animated else 'No'})")
-        
+
         # Send emoji list with special handling for long lists
         await self.send_long_list(
             ctx, 
@@ -114,16 +113,22 @@ class EmojiSteal(commands.Cog):
         if free_slots == 0:
             return await ctx.send(f'Error: {sink_guild.name} has no free emoji slots!')
 
-        await ctx.send(f'{sink_guild.name} has {free_slots} free emoji slots. Enter comma-separated SRL_IDs to steal (or "all"):')
+        await ctx.send(f'{sink_guild.name} has {free_slots} free emoji slots. Enter emojis to steal (comma-separated indices, range like "5-10", or "all"):')
         emoji_selection = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author)
-        
+
         # Select emojis to steal
         if emoji_selection.content.lower() == 'all':
             emojis_to_steal = source_guild.emojis
         else:
             try:
-                emoji_indices = [int(idx.strip()) for idx in emoji_selection.content.split(',')]
-                emojis_to_steal = [source_guild.emojis[idx] for idx in emoji_indices]
+                # Handle range input like "5-10"
+                if '-' in emoji_selection.content:
+                    start, end = map(int, emoji_selection.content.split('-'))
+                    emojis_to_steal = source_guild.emojis[start:end+1]
+                else:
+                    # Handle comma-separated list
+                    emoji_indices = [int(idx.strip()) for idx in emoji_selection.content.split(',')]
+                    emojis_to_steal = [source_guild.emojis[idx] for idx in emoji_indices]
             except (ValueError, IndexError):
                 return await ctx.send('Invalid emoji selection!')
 
@@ -134,14 +139,14 @@ class EmojiSteal(commands.Cog):
         # Steal emojis
         stolen_emojis = []
         progress_message = await ctx.send(f'Stealing emojis (0/{len(emojis_to_steal)})...')
-        
+
         async with aiohttp.ClientSession() as session:
             for i, emoji in enumerate(emojis_to_steal, 1):
                 try:
                     # Download the emoji image
                     async with session.get(emoji.url) as resp:
                         emoji_image = await resp.read()
-                    
+
                     # Create the emoji
                     stolen_emoji = await sink_guild.create_custom_emoji(name=emoji.name, image=emoji_image, reason='Stolen via EmojiSteal')
                     stolen_emojis.append(stolen_emoji)
@@ -155,7 +160,7 @@ class EmojiSteal(commands.Cog):
             description=f"Stolen {len(stolen_emojis)} emojis from {source_guild.name} to {sink_guild.name}", 
             color=discord.Color.gold()
         )
-        
+
         # Add stolen emojis to the embed
         stolen_list = " ".join(str(emoji) for emoji in stolen_emojis)
         if stolen_list:
