@@ -7,6 +7,8 @@ import typing
 from typing import Optional, List
 from urllib.parse import quote
 from abc import ABC, abstractmethod
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 from .modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from .modules.weathermod import create_weather_embed
@@ -423,6 +425,63 @@ class Utilities(commands.Cog):
     async def say(self, interaction: discord.Interaction, content: str):
         await interaction.response.defer()
         await interaction.followup.send(content)
+
+    @commands.command(name="announce_premium",
+                      help="Announce a new premium user.")
+    async def announce_premium(self, ctx, member: discord.Member):
+        try:
+            # Load the base card template
+            card_template_path = "images/premium.png"
+            card_image = Image.open(card_template_path)
+
+            # Create a draw object to add text
+            draw = ImageDraw.Draw(card_image)
+
+            # Load font
+            font_path = "fonts/font.ttf"
+            username_font = ImageFont.truetype(
+                font_path, size=40)  # Adjust size as needed
+
+            # Define positions for username and profile picture
+            username_position = (200, 300)  # Adjust to fit your template
+            pfp_position = (100, 100)  # Adjust to fit your template
+            pfp_size = (300, 300)  # Resize PFP to fit the template
+
+            # Add username to the card
+            draw.text(username_position,
+                      member.name,
+                      font=username_font,
+                      fill="white")
+
+            # Determine the URL for the profile picture
+            avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
+
+            # Fetch and resize the profile picture
+            async with self.bot.session.get(avatar_url) as response:
+                if response.status != 200:
+                    await ctx.send("Could not fetch user profile picture.")
+                    return
+                pfp_data = BytesIO(await response.read())
+                pfp_image = Image.open(pfp_data).convert("RGBA")
+                pfp_image = pfp_image.resize(pfp_size,
+                                             Image.Resampling.LANCZOS)
+
+            # Paste the profile picture onto the card
+            card_image.paste(pfp_image, pfp_position, pfp_image)
+
+            # Save the result to a BytesIO object
+            final_image = BytesIO()
+            card_image.save(final_image, format="PNG")
+            final_image.seek(0)
+
+            # Send the final image to the Discord channel
+            file = discord.File(final_image,
+                                filename="premium_announcement.png")
+            await ctx.send(
+                f"🎉 Welcome our new Premium user: {member.mention}!",
+                file=file)
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
 
 
 async def setup(bot: commands.Bot) -> None:
