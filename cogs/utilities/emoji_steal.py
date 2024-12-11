@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import aiohttp
+import re
 
 
 class EmojiSteal(commands.Cog):
@@ -52,10 +53,53 @@ class EmojiSteal(commands.Cog):
 
     @app_commands.command(
         name='emojisteal',
-        description="Steal emojis from one server to another")
+        description=
+        "Steal emojis from one server to another or any server by URL")
     @app_commands.checks.has_permissions(administrator=True)
-    async def emoji_steal(self, interaction: discord.Interaction):
+    async def emoji_steal(self,
+                          interaction: discord.Interaction,
+                          emoji: str = None,
+                          new_name: str = None):
         """Slash command for stealing emojis"""
+        if emoji and new_name:
+            # Steal an emoji from any server by URL
+            match = re.search(r"<a?:\w+:(\d+)>", emoji)
+            if not match:
+                return await interaction.response.send_message(
+                    "Invalid emoji format. Please use a valid emoji.",
+                    ephemeral=True)
+
+            emoji_id = match.group(1)
+            emoji_url = f"https://cdn.discordapp.com/emojis/{emoji_id}.png"
+
+            if interaction.guild.emoji_limit <= len(interaction.guild.emojis):
+                return await interaction.response.send_message(
+                    f"Error: {interaction.guild.name} has no free emoji slots!",
+                    ephemeral=True)
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(emoji_url) as resp:
+                    if resp.status != 200:
+                        return await interaction.response.send_message(
+                            f"Failed to fetch emoji from {emoji_url}",
+                            ephemeral=True)
+
+                    emoji_image = await resp.read()
+
+            try:
+                new_emoji = await interaction.guild.create_custom_emoji(
+                    name=new_name,
+                    image=emoji_image,
+                    reason="Stolen via EmojiSteal")
+
+                await interaction.response.send_message(
+                    f"Successfully added emoji: {new_emoji}", ephemeral=True)
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"Failed to add emoji: {e}", ephemeral=True)
+            return
+
+        # Original functionality: Steal emojis between servers
         guilds = self.bot.guilds
         guild_count = len(guilds)
 
