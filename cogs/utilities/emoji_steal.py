@@ -53,6 +53,7 @@ class EmojiSteal(commands.Cog):
     @app_commands.command(
         name='emojisteal',
         description="Steal emojis from one server to another")
+    @app_commands.checks.has_permissions(administrator=True)
     async def emoji_steal(self, interaction: discord.Interaction):
         """Slash command for stealing emojis"""
         guilds = self.bot.guilds
