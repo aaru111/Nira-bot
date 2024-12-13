@@ -804,10 +804,13 @@ class AniListModule:
                           list_data: List[Dict[str, Any]],
                           list_type: str,
                           status: str,
-                          page: int = 1) -> discord.Embed:
+                          page: int = 1,
+                          profile_color: str = None) -> discord.Embed:
+        embed_color = self.get_color(
+            profile_color) if profile_color else 0x02A9FF
         embed = discord.Embed(
             title=f"{list_type.capitalize()} List - {status.capitalize()}",
-            color=0x02A9FF)
+            color=embed_color)
 
         # Pagination logic
         start = (page - 1) * ITEMS_PER_PAGE
@@ -1276,7 +1279,8 @@ class Paginator(discord.ui.View):
                 self.list_data, self.page, self.profile_color)
         else:
             embed = self.cog.anilist_module.create_list_embed(
-                self.list_data, self.list_type, self.status, self.page)
+                self.list_data, self.list_type, self.status, self.page,
+                self.profile_color)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -1339,9 +1343,15 @@ class ListTypeSelect(discord.ui.Select):
                     current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
                     embed = self.cog.anilist_module.create_list_embed(
-                        current_list, list_type, "CURRENT")
-                    view = Paginator(self.cog, current_list, list_type,
-                                     "CURRENT")
+                        current_list,
+                        list_type,
+                        "CURRENT",
+                        profile_color=profile_color)
+                    view = Paginator(self.cog,
+                                     current_list,
+                                     list_type,
+                                     "CURRENT",
+                                     profile_color=profile_color)
                     view.add_item(StatusSelect(self.cog, list_type))
                     view.add_item(BackButton(self.cog))
                 await interaction.response.edit_message(embed=embed, view=view)
@@ -1374,12 +1384,23 @@ class StatusSelect(discord.ui.Select):
         access_token = self.cog.anilist_module.user_tokens.get(user_id)
         if access_token:
             try:
+                stats = await self.cog.anilist_module.fetch_anilist_data(
+                    access_token)
+                profile_color = stats['options']['profileColor']
+
                 list_data = await self.cog.anilist_module.fetch_user_list(
                     access_token, self.list_type, status)
                 embed = self.cog.anilist_module.create_list_embed(
-                    list_data, self.list_type, status)
+                    list_data,
+                    self.list_type,
+                    status,
+                    profile_color=profile_color)
 
-                view = Paginator(self.cog, list_data, self.list_type, status)
+                view = Paginator(self.cog,
+                                 list_data,
+                                 self.list_type,
+                                 status,
+                                 profile_color=profile_color)
                 view.add_item(StatusSelect(self.cog, self.list_type))
                 view.add_item(BackButton(self.cog))
 
