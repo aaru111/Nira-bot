@@ -1205,7 +1205,7 @@ class Paginator(discord.ui.View):
         self.status = status
         self.page = page
         self.update_buttons()
-        if list_type == "favorite_characters" or list_type == "favorite_staff":
+        if list_type == "favorite_characters" or list_type == "favorite_staff" or list_type == "recent":
             self.add_item(BackButton(self.cog))
 
     def update_buttons(self):
