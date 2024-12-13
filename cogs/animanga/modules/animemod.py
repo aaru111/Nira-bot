@@ -520,6 +520,44 @@ class AniListModule:
                 pass
         return '#02A9FF'
 
+    async def fetch_favorite_characters(
+            self, access_token: str) -> List[Dict[str, Any]]:
+        query = '''
+        query {
+          Viewer {
+            favourites {
+              characters {
+                nodes {
+                  id
+                  name {
+                    full
+                  }
+                  image {
+                    large
+                  }
+                }
+              }
+            }
+          }
+        }
+        '''
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={'query': query},
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data['data']['Viewer']['favourites']['characters'][
+                        'nodes']
+                else:
+                    raise Exception(
+                        f"AniList API returned status code {response.status}")
+
     async def fetch_anilist_data(
             self, access_token: str) -> Optional[Dict[str, Any]]:
         query: str = '''
@@ -588,6 +626,27 @@ class AniListModule:
                 else:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
+
+    def create_favorite_characters_embed(self, characters: List[Dict[str,
+                                                                     Any]],
+                                         page: int) -> discord.Embed:
+        embed = discord.Embed(title="Favorite Characters", color=0x02A9FF)
+        if not characters:
+            embed.description = "No favorite characters found."
+            embed.set_footer(text="Page 1/1")
+            return embed
+
+        character = characters[page - 1]
+        name = character['name']['full']
+        image_url = character['image']['large']
+
+        embed.add_field(name=name, value="", inline=False)
+        if image_url:
+            embed.set_image(url=image_url)
+
+        total_pages = len(characters)
+        embed.set_footer(text=f"Page {page}/{total_pages}")
+        return embed
 
     def create_list_embed(self,
                           list_data: List[Dict[str, Any]],
@@ -999,13 +1058,13 @@ class Paginator(discord.ui.View):
         self.list_type = list_type
         self.status = status
         self.page = page
-
         self.update_buttons()
 
     def update_buttons(self):
-        total_pages = len(self.list_data) if self.list_type == "recent" else (
+        total_pages = len(
+            self.list_data
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
             len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
-
         self.first_page_button.disabled = self.page <= 1
         self.prev_page_button.disabled = self.page <= 1
         self.next_page_button.disabled = self.page >= total_pages
@@ -1028,8 +1087,10 @@ class Paginator(discord.ui.View):
     @discord.ui.button(label=">", style=discord.ButtonStyle.success, row=0)
     async def next_page_button(self, interaction: discord.Interaction,
                                button: discord.ui.Button):
-        total_pages = (len(self.list_data) + ITEMS_PER_PAGE -
-                       1) // ITEMS_PER_PAGE
+        total_pages = len(
+            self.list_data
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
+            len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
         self.page = min(self.page + 1, total_pages)
         self.update_buttons()
         await self.update_message(interaction)
@@ -1037,8 +1098,10 @@ class Paginator(discord.ui.View):
     @discord.ui.button(label=">>", style=discord.ButtonStyle.primary, row=0)
     async def last_page_button(self, interaction: discord.Interaction,
                                button: discord.ui.Button):
-        total_pages = (len(self.list_data) + ITEMS_PER_PAGE -
-                       1) // ITEMS_PER_PAGE
+        total_pages = len(
+            self.list_data
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
+            len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
         self.page = total_pages
         self.update_buttons()
         await self.update_message(interaction)
@@ -1052,6 +1115,9 @@ class Paginator(discord.ui.View):
         if self.list_type == "recent":
             embed = self.cog.anilist_module.create_recent_activities_embed(
                 self.list_data, self.page)
+        elif self.list_type == "favorite_characters":
+            embed = self.cog.anilist_module.create_favorite_characters_embed(
+                self.list_data, self.page)
         else:
             embed = self.cog.anilist_module.create_list_embed(
                 self.list_data, self.list_type, self.status, self.page)
@@ -1064,7 +1130,9 @@ class ListTypeSelect(discord.ui.Select):
         options = [
             discord.SelectOption(label="Anime List", value="anime"),
             discord.SelectOption(label="Manga List", value="manga"),
-            discord.SelectOption(label="Recent Activities", value="recent")
+            discord.SelectOption(label="Recent Activities", value="recent"),
+            discord.SelectOption(label="Favorite Characters",
+                                 value="favorite_characters")
         ]
         super().__init__(placeholder="Choose a list type", options=options)
         self.cog = cog
@@ -1081,6 +1149,13 @@ class ListTypeSelect(discord.ui.Select):
                     embed = self.cog.anilist_module.create_recent_activities_embed(
                         activities, 1)
                     view = Paginator(self.cog, activities, list_type, "recent")
+                elif list_type == "favorite_characters":
+                    favorite_characters = await self.cog.anilist_module.fetch_favorite_characters(
+                        access_token)
+                    embed = self.cog.anilist_module.create_favorite_characters_embed(
+                        favorite_characters, 1)
+                    view = Paginator(self.cog, favorite_characters, list_type,
+                                     "favorite_characters")
                 else:
                     current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
@@ -1089,16 +1164,14 @@ class ListTypeSelect(discord.ui.Select):
                     view = Paginator(self.cog, current_list, list_type,
                                      "CURRENT")
                     view.add_item(StatusSelect(self.cog, list_type))
-
-                view.add_item(BackButton(self.cog))
-
+                    view.add_item(BackButton(self.cog))
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
                 await interaction.response.send_message(
                     f"An error occurred: {str(e)}", ephemeral=True)
         else:
             await interaction.response.send_message(
-                "You are not authenticated. Please use the /anilist command to log in.",
+                "You are not authenticated. Please use the /anilist command to login.",
                 ephemeral=True)
 
 
