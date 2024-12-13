@@ -646,6 +646,44 @@ class AniListModule:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
 
+    async def fetch_favorite_staff(self,
+                                   access_token: str) -> List[Dict[str, Any]]:
+        query = '''
+        query {
+          Viewer {
+            favourites {
+              staff {
+                nodes {
+                  id
+                  name {
+                    full
+                  }
+                  image {
+                    large
+                  }
+                }
+              }
+            }
+          }
+        }
+        '''
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={'query': query},
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data['data']['Viewer']['favourites']['staff'][
+                        'nodes']
+                else:
+                    raise Exception(
+                        f"AniList API returned status code {response.status}")
+
     async def fetch_anilist_data(
             self, access_token: str) -> Optional[Dict[str, Any]]:
         query: str = '''
@@ -714,6 +752,26 @@ class AniListModule:
                 else:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
+
+    def create_favorite_staff_embed(self, staff: List[Dict[str, Any]],
+                                    page: int) -> discord.Embed:
+        embed = discord.Embed(title="Favorite Staff", color=0x02A9FF)
+        if not staff:
+            embed.description = "No favorite staff members found."
+            embed.set_footer(text="Page 1/1")
+            return embed
+
+        staff_member = staff[page - 1]
+        name = staff_member['name']['full']
+        image_url = staff_member['image']['large']
+
+        embed.add_field(name=name, value="", inline=False)
+        if image_url:
+            embed.set_image(url=image_url)
+
+        total_pages = len(staff)
+        embed.set_footer(text=f"Page {page}/{total_pages}")
+        return embed
 
     def create_favorite_characters_embed(self, characters: List[Dict[str,
                                                                      Any]],
@@ -1147,13 +1205,13 @@ class Paginator(discord.ui.View):
         self.status = status
         self.page = page
         self.update_buttons()
-        if list_type == "favorite_characters":
+        if list_type == "favorite_characters" or list_type == "favorite_staff":
             self.add_item(BackButton(self.cog))
 
     def update_buttons(self):
         total_pages = len(
             self.list_data
-        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" or self.list_type == "favorite_staff" else (
             len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
         self.first_page_button.disabled = self.page <= 1
         self.prev_page_button.disabled = self.page <= 1
@@ -1179,7 +1237,7 @@ class Paginator(discord.ui.View):
                                button: discord.ui.Button):
         total_pages = len(
             self.list_data
-        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" or self.list_type == "favorite_staff" else (
             len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
         self.page = min(self.page + 1, total_pages)
         self.update_buttons()
@@ -1190,7 +1248,7 @@ class Paginator(discord.ui.View):
                                button: discord.ui.Button):
         total_pages = len(
             self.list_data
-        ) if self.list_type == "recent" or self.list_type == "favorite_characters" else (
+        ) if self.list_type == "recent" or self.list_type == "favorite_characters" or self.list_type == "favorite_staff" else (
             len(self.list_data) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
         self.page = total_pages
         self.update_buttons()
@@ -1208,6 +1266,9 @@ class Paginator(discord.ui.View):
         elif self.list_type == "favorite_characters":
             embed = self.cog.anilist_module.create_favorite_characters_embed(
                 self.list_data, self.page)
+        elif self.list_type == "favorite_staff":
+            embed = self.cog.anilist_module.create_favorite_staff_embed(
+                self.list_data, self.page)
         else:
             embed = self.cog.anilist_module.create_list_embed(
                 self.list_data, self.list_type, self.status, self.page)
@@ -1222,7 +1283,9 @@ class ListTypeSelect(discord.ui.Select):
             discord.SelectOption(label="Manga List", value="manga"),
             discord.SelectOption(label="Recent Activities", value="recent"),
             discord.SelectOption(label="Favorite Characters",
-                                 value="favorite_characters")
+                                 value="favorite_characters"),
+            discord.SelectOption(label="Favorite Staff",
+                                 value="favorite_staff")
         ]
         super().__init__(placeholder="Choose a list type", options=options)
         self.cog = cog
@@ -1246,6 +1309,13 @@ class ListTypeSelect(discord.ui.Select):
                         favorite_characters, 1)
                     view = Paginator(self.cog, favorite_characters, list_type,
                                      "favorite_characters")
+                elif list_type == "favorite_staff":
+                    favorite_staff = await self.cog.anilist_module.fetch_favorite_staff(
+                        access_token)
+                    embed = self.cog.anilist_module.create_favorite_staff_embed(
+                        favorite_staff, 1)
+                    view = Paginator(self.cog, favorite_staff, list_type,
+                                     "favorite_staff")
                 else:
                     current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
