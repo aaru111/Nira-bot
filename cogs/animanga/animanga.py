@@ -24,8 +24,14 @@ class AniManga(commands.Cog):
         media_type = interaction.namespace.media_type
         if not current:
             return []
-        results = await self.anilist_module.autocomplete_search(
-            media_type, current)
+
+        if media_type == 'STAFF':
+            results = await self.anilist_module.autocomplete_staff_search(
+                current)
+        else:
+            results = await self.anilist_module.autocomplete_search(
+                media_type, current)
+
         return [
             app_commands.Choice(name=name, value=id)
             for name, id in results[:25]  # Discord limits to 25 choices
@@ -106,17 +112,20 @@ class AniManga(commands.Cog):
                     ephemeral=True)
 
     @app_commands.command(
-        name="search", description="Search for an anime or manga on AniList")
+        name="search",
+        description="Search for an anime, manga, or staff member on AniList")
     @app_commands.describe(
-        media_type="Choose whether to search for anime or manga",
-        query="The name or ID of the anime or manga to search for")
+        media_type="Choose whether to search for anime, manga, or staff",
+        query=
+        "The name or ID of the anime, manga, or staff member to search for")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True,
                                    dms=True,
                                    private_channels=True)
     @app_commands.choices(media_type=[
         app_commands.Choice(name="Anime", value="ANIME"),
-        app_commands.Choice(name="Manga", value="MANGA")
+        app_commands.Choice(name="Manga", value="MANGA"),
+        app_commands.Choice(name="Staff", value="STAFF")
     ])
     @app_commands.autocomplete(query=autocomplete_media)
     async def search(self, interaction: discord.Interaction, media_type: str,
@@ -124,8 +133,12 @@ class AniManga(commands.Cog):
         await interaction.response.defer()
 
         try:
-            search_result = await self.anilist_module.search_media(
-                media_type, query)
+            if media_type == 'STAFF':
+                search_result = await self.anilist_module.search_staff(query)
+            else:
+                search_result = await self.anilist_module.search_media(
+                    media_type, query)
+
             if not search_result:
                 await interaction.followup.send(
                     f"No {media_type.lower()} found for '{query}'.")
@@ -139,73 +152,109 @@ class AniManga(commands.Cog):
             await interaction.followup.send(
                 f"An error occurred while searching: {str(e)}")
 
-    async def create_search_embed(self, user: discord.User, media):
+    async def create_search_embed(self, user: discord.User, media_or_staff):
         user_id = user.id
         profile_color = await self.anilist_module.get_user_color(user_id)
         embed_color = int(profile_color.lstrip('#'), 16)
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
-        # Modified title to include type and format
-        title = f"{media['title']['romaji']} ({media['type']}) [{media['format']}]"
+        if 'title' in media_or_staff:
+            # Existing code for media (anime/manga)
+            title = f"{media_or_staff['title']['romaji']} ({media_or_staff['type']}) [{media_or_staff['format']}]"
+            embed = discord.Embed(title=title,
+                                  url=media_or_staff.get(
+                                      'siteUrl', 'https://anilist.co'),
+                                  color=embed_color)
+            embed.set_thumbnail(url=media_or_staff['coverImage']['large'])
 
-        embed = discord.Embed(title=title,
-                              url=media.get('siteUrl', 'https://anilist.co'),
-                              color=embed_color)
-        embed.set_thumbnail(url=media['coverImage']['large'])
+            if media_or_staff['bannerImage']:
+                embed.set_image(url=media_or_staff['bannerImage'])
 
-        if media['bannerImage']:
-            embed.set_image(url=media['bannerImage'])
-
-        embed.add_field(name="Status",
-                        value=f"-# {emoji}{media['status']}",
-                        inline=True)
-
-        if media['type'] == 'ANIME':
-            embed.add_field(name="Episodes",
-                            value=f"-# {emoji}{media['episodes'] or 'N/A'}",
+            embed.add_field(name="Status",
+                            value=f"-# {emoji}{media_or_staff['status']}",
                             inline=True)
+
+            if media_or_staff['type'] == 'ANIME':
+                embed.add_field(
+                    name="Episodes",
+                    value=f"-# {emoji}{media_or_staff['episodes'] or 'N/A'}",
+                    inline=True)
+            else:
+                embed.add_field(
+                    name="Chapters",
+                    value=f"-# {emoji}{media_or_staff['chapters'] or 'N/A'}",
+                    inline=True)
+                embed.add_field(
+                    name="Volumes",
+                    value=f"-# {emoji}{media_or_staff['volumes'] or 'N/A'}",
+                    inline=True)
+
+            if media_or_staff['startDate']['year']:
+                start_date = f"{media_or_staff['startDate']['year']}-{media_or_staff['startDate']['month']}-{media_or_staff['startDate']['day']}"
+                embed.add_field(name="Start Date",
+                                value=f"-# {emoji}{start_date}",
+                                inline=True)
+
+            if media_or_staff['averageScore']:
+                score_bar = '█' * int(
+                    media_or_staff['averageScore'] /
+                    10) + '░' * (10 - int(media_or_staff['averageScore'] / 10))
+                embed.add_field(
+                    name="Score",
+                    value=
+                    f"-# {emoji}**{media_or_staff['averageScore']}%**\n-# ╰>{score_bar}",
+                    inline=True)
+
+            if media_or_staff['genres']:
+                genres_links = ", ".join([
+                    f"[{genre}](https://anilist.co/search/anime?genres={genre.replace(' ', '%20')})"
+                    for genre in media_or_staff['genres']
+                ])
+                embed.add_field(name="Genres",
+                                value=f"-# {emoji}{genres_links}",
+                                inline=False)
+
+            if media_or_staff['description']:
+                description = self.anilist_module.clean_anilist_text(
+                    media_or_staff['description'])
+
+                short_desc = description[:200] + "... " if len(
+                    description) > 200 else description
+                desc_with_link = f"{short_desc}[[read more]({media_or_staff['siteUrl']})]"
+                embed.add_field(name="Description",
+                                value=desc_with_link,
+                                inline=False)
         else:
-            embed.add_field(name="Chapters",
-                            value=f"-# {emoji}{media['chapters'] or 'N/A'}",
-                            inline=True)
-            embed.add_field(name="Volumes",
-                            value=f"-# {emoji}{media['volumes'] or 'N/A'}",
-                            inline=True)
+            # New code for staff members
+            title = media_or_staff['name']['full']
+            embed = discord.Embed(title=title,
+                                  url=media_or_staff.get(
+                                      'siteUrl', 'https://anilist.co'),
+                                  color=embed_color)
+            embed.set_thumbnail(url=media_or_staff['image']['large'])
 
-        if media['startDate']['year']:
-            start_date = f"{media['startDate']['year']}-{media['startDate']['month']}-{media['startDate']['day']}"
-            embed.add_field(name="Start Date",
-                            value=f"-# {emoji}{start_date}",
-                            inline=True)
+            if media_or_staff['language']:
+                embed.add_field(
+                    name="Language",
+                    value=f"-# {emoji}{media_or_staff['language']}",
+                    inline=True)
 
-        if media['averageScore']:
-            score_bar = '█' * int(media['averageScore'] / 10) + '░' * (
-                10 - int(media['averageScore'] / 10))
-            embed.add_field(
-                name="Score",
-                value=
-                f"-# {emoji}**{media['averageScore']}%**\n-# ╰>{score_bar}",
-                inline=True)
+            if media_or_staff['primaryOccupations']:
+                occupations = ", ".join(media_or_staff['primaryOccupations'])
+                embed.add_field(name="Primary Occupations",
+                                value=f"-# {emoji}{occupations}",
+                                inline=True)
 
-        if media['genres']:
-            genres_links = ", ".join([
-                f"[{genre}](https://anilist.co/search/anime?genres={genre.replace(' ', '%20')})"
-                for genre in media['genres']
-            ])
-            embed.add_field(name="Genres",
-                            value=f"-# {emoji}{genres_links}",
-                            inline=False)
+            if media_or_staff['description']:
+                description = self.anilist_module.clean_anilist_text(
+                    media_or_staff['description'])
 
-        if media['description']:
-            description = self.anilist_module.clean_anilist_text(
-                media['description'])
-
-            short_desc = description[:200] + "... " if len(
-                description) > 200 else description
-            desc_with_link = f"{short_desc}[[read more]({media['siteUrl']})]"
-            embed.add_field(name="Description",
-                            value=desc_with_link,
-                            inline=False)
+                short_desc = description[:200] + "... " if len(
+                    description) > 200 else description
+                desc_with_link = f"{short_desc}[[read more]({media_or_staff['siteUrl']})]"
+                embed.add_field(name="Description",
+                                value=desc_with_link,
+                                inline=False)
 
         return embed
 

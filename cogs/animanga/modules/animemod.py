@@ -558,6 +558,94 @@ class AniListModule:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
 
+    async def autocomplete_staff_search(self, query: str):
+        graphql_query = '''
+        query ($search: String) {
+            Page(page: 1, perPage: 25) {
+                staff(search: $search) {
+                    id
+                    name {
+                        full
+                    }
+                }
+            }
+        }
+        '''
+
+        variables = {"search": query}
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': graphql_query,
+                                        'variables': variables
+                                    },
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if 'errors' in data:
+                        return []
+                    staff_list = data['data']['Page']['staff']
+                    return [(f"{s['name']['full']}", str(s['id']))
+                            for s in staff_list]
+                else:
+                    return []
+
+    async def search_staff(self, query: str):
+        graphql_query = '''
+        query ($id: Int, $search: String) {
+            Staff(id: $id, search: $search) {
+                id
+                name {
+                    full
+                }
+                language
+                image {
+                    large
+                }
+                description
+                primaryOccupations
+                siteUrl
+            }
+        }
+        '''
+
+        variables = {}
+
+        # Check if the query is a number (ID) or a string (search term)
+        if query.isdigit():
+            variables["id"] = int(query)
+        else:
+            variables["search"] = query
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        async with ClientSession() as session:
+            async with session.post(self.anilist_api_url,
+                                    json={
+                                        'query': graphql_query,
+                                        'variables': variables
+                                    },
+                                    headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if 'errors' in data:
+                        raise Exception(
+                            f"AniList API Error: {data['errors'][0]['message']}"
+                        )
+                    return data['data']['Staff']
+                else:
+                    raise Exception(
+                        f"AniList API returned status code {response.status}")
+
     async def fetch_anilist_data(
             self, access_token: str) -> Optional[Dict[str, Any]]:
         query: str = '''
