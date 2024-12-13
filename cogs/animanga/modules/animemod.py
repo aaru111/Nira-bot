@@ -1557,8 +1557,11 @@ class SearchView(discord.ui.View):
             if edge['relationType'] == 'SEQUEL'
         ]
 
-        self.prequel_button.disabled = len(self.prequels) == 0
-        self.sequel_button.disabled = len(self.sequels) == 0
+        if 'title' in self.media:  # Check if it's a media (anime/manga)
+            self.prequel_button.disabled = len(self.prequels) == 0
+            self.sequel_button.disabled = len(self.sequels) == 0
+        else:  # It's a staff member
+            self.clear_items()  # Remove all buttons
 
     @discord.ui.button(label="Prequel", style=discord.ButtonStyle.primary)
     async def prequel_button(self, interaction: discord.Interaction,
