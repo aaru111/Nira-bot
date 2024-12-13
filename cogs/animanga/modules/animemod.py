@@ -189,8 +189,10 @@ class AniListModule:
                     raise Exception(error_message)
 
     def create_recent_activities_embed(self, activities: List[Dict[str, Any]],
-                                       page: int) -> discord.Embed:
-        embed = discord.Embed(title="Recent Activity", color=0x02A9FF)
+                                       page: int,
+                                       profile_color: str) -> discord.Embed:
+        embed_color = self.get_color(profile_color)
+        embed = discord.Embed(title="Recent Activity", color=embed_color)
 
         if not activities:
             embed.description = "No recent activities found."
@@ -753,9 +755,11 @@ class AniListModule:
                     raise Exception(
                         f"AniList API returned status code {response.status}")
 
-    def create_favorite_staff_embed(self, staff: List[Dict[str, Any]],
-                                    page: int) -> discord.Embed:
-        embed = discord.Embed(title="Favorite Staff", color=0x02A9FF)
+    def create_favorite_staff_embed(self, staff: List[Dict[str,
+                                                           Any]], page: int,
+                                    profile_color: str) -> discord.Embed:
+        embed_color = self.get_color(profile_color)
+        embed = discord.Embed(title="Favorite Staff", color=embed_color)
         if not staff:
             embed.description = "No favorite staff members found."
             embed.set_footer(text="Page 1/1")
@@ -775,8 +779,10 @@ class AniListModule:
 
     def create_favorite_characters_embed(self, characters: List[Dict[str,
                                                                      Any]],
-                                         page: int) -> discord.Embed:
-        embed = discord.Embed(title="Favorite Characters", color=0x02A9FF)
+                                         page: int,
+                                         profile_color: str) -> discord.Embed:
+        embed_color = self.get_color(profile_color)
+        embed = discord.Embed(title="Favorite Characters", color=embed_color)
         if not characters:
             embed.description = "No favorite characters found."
             embed.set_footer(text="Page 1/1")
@@ -1065,22 +1071,19 @@ class AniListModule:
 
         return discord.File(buf, filename="comparison_graph.png")
 
-    def get_color(self, profile_color: str) -> str:
+    def get_color(self, profile_color: str) -> int:
         color_map = {
-            'blue': '#3DB4F2',
-            'purple': '#C063FF',
-            'pink': '#FC9DD6',
-            'orange': '#FC9344',
-            'red': '#E13333',
-            'green': '#4CCA51',
-            'gray': '#677B94'
+            'blue': 0x3DB4F2,
+            'purple': 0xC063FF,
+            'pink': 0xFC9DD6,
+            'orange': 0xFC9344,
+            'red': 0xE13333,
+            'green': 0x4CCA51,
+            'gray': 0x677B94
         }
-        if profile_color:
-            if profile_color.startswith('#'):
-                return profile_color
-            else:
-                return color_map.get(profile_color.lower(), '#02A9FF')
-        return '#02A9FF'
+        if profile_color.startswith('#'):
+            return int(profile_color.lstrip('#'), 16)
+        return color_map.get(profile_color.lower(), 0x02A9FF)
 
     def create_stats_embed(self, stats: Dict[str, Any]) -> discord.Embed:
         profile_color = stats['options']['profileColor']
@@ -1197,13 +1200,15 @@ class Paginator(discord.ui.View):
                  list_data: List[Dict[str, Any]],
                  list_type: str,
                  status: str,
-                 page: int = 1):
+                 page: int = 1,
+                 profile_color: str = None):
         super().__init__()
         self.cog = cog
         self.list_data = list_data
         self.list_type = list_type
         self.status = status
         self.page = page
+        self.profile_color = profile_color
         self.update_buttons()
         if list_type == "favorite_characters" or list_type == "favorite_staff" or list_type == "recent":
             self.add_item(BackButton(self.cog))
@@ -1262,13 +1267,13 @@ class Paginator(discord.ui.View):
     async def update_message(self, interaction: discord.Interaction):
         if self.list_type == "recent":
             embed = self.cog.anilist_module.create_recent_activities_embed(
-                self.list_data, self.page)
+                self.list_data, self.page, self.profile_color)
         elif self.list_type == "favorite_characters":
             embed = self.cog.anilist_module.create_favorite_characters_embed(
-                self.list_data, self.page)
+                self.list_data, self.page, self.profile_color)
         elif self.list_type == "favorite_staff":
             embed = self.cog.anilist_module.create_favorite_staff_embed(
-                self.list_data, self.page)
+                self.list_data, self.page, self.profile_color)
         else:
             embed = self.cog.anilist_module.create_list_embed(
                 self.list_data, self.list_type, self.status, self.page)
@@ -1296,26 +1301,40 @@ class ListTypeSelect(discord.ui.Select):
         access_token = self.cog.anilist_module.user_tokens.get(user_id)
         if access_token:
             try:
+                stats = await self.cog.anilist_module.fetch_anilist_data(
+                    access_token)
+                profile_color = stats['options']['profileColor']
+
                 if list_type == "recent":
                     activities = await self.cog.anilist_module.fetch_recent_activities(
                         access_token)
                     embed = self.cog.anilist_module.create_recent_activities_embed(
-                        activities, 1)
-                    view = Paginator(self.cog, activities, list_type, "recent")
+                        activities, 1, profile_color)
+                    view = Paginator(self.cog,
+                                     activities,
+                                     list_type,
+                                     "recent",
+                                     profile_color=profile_color)
                 elif list_type == "favorite_characters":
                     favorite_characters = await self.cog.anilist_module.fetch_favorite_characters(
                         access_token)
                     embed = self.cog.anilist_module.create_favorite_characters_embed(
-                        favorite_characters, 1)
-                    view = Paginator(self.cog, favorite_characters, list_type,
-                                     "favorite_characters")
+                        favorite_characters, 1, profile_color)
+                    view = Paginator(self.cog,
+                                     favorite_characters,
+                                     list_type,
+                                     "favorite_characters",
+                                     profile_color=profile_color)
                 elif list_type == "favorite_staff":
                     favorite_staff = await self.cog.anilist_module.fetch_favorite_staff(
                         access_token)
                     embed = self.cog.anilist_module.create_favorite_staff_embed(
-                        favorite_staff, 1)
-                    view = Paginator(self.cog, favorite_staff, list_type,
-                                     "favorite_staff")
+                        favorite_staff, 1, profile_color)
+                    view = Paginator(self.cog,
+                                     favorite_staff,
+                                     list_type,
+                                     "favorite_staff",
+                                     profile_color=profile_color)
                 else:
                     current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
