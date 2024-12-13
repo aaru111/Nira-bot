@@ -1059,6 +1059,8 @@ class Paginator(discord.ui.View):
         self.status = status
         self.page = page
         self.update_buttons()
+        if list_type == "favorite_characters":
+            self.add_item(BackButton(self.cog))
 
     def update_buttons(self):
         total_pages = len(
