@@ -52,6 +52,8 @@ class AniManga(commands.Cog):
                       interaction: discord.Interaction,
                       user: discord.User = None,
                       anilist_username: str = None) -> None:
+        await interaction.response.defer()
+
         if user:
             # Look up AniList for mentioned Discord user
             user_id: int = user.id
@@ -60,13 +62,13 @@ class AniManga(commands.Cog):
                     stats = await self.anilist_module.fetch_anilist_data(
                         self.anilist_module.user_tokens[user_id])
                     embed = self.anilist_module.create_stats_embed(stats)
-                    await interaction.response.send_message(embed=embed)
+                    await interaction.followup.send(embed=embed)
                 except Exception as e:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"An error occurred while fetching data for {user.name}: {str(e)}",
                         ephemeral=True)
             else:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"{user.name} hasn't linked their AniList account yet.",
                     ephemeral=True)
         elif anilist_username:
@@ -76,13 +78,13 @@ class AniManga(commands.Cog):
                     anilist_username)
                 if stats:
                     embed = self.anilist_module.create_stats_embed(stats)
-                    await interaction.response.send_message(embed=embed)
+                    await interaction.followup.send(embed=embed)
                 else:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"No AniList user found with the username {anilist_username}.",
                         ephemeral=True)
             except Exception as e:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"An error occurred while fetching data for {anilist_username}: {str(e)}",
                     ephemeral=True)
         else:
@@ -97,19 +99,18 @@ class AniManga(commands.Cog):
                     view.add_item(ListTypeSelect(self))
                     view.add_item(LogoutView(self.anilist_module).children[0])
                     view.add_item(CompareButton(self.anilist_module))
-                    await interaction.response.send_message(embed=embed,
-                                                            view=view)
+                    await interaction.followup.send(embed=embed, view=view)
                 except Exception as e:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"An error occurred: {str(e)}. Please try reconnecting.",
                         ephemeral=True)
                     await self.anilist_module.remove_token(user_id)
                     del self.anilist_module.user_tokens[user_id]
             else:
-                await interaction.response.send_message(
-                    "AniList Integration",
-                    view=AniListView(self.anilist_module),
-                    ephemeral=True)
+                await interaction.followup.send("AniList Integration",
+                                                view=AniListView(
+                                                    self.anilist_module),
+                                                ephemeral=True)
 
     @app_commands.command(
         name="search",
