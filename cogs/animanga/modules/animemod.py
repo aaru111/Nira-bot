@@ -1204,7 +1204,8 @@ class Paginator(discord.ui.View):
                  list_type: str,
                  status: str,
                  page: int = 1,
-                 profile_color: str = None):
+                 profile_color: str = None,
+                 user_id: int = None):
         super().__init__()
         self.cog = cog
         self.list_data = list_data
@@ -1212,9 +1213,19 @@ class Paginator(discord.ui.View):
         self.status = status
         self.page = page
         self.profile_color = profile_color
+        self.user_id = user_id
         self.update_buttons()
         if list_type == "favorite_characters" or list_type == "favorite_staff" or list_type == "recent":
             self.add_item(BackButton(self.cog))
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this paginator. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     def update_buttons(self):
         total_pages = len(
@@ -1318,7 +1329,8 @@ class ListTypeSelect(discord.ui.Select):
                                      activities,
                                      list_type,
                                      "recent",
-                                     profile_color=profile_color)
+                                     profile_color=profile_color,
+                                     user_id=user_id)
                 elif list_type == "favorite_characters":
                     favorite_characters = await self.cog.anilist_module.fetch_favorite_characters(
                         access_token)
@@ -1328,7 +1340,8 @@ class ListTypeSelect(discord.ui.Select):
                                      favorite_characters,
                                      list_type,
                                      "favorite_characters",
-                                     profile_color=profile_color)
+                                     profile_color=profile_color,
+                                     user_id=user_id)
                 elif list_type == "favorite_staff":
                     favorite_staff = await self.cog.anilist_module.fetch_favorite_staff(
                         access_token)
@@ -1338,7 +1351,8 @@ class ListTypeSelect(discord.ui.Select):
                                      favorite_staff,
                                      list_type,
                                      "favorite_staff",
-                                     profile_color=profile_color)
+                                     profile_color=profile_color,
+                                     user_id=user_id)
                 else:
                     current_list = await self.cog.anilist_module.fetch_user_list(
                         access_token, list_type, "CURRENT")
@@ -1351,7 +1365,8 @@ class ListTypeSelect(discord.ui.Select):
                                      current_list,
                                      list_type,
                                      "CURRENT",
-                                     profile_color=profile_color)
+                                     profile_color=profile_color,
+                                     user_id=user_id)
                     view.add_item(StatusSelect(self.cog, list_type))
                     view.add_item(BackButton(self.cog))
                 await interaction.response.edit_message(embed=embed, view=view)
@@ -1400,7 +1415,8 @@ class StatusSelect(discord.ui.Select):
                                  list_data,
                                  self.list_type,
                                  status,
-                                 profile_color=profile_color)
+                                 profile_color=profile_color,
+                                 user_id=user_id)
                 view.add_item(StatusSelect(self.cog, self.list_type))
                 view.add_item(BackButton(self.cog))
 
