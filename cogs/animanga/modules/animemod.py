@@ -1519,14 +1519,17 @@ class AniListView(discord.ui.View):
                        style=discord.ButtonStyle.green)
     async def enter_auth_code(self, interaction: discord.Interaction,
                               button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(AniListAuthModal(self.module))
+        await interaction.response.send_modal(
+            AniListAuthModal(self.module, interaction.message))
 
 
 class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
 
-    def __init__(self, module: AniListModule) -> None:
+    def __init__(self, module: AniListModule,
+                 message: discord.Message) -> None:
         super().__init__()
         self.module: AniListModule = module
+        self.message = message
 
     auth_code: discord.ui.TextInput = discord.ui.TextInput(
         label='Enter your AniList authorization code',
@@ -1562,8 +1565,10 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
             view.add_item(ListTypeSelect(self.module, user_id))
             view.add_item(CompareButton(self.module, user_id))
             view.add_item(LogoutView(self.module, user_id).children[0])
-            message = await interaction.followup.send(embed=embed, view=view)
-            view.message = message
+            await interaction.followup.send(embed=embed, view=view)
+
+            # Delete the original "AniList Integration" message
+            await self.message.delete()
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}",
                                             ephemeral=True)
