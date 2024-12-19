@@ -1216,7 +1216,7 @@ class Paginator(discord.ui.View):
         self.user_id = user_id
         self.update_buttons()
         if list_type == "favorite_characters" or list_type == "favorite_staff" or list_type == "recent":
-            self.add_item(BackButton(self.cog))
+            self.add_item(BackButton(self.cog, user_id))
 
     async def interaction_check(self,
                                 interaction: discord.Interaction) -> bool:
@@ -1297,7 +1297,7 @@ class Paginator(discord.ui.View):
 
 class ListTypeSelect(discord.ui.Select):
 
-    def __init__(self, cog: commands.Cog) -> None:
+    def __init__(self, cog: commands.Cog, user_id: int) -> None:
         options = [
             discord.SelectOption(label="Anime List", value="anime"),
             discord.SelectOption(label="Manga List", value="manga"),
@@ -1309,6 +1309,16 @@ class ListTypeSelect(discord.ui.Select):
         ]
         super().__init__(placeholder="Choose a list type", options=options)
         self.cog = cog
+        self.user_id = user_id
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this selector. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     async def callback(self, interaction: discord.Interaction) -> None:
         list_type: str = self.values[0]
@@ -1367,8 +1377,8 @@ class ListTypeSelect(discord.ui.Select):
                                      "CURRENT",
                                      profile_color=profile_color,
                                      user_id=user_id)
-                    view.add_item(StatusSelect(self.cog, list_type))
-                    view.add_item(BackButton(self.cog))
+                    view.add_item(StatusSelect(self.cog, list_type, user_id))
+                    view.add_item(BackButton(self.cog, user_id))
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
                 await interaction.response.send_message(
@@ -1381,7 +1391,8 @@ class ListTypeSelect(discord.ui.Select):
 
 class StatusSelect(discord.ui.Select):
 
-    def __init__(self, cog: commands.Cog, list_type: str) -> None:
+    def __init__(self, cog: commands.Cog, list_type: str,
+                 user_id: int) -> None:
         options = [
             discord.SelectOption(label="Current", value="CURRENT"),
             discord.SelectOption(label="Completed", value="COMPLETED"),
@@ -1392,6 +1403,16 @@ class StatusSelect(discord.ui.Select):
         super().__init__(placeholder="Choose a status", options=options)
         self.cog = cog
         self.list_type = list_type
+        self.user_id = user_id
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this selector. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     async def callback(self, interaction: discord.Interaction) -> None:
         status: str = self.values[0]
@@ -1417,8 +1438,8 @@ class StatusSelect(discord.ui.Select):
                                  status,
                                  profile_color=profile_color,
                                  user_id=user_id)
-                view.add_item(StatusSelect(self.cog, self.list_type))
-                view.add_item(BackButton(self.cog))
+                view.add_item(StatusSelect(self.cog, self.list_type, user_id))
+                view.add_item(BackButton(self.cog, user_id))
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
@@ -1432,9 +1453,19 @@ class StatusSelect(discord.ui.Select):
 
 class BackButton(discord.ui.Button):
 
-    def __init__(self, cog: commands.Cog) -> None:
+    def __init__(self, cog: commands.Cog, user_id: int) -> None:
         super().__init__(label="Back", style=discord.ButtonStyle.secondary)
         self.cog = cog
+        self.user_id = user_id
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this button. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     async def callback(self, interaction: discord.Interaction) -> None:
         user_id: int = interaction.user.id
@@ -1446,9 +1477,10 @@ class BackButton(discord.ui.Button):
                 embed = self.cog.anilist_module.create_stats_embed(stats)
 
                 view = discord.ui.View()
-                view.add_item(ListTypeSelect(self.cog))
-                view.add_item(CompareButton(self.cog.anilist_module))
-                view.add_item(LogoutView(self.cog.anilist_module).children[0])
+                view.add_item(ListTypeSelect(self.cog, user_id))
+                view.add_item(CompareButton(self.cog.anilist_module, user_id))
+                view.add_item(
+                    LogoutView(self.cog.anilist_module, user_id).children[0])
 
                 await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:
@@ -1527,9 +1559,9 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
 
             embed: discord.Embed = self.module.create_stats_embed(stats)
             view = discord.ui.View()
-            view.add_item(ListTypeSelect(self.module))  # Change this line
-            view.add_item(CompareButton(self.module))
-            view.add_item(LogoutView(self.module).children[0])
+            view.add_item(ListTypeSelect(self.module, user_id))
+            view.add_item(CompareButton(self.module, user_id))
+            view.add_item(LogoutView(self.module, user_id).children[0])
             message = await interaction.followup.send(embed=embed, view=view)
             view.message = message
         except Exception as e:
@@ -1539,19 +1571,31 @@ class AniListAuthModal(discord.ui.Modal, title='Enter AniList Auth Code'):
 
 class CompareButton(discord.ui.Button):
 
-    def __init__(self, module: AniListModule):
+    def __init__(self, module: AniListModule, user_id: int):
         super().__init__(label="Compare", style=discord.ButtonStyle.primary)
         self.module = module
+        self.user_id = user_id
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this button. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CompareModal(self.module))
+        await interaction.response.send_modal(
+            CompareModal(self.module, self.user_id))
 
 
 class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
 
-    def __init__(self, module: AniListModule):
+    def __init__(self, module: AniListModule, user_id: int):
         super().__init__()
         self.module = module
+        self.user_id = user_id
 
     compare_input = discord.ui.TextInput(
         label='Enter AniList username or Discord user ID',
@@ -1565,8 +1609,7 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
         loading_message = await interaction.followup.send(
             "Loading profiles... Please wait.", ephemeral=True)
 
-        user_id = interaction.user.id
-        if user_id not in self.module.user_tokens:
+        if self.user_id not in self.module.user_tokens:
             await loading_message.edit(
                 content="You need to connect your AniList account first.")
             return
@@ -1580,7 +1623,7 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
             # Fetch both user's stats concurrently
             current_user_task = asyncio.create_task(
                 self.module.fetch_anilist_data(
-                    self.module.user_tokens[user_id]))
+                    self.module.user_tokens[self.user_id]))
 
             if compare_value.isdigit():
                 # It's a Discord user ID
@@ -1637,10 +1680,20 @@ class CompareModal(discord.ui.Modal, title='Compare AniList Profiles'):
 
 class LogoutView(discord.ui.View):
 
-    def __init__(self, module: AniListModule) -> None:
+    def __init__(self, module: AniListModule, user_id: int) -> None:
         super().__init__(timeout=LOGOUT_BUTTON_TIMEOUT)
         self.module: AniListModule = module
+        self.user_id = user_id
         self.message: Optional[discord.Message] = None
+
+    async def interaction_check(self,
+                                interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "You cannot use this button. It belongs to another user.",
+                ephemeral=True)
+            return False
+        return True
 
     @discord.ui.button(label="Logout", style=discord.ButtonStyle.danger)
     async def logout(self, interaction: discord.Interaction,

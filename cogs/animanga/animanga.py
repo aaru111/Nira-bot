@@ -96,9 +96,10 @@ class AniManga(commands.Cog):
                         self.anilist_module.user_tokens[user_id])
                     embed = self.anilist_module.create_stats_embed(stats)
                     view = discord.ui.View()
-                    view.add_item(ListTypeSelect(self))
-                    view.add_item(LogoutView(self.anilist_module).children[0])
-                    view.add_item(CompareButton(self.anilist_module))
+                    view.add_item(ListTypeSelect(self, user_id))
+                    view.add_item(
+                        LogoutView(self.anilist_module, user_id).children[0])
+                    view.add_item(CompareButton(self.anilist_module, user_id))
                     await interaction.followup.send(embed=embed, view=view)
                 except Exception as e:
                     await interaction.followup.send(
