@@ -1299,14 +1299,23 @@ class ListTypeSelect(discord.ui.Select):
 
     def __init__(self, cog: commands.Cog, user_id: int) -> None:
         options = [
-            discord.SelectOption(label="Anime List", value="anime"),
-            discord.SelectOption(label="Manga List", value="manga"),
-            discord.SelectOption(label="Recent Activities", value="recent"),
+            discord.SelectOption(label="Anime List",
+                                 value="anime",
+                                 emoji="<a:red_Dot:1289188735925358592>"),
+            discord.SelectOption(label="Manga List",
+                                 value="manga",
+                                 emoji="<a:dot_orange:1289188753277059083>"),
+            discord.SelectOption(label="Recent Activities",
+                                 value="recent",
+                                 emoji="<a:Green_Dot:1289188719290744914>"),
             discord.SelectOption(label="Favorite Characters",
-                                 value="favorite_characters"),
+                                 value="favorite_characters",
+                                 emoji="<a:dot_pink:1289188743458062420>"),
             discord.SelectOption(label="Favorite Staff",
-                                 value="favorite_staff")
+                                 value="favorite_staff",
+                                 emoji="<a:purple_Dot:1289181871087030273>")
         ]
+
         super().__init__(placeholder="Choose a list type", options=options)
         self.cog = cog
         self.user_id = user_id
@@ -1394,11 +1403,21 @@ class StatusSelect(discord.ui.Select):
     def __init__(self, cog: commands.Cog, list_type: str,
                  user_id: int) -> None:
         options = [
-            discord.SelectOption(label="Current", value="CURRENT"),
-            discord.SelectOption(label="Completed", value="COMPLETED"),
-            discord.SelectOption(label="Planning", value="PLANNING"),
-            discord.SelectOption(label="Dropped", value="DROPPED"),
-            discord.SelectOption(label="Paused", value="PAUSED")
+            discord.SelectOption(label="Current",
+                                 value="CURRENT",
+                                 emoji="<a:Green_Dot:1289188719290744914>"),
+            discord.SelectOption(label="Completed",
+                                 value="COMPLETED",
+                                 emoji="<a:Blue_Dot:1289188787691458613>"),
+            discord.SelectOption(label="Planning",
+                                 value="PLANNING",
+                                 emoji="<a:purple_Dot:1289181871087030273>"),
+            discord.SelectOption(label="Dropped",
+                                 value="DROPPED",
+                                 emoji="<a:dot_red:1289188735925358592>"),
+            discord.SelectOption(label="Paused",
+                                 value="PAUSED",
+                                 emoji="<a:dot_orange:1289188753277059083>")
         ]
         super().__init__(placeholder="Choose a status", options=options)
         self.cog = cog
