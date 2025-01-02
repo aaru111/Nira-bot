@@ -260,16 +260,20 @@ class AniListModule:
                 favourites {
                     anime {
                         nodes {
+                            id
                             title {
                                 romaji
                             }
+                            siteUrl
                         }
                     }
                     manga {
                         nodes {
+                            id
                             title {
                                 romaji
                             }
+                            siteUrl
                         }
                     }
                 }
