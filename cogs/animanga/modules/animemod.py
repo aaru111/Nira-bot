@@ -435,9 +435,12 @@ class AniListModule:
                 else:
                     return []
 
-    async def search_media(self, media_type: str, query: str):
+    async def search_media(self,
+                           media_type: str,
+                           query: str,
+                           user_token: Optional[str] = None):
         graphql_query = '''
-        query ($id: Int, $search: String, $type: MediaType) {
+        query ($id: Int, $search: String, $type: MediaType, $hasToken: Boolean!) {
             Media(id: $id, search: $search, type: $type) {
                 id
                 title {
@@ -481,40 +484,73 @@ class AniListModule:
                         }
                     }
                 }
+                mediaListEntry @include(if: $hasToken) {
+                    status
+                    progress
+                    score(format: POINT_10)
+                    startedAt {
+                        year
+                        month
+                        day
+                    }
+                    completedAt {
+                        year
+                        month
+                        day
+                    }
+                }
             }
         }
         '''
 
-        variables = {"type": media_type.upper()}
+        variables = {"type": media_type.upper(), "hasToken": bool(user_token)}
 
-        # Check if the query is a number (ID) or a string (search term)
-        if query.isdigit():
+        if str(query).isdigit():
             variables["id"] = int(query)
+            variables["search"] = None
         else:
-            variables["search"] = query
+            variables["id"] = None
+            variables["search"] = str(query)
 
         headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }
 
-        async with ClientSession() as session:
-            async with session.post(self.anilist_api_url,
-                                    json={
-                                        'query': graphql_query,
-                                        'variables': variables
-                                    },
-                                    headers=headers) as response:
-                if response.status == 200:
+        if user_token:
+            headers['Authorization'] = f'Bearer {user_token}'
+
+        try:
+            async with ClientSession() as session:
+                async with session.post(self.anilist_api_url,
+                                        json={
+                                            'query': graphql_query,
+                                            'variables': variables
+                                        },
+                                        headers=headers) as response:
+                    if response.status == 400:
+                        error_data = await response.json()
+                        print(f"AniList API Error Response: {error_data}")
+                        raise Exception(
+                            f"AniList API Error: {error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']}"
+                        )
+
+                    if response.status != 200:
+                        raise Exception(
+                            f"AniList API returned status code {response.status}"
+                        )
+
                     data = await response.json()
                     if 'errors' in data:
                         raise Exception(
                             f"AniList API Error: {data['errors'][0]['message']}"
                         )
+
                     return data['data']['Media']
-                else:
-                    raise Exception(
-                        f"AniList API returned status code {response.status}")
+
+        except Exception as e:
+            print(f"Error in search_media: {str(e)}")
+            raise
 
     async def get_user_color(self, user_id: int) -> str:
         if user_id in self.user_tokens:
@@ -602,9 +638,9 @@ class AniListModule:
                 else:
                     return []
 
-    async def search_staff(self, query: str):
+    async def search_staff(self, query: str, user_token: Optional[str] = None):
         graphql_query = '''
-        query ($id: Int, $search: String) {
+        query ($id: Int, $search: String, $hasToken: Boolean!) {
             Staff(id: $id, search: $search) {
                 id
                 name {
@@ -617,40 +653,58 @@ class AniListModule:
                 description
                 primaryOccupations
                 siteUrl
+                isFavourite @include(if: $hasToken)
             }
         }
         '''
 
-        variables = {}
+        variables = {"hasToken": bool(user_token)}
 
-        # Check if the query is a number (ID) or a string (search term)
-        if query.isdigit():
+        if str(query).isdigit():
             variables["id"] = int(query)
+            variables["search"] = None
         else:
-            variables["search"] = query
+            variables["id"] = None
+            variables["search"] = str(query)
 
         headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }
 
-        async with ClientSession() as session:
-            async with session.post(self.anilist_api_url,
-                                    json={
-                                        'query': graphql_query,
-                                        'variables': variables
-                                    },
-                                    headers=headers) as response:
-                if response.status == 200:
+        if user_token:
+            headers['Authorization'] = f'Bearer {user_token}'
+
+        try:
+            async with ClientSession() as session:
+                async with session.post(self.anilist_api_url,
+                                        json={
+                                            'query': graphql_query,
+                                            'variables': variables
+                                        },
+                                        headers=headers) as response:
+                    if response.status == 400:
+                        error_data = await response.json()
+                        print(f"AniList API Error Response: {error_data}")
+                        raise Exception(
+                            f"AniList API Error: {error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']}"
+                        )
+
+                    if response.status != 200:
+                        raise Exception(
+                            f"AniList API returned status code {response.status}"
+                        )
+
                     data = await response.json()
                     if 'errors' in data:
                         raise Exception(
                             f"AniList API Error: {data['errors'][0]['message']}"
                         )
+
                     return data['data']['Staff']
-                else:
-                    raise Exception(
-                        f"AniList API returned status code {response.status}")
+        except Exception as e:
+            print(f"Error in search_staff: {str(e)}")
+            raise
 
     async def fetch_favorite_staff(self,
                                    access_token: str) -> List[Dict[str, Any]]:
@@ -1768,11 +1822,11 @@ class SearchView(discord.ui.View):
             if edge['relationType'] == 'SEQUEL'
         ]
 
-        if 'title' in self.media:  # Check if it's a media (anime/manga)
+        if 'title' in self.media:
             self.prequel_button.disabled = len(self.prequels) == 0
             self.sequel_button.disabled = len(self.sequels) == 0
-        else:  # It's a staff member
-            self.clear_items()  # Remove all buttons
+        else:
+            self.clear_items()
 
     @discord.ui.button(label="Prequel", style=discord.ButtonStyle.primary)
     async def prequel_button(self, interaction: discord.Interaction,
@@ -1788,11 +1842,20 @@ class SearchView(discord.ui.View):
 
     async def show_related(self, interaction: discord.Interaction,
                            related_media):
-        full_media = await self.module.search_media(related_media['type'],
-                                                    str(related_media['id']))
 
-        embed = await self.cog.create_search_embed(interaction.user,
-                                                   full_media)
-        new_view = SearchView(self.module, full_media, self.cog)
+        user_token = self.module.user_tokens.get(interaction.user.id)
 
-        await interaction.response.edit_message(embed=embed, view=new_view)
+        try:
+
+            full_media = await self.module.search_media(
+                related_media['type'], str(related_media['id']), user_token)
+
+            embed = await self.cog.create_search_embed(interaction.user,
+                                                       full_media)
+            new_view = SearchView(self.module, full_media, self.cog)
+
+            await interaction.response.edit_message(embed=embed, view=new_view)
+        except Exception as e:
+            await interaction.response.send_message(
+                f"An error occurred while fetching related media: {str(e)}",
+                ephemeral=True)

@@ -120,10 +120,6 @@ class AniManga(commands.Cog):
         media_type="Choose whether to search for anime, manga, or staff",
         query=
         "The name or ID of the anime, manga, or staff member to search for")
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True,
-                                   dms=True,
-                                   private_channels=True)
     @app_commands.choices(media_type=[
         app_commands.Choice(name="Anime", value="ANIME"),
         app_commands.Choice(name="Manga", value="MANGA"),
@@ -135,11 +131,19 @@ class AniManga(commands.Cog):
         await interaction.response.defer()
 
         try:
+
+            user_token = self.anilist_module.user_tokens.get(
+                interaction.user.id)
+
+            print(f"Searching for: {media_type} - {query}")
+            print(f"User token available: {bool(user_token)}")
+
             if media_type == 'STAFF':
-                search_result = await self.anilist_module.search_staff(query)
+                search_result = await self.anilist_module.search_staff(
+                    query, user_token)
             else:
                 search_result = await self.anilist_module.search_media(
-                    media_type, query)
+                    media_type, query, user_token)
 
             if not search_result:
                 await interaction.followup.send(
@@ -150,11 +154,15 @@ class AniManga(commands.Cog):
                                                    search_result)
             view = SearchView(self.anilist_module, search_result, self)
             await interaction.followup.send(embed=embed, view=view)
+
         except Exception as e:
+            error_message = str(e)
+            print(f"Search error: {error_message}")
             await interaction.followup.send(
-                f"An error occurred while searching: {str(e)}")
+                f"An error occurred while searching: {error_message}")
 
     async def create_search_embed(self, user: discord.User, media_or_staff):
+
         user_id = user.id
         profile_color = await self.anilist_module.get_user_color(user_id)
 
@@ -165,50 +173,86 @@ class AniManga(commands.Cog):
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
         if 'title' in media_or_staff:
-            # Existing code for media (anime/manga)
+
             title = f"{media_or_staff['title']['romaji']} ({media_or_staff['type']}) [{media_or_staff['format']}]"
             embed = discord.Embed(title=title,
                                   url=media_or_staff.get(
                                       'siteUrl', 'https://anilist.co'),
                                   color=embed_color)
-            embed.set_thumbnail(url=media_or_staff['coverImage']['large'])
 
+            embed.set_thumbnail(url=media_or_staff['coverImage']['large'])
             if media_or_staff['bannerImage']:
                 embed.set_image(url=media_or_staff['bannerImage'])
 
+            if 'mediaListEntry' in media_or_staff and media_or_staff[
+                    'mediaListEntry']:
+                entry = media_or_staff['mediaListEntry']
+                status_text = []
+                status_text.append(f"-# {emoji} Status: {entry['status']}")
+
+                if media_or_staff['type'] == 'ANIME':
+                    total = media_or_staff['episodes'] or '?'
+                    status_text.append(
+                        f"-# {emoji} Progress: {entry['progress']}/{total} episodes"
+                    )
+                else:
+                    total = media_or_staff['chapters'] or '?'
+                    status_text.append(
+                        f"-# {emoji} Progress: {entry['progress']}/{total} chapters"
+                    )
+
+                if entry['score']:
+                    score_bar = '█' * int(
+                        entry['score']) + '░' * (10 - int(entry['score']))
+                    status_text.append(
+                        f"-# {emoji} Your Score: {entry['score']}/10\n-# ╰> {score_bar}"
+                    )
+
+                if entry['startedAt']['year']:
+                    start_date = f"{entry['startedAt']['year']}-{entry['startedAt']['month']}-{entry['startedAt']['day']}"
+                    status_text.append(f"-# {emoji} Started: {start_date}")
+
+                if entry['completedAt']['year']:
+                    complete_date = f"{entry['completedAt']['year']}-{entry['completedAt']['month']}-{entry['completedAt']['day']}"
+                    status_text.append(
+                        f"-# {emoji} Completed: {complete_date}")
+
+                embed.add_field(name="Your List Status",
+                                value="\n".join(status_text),
+                                inline=False)
+
             embed.add_field(name="Status",
-                            value=f"-# {emoji}{media_or_staff['status']}",
+                            value=f"-# {emoji} {media_or_staff['status']}",
                             inline=True)
 
             if media_or_staff['type'] == 'ANIME':
                 embed.add_field(
                     name="Episodes",
-                    value=f"-# {emoji}{media_or_staff['episodes'] or 'N/A'}",
+                    value=f"-# {emoji} {media_or_staff['episodes'] or 'N/A'}",
                     inline=True)
             else:
                 embed.add_field(
                     name="Chapters",
-                    value=f"-# {emoji}{media_or_staff['chapters'] or 'N/A'}",
+                    value=f"-# {emoji} {media_or_staff['chapters'] or 'N/A'}",
                     inline=True)
                 embed.add_field(
                     name="Volumes",
-                    value=f"-# {emoji}{media_or_staff['volumes'] or 'N/A'}",
+                    value=f"-# {emoji} {media_or_staff['volumes'] or 'N/A'}",
                     inline=True)
 
             if media_or_staff['startDate']['year']:
                 start_date = f"{media_or_staff['startDate']['year']}-{media_or_staff['startDate']['month']}-{media_or_staff['startDate']['day']}"
                 embed.add_field(name="Start Date",
-                                value=f"-# {emoji}{start_date}",
+                                value=f"-# {emoji} {start_date}",
                                 inline=True)
 
             if media_or_staff['averageScore']:
+                score = media_or_staff['averageScore']
                 score_bar = '█' * int(
-                    media_or_staff['averageScore'] /
-                    10) + '░' * (10 - int(media_or_staff['averageScore'] / 10))
+                    score / 10) + '░' * (10 - int(score / 10))
                 embed.add_field(
                     name="Score",
-                    value=
-                    f"-# {emoji}**{media_or_staff['averageScore']}%**\n-# ╰>{score_bar}",
+                    value=f"-# {emoji} **{score}%**\n-# ╰> {score_bar}",
                     inline=True)
 
             if media_or_staff['genres']:
@@ -217,44 +261,50 @@ class AniManga(commands.Cog):
                     for genre in media_or_staff['genres']
                 ])
                 embed.add_field(name="Genres",
-                                value=f"-# {emoji}{genres_links}",
+                                value=f"-# {emoji} {genres_links}",
                                 inline=False)
 
             if media_or_staff['description']:
                 description = self.anilist_module.clean_anilist_text(
                     media_or_staff['description'])
-
                 short_desc = description[:200] + "... " if len(
                     description) > 200 else description
                 desc_with_link = f"{short_desc}[[read more]({media_or_staff['siteUrl']})]"
                 embed.add_field(name="Description",
                                 value=desc_with_link,
                                 inline=False)
+
         else:
-            # New code for staff members
+
             title = media_or_staff['name']['full']
             embed = discord.Embed(title=title,
                                   url=media_or_staff.get(
                                       'siteUrl', 'https://anilist.co'),
                                   color=embed_color)
+
             embed.set_thumbnail(url=media_or_staff['image']['large'])
+
+            if 'isFavourite' in media_or_staff and media_or_staff[
+                    'isFavourite']:
+                embed.add_field(name="Favorite Status",
+                                value=f"-# {emoji} In Your Favorites ❤️",
+                                inline=False)
 
             if media_or_staff['language']:
                 embed.add_field(
                     name="Language",
-                    value=f"-# {emoji}{media_or_staff['language']}",
+                    value=f"-# {emoji} {media_or_staff['language']}",
                     inline=True)
 
             if media_or_staff['primaryOccupations']:
                 occupations = ", ".join(media_or_staff['primaryOccupations'])
                 embed.add_field(name="Primary Occupations",
-                                value=f"-# {emoji}{occupations}",
+                                value=f"-# {emoji} {occupations}",
                                 inline=True)
 
             if media_or_staff['description']:
                 description = self.anilist_module.clean_anilist_text(
                     media_or_staff['description'])
-
                 short_desc = description[:200] + "... " if len(
                     description) > 200 else description
                 desc_with_link = f"{short_desc}[[read more]({media_or_staff['siteUrl']})]"
