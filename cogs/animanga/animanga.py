@@ -157,6 +157,10 @@ class AniManga(commands.Cog):
     async def create_search_embed(self, user: discord.User, media_or_staff):
         user_id = user.id
         profile_color = await self.anilist_module.get_user_color(user_id)
+
+        if isinstance(profile_color, int):
+            profile_color = f'#{profile_color:06x}'
+
         embed_color = int(profile_color.lstrip('#'), 16)
         emoji = self.anilist_module.get_color_emoji(profile_color)
 
