@@ -440,8 +440,72 @@ class AniListModule:
                            query: str,
                            user_token: Optional[str] = None):
         graphql_query = '''
-        query ($id: Int, $search: String, $type: MediaType, $hasToken: Boolean!) {
-            Media(id: $id, search: $search, type: $type) {
+        query ($search: String, $type: MediaType, $hasToken: Boolean!) {
+            Media(search: $search, type: $type) {
+                id
+                title {
+                    romaji
+                    english
+                }
+                type
+                format
+                status
+                description
+                episodes
+                chapters
+                volumes
+                averageScore
+                genres
+                siteUrl
+                bannerImage
+                coverImage {
+                    large
+                }
+                startDate {
+                    year
+                    month
+                    day
+                }
+                relations {
+                    edges {
+                        relationType
+                        node {
+                            id
+                            title {
+                                romaji
+                                english
+                            }
+                            type
+                            format
+                            status
+                            coverImage {
+                                large
+                            }
+                        }
+                    }
+                }
+                mediaListEntry @include(if: $hasToken) {
+                    status
+                    progress
+                    score(format: POINT_10)
+                    startedAt {
+                        year
+                        month
+                        day
+                    }
+                    completedAt {
+                        year
+                        month
+                        day
+                    }
+                }
+            }
+        }
+        '''
+
+        id_query = '''
+        query ($id: Int, $type: MediaType, $hasToken: Boolean!) {
+            Media(id: $id, type: $type) {
                 id
                 title {
                     romaji
@@ -507,10 +571,10 @@ class AniListModule:
 
         if str(query).isdigit():
             variables["id"] = int(query)
-            variables["search"] = None
+            current_query = id_query
         else:
-            variables["id"] = None
             variables["search"] = str(query)
+            current_query = graphql_query
 
         headers = {
             'Content-Type': 'application/json',
@@ -524,26 +588,28 @@ class AniListModule:
             async with ClientSession() as session:
                 async with session.post(self.anilist_api_url,
                                         json={
-                                            'query': graphql_query,
+                                            'query': current_query,
                                             'variables': variables
                                         },
                                         headers=headers) as response:
-                    if response.status == 400:
-                        error_data = await response.json()
-                        print(f"AniList API Error Response: {error_data}")
+                    data = await response.json()
+
+                    if 'errors' in data:
+                        print(f"AniList API Error Response: {data}")
                         raise Exception(
-                            f"AniList API Error: {error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']}"
+                            f"AniList API Error: {data['errors'][0]['message']}"
                         )
 
                     if response.status != 200:
+                        print(f"Response status: {response.status}")
+                        print(f"Response data: {data}")
                         raise Exception(
                             f"AniList API returned status code {response.status}"
                         )
 
-                    data = await response.json()
-                    if 'errors' in data:
+                    if not data.get('data', {}).get('Media'):
                         raise Exception(
-                            f"AniList API Error: {data['errors'][0]['message']}"
+                            f"No {media_type.lower()} found matching '{query}'"
                         )
 
                     return data['data']['Media']
@@ -640,8 +706,27 @@ class AniListModule:
 
     async def search_staff(self, query: str, user_token: Optional[str] = None):
         graphql_query = '''
-        query ($id: Int, $search: String, $hasToken: Boolean!) {
-            Staff(id: $id, search: $search) {
+        query ($search: String, $hasToken: Boolean!) {
+            Staff(search: $search) {
+                id
+                name {
+                    full
+                }
+                language
+                image {
+                    large
+                }
+                description
+                primaryOccupations
+                siteUrl
+                isFavourite @include(if: $hasToken)
+            }
+        }
+        '''
+
+        id_query = '''
+        query ($id: Int, $hasToken: Boolean!) {
+            Staff(id: $id) {
                 id
                 name {
                     full
@@ -662,10 +747,10 @@ class AniListModule:
 
         if str(query).isdigit():
             variables["id"] = int(query)
-            variables["search"] = None
+            current_query = id_query
         else:
-            variables["id"] = None
             variables["search"] = str(query)
+            current_query = graphql_query
 
         headers = {
             'Content-Type': 'application/json',
@@ -679,29 +764,31 @@ class AniListModule:
             async with ClientSession() as session:
                 async with session.post(self.anilist_api_url,
                                         json={
-                                            'query': graphql_query,
+                                            'query': current_query,
                                             'variables': variables
                                         },
                                         headers=headers) as response:
-                    if response.status == 400:
-                        error_data = await response.json()
-                        print(f"AniList API Error Response: {error_data}")
-                        raise Exception(
-                            f"AniList API Error: {error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']}"
-                        )
-
-                    if response.status != 200:
-                        raise Exception(
-                            f"AniList API returned status code {response.status}"
-                        )
-
                     data = await response.json()
+
                     if 'errors' in data:
+                        print(f"AniList API Error Response: {data}")
                         raise Exception(
                             f"AniList API Error: {data['errors'][0]['message']}"
                         )
 
+                    if response.status != 200:
+                        print(f"Response status: {response.status}")
+                        print(f"Response data: {data}")
+                        raise Exception(
+                            f"AniList API returned status code {response.status}"
+                        )
+
+                    if not data.get('data', {}).get('Staff'):
+                        raise Exception(
+                            f"No staff member found matching '{query}'")
+
                     return data['data']['Staff']
+
         except Exception as e:
             print(f"Error in search_staff: {str(e)}")
             raise
