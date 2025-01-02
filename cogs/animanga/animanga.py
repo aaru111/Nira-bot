@@ -131,13 +131,9 @@ class AniManga(commands.Cog):
         await interaction.response.defer()
 
         try:
-            # Get user token if they're logged in
+
             user_token = self.anilist_module.user_tokens.get(
                 interaction.user.id)
-
-            # Add debug logging
-            print(f"Searching for: {media_type} - {query}")
-            print(f"User token available: {bool(user_token)}")
 
             if media_type == 'STAFF':
                 search_result = await self.anilist_module.search_staff(
@@ -159,9 +155,7 @@ class AniManga(commands.Cog):
 
         except Exception as e:
             error_message = str(e)
-            print(f"Search error: {error_message}")  # Debug logging
 
-            # Make the error message more user-friendly
             if "404" in error_message:
                 await interaction.followup.send(
                     f"No results found for '{query}'. Try using more specific terms or check your spelling.",

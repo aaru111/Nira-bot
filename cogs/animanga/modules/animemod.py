@@ -595,14 +595,13 @@ class AniListModule:
                     data = await response.json()
 
                     if 'errors' in data:
-                        print(f"AniList API Error Response: {data}")
+
                         raise Exception(
                             f"AniList API Error: {data['errors'][0]['message']}"
                         )
 
                     if response.status != 200:
-                        print(f"Response status: {response.status}")
-                        print(f"Response data: {data}")
+
                         raise Exception(
                             f"AniList API returned status code {response.status}"
                         )
@@ -614,8 +613,8 @@ class AniListModule:
 
                     return data['data']['Media']
 
-        except Exception as e:
-            print(f"Error in search_media: {str(e)}")
+        except Exception:
+
             raise
 
     async def get_user_color(self, user_id: int) -> str:
@@ -771,14 +770,13 @@ class AniListModule:
                     data = await response.json()
 
                     if 'errors' in data:
-                        print(f"AniList API Error Response: {data}")
+
                         raise Exception(
                             f"AniList API Error: {data['errors'][0]['message']}"
                         )
 
                     if response.status != 200:
-                        print(f"Response status: {response.status}")
-                        print(f"Response data: {data}")
+
                         raise Exception(
                             f"AniList API returned status code {response.status}"
                         )
@@ -789,8 +787,8 @@ class AniListModule:
 
                     return data['data']['Staff']
 
-        except Exception as e:
-            print(f"Error in search_staff: {str(e)}")
+        except Exception:
+
             raise
 
     async def fetch_favorite_staff(self,
