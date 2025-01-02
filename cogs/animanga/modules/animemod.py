@@ -867,8 +867,8 @@ class AniListModule:
         text = re.sub(r'\(spoiler\).*?\(/spoiler\)', '', text)
         # Remove image tags
         text = re.sub(r'\[img\].*?\[/img\]', '', text)
-        # Remove other AniList-specific markdown
-        text = re.sub(r'~!.*?!~', '', text)
+        # Preserve content inside ~! !~ tags by only removing the tags themselves
+        text = re.sub(r'~!([^!]*)!~', r'\1', text)
         return text.strip()
 
     async def compare_stats(
