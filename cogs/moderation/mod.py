@@ -7,7 +7,6 @@ import io
 import time
 from discord import app_commands
 from discord.ext.commands import Context
-import platform
 from datetime import datetime, timedelta
 
 
@@ -644,20 +643,6 @@ class Moderation(commands.Cog):
                                  f"An unexpected error occurred: {str(e)}",
                                  ephemeral=True)
 
-    async def safe_send(self, ctx, content, **kwargs):
-        try:
-            if ctx.interaction and not ctx.interaction.response.is_done():
-                await ctx.interaction.followup.send(content, **kwargs)
-            else:
-                await ctx.send(content, **kwargs)
-        except discord.NotFound:
-            try:
-                await ctx.author.send(content, **kwargs)
-            except:
-                pass  # If we can't send to the user, we've done all we can
-        except discord.HTTPException:
-            pass  # If we can't send the message, we've done all we can
-
     @commands.hybrid_command(
         name="nick", description="Change the nickname of a user on a server.")
     @commands.has_permissions(manage_nicknames=True)
@@ -880,63 +865,6 @@ class Moderation(commands.Cog):
                         value=f"{len(guild.channels)}")
         embed.set_footer(text=f"Created at: {guild.created_at}")
 
-        await context.send(embed=embed)
-
-    @commands.hybrid_command(
-        name="botinfo",
-        description="Get some useful (or not) information about the bot.")
-    async def botinfo(self, context: Context) -> None:
-        """Get some useful (or not) information about the bot."""
-
-        prefix_commands = 0
-        slash_commands = 0
-        hybrid_commands = 0
-        context_menus = 0
-
-        for command in self.bot.commands:
-            if isinstance(command, commands.HybridCommand):
-                hybrid_commands += 1
-            elif command.name in [
-                    cmd.name for cmd in self.bot.tree.get_commands()
-            ]:
-                slash_commands += 1
-            else:
-                prefix_commands += 1
-
-        context_menus = len([
-            cmd for cmd in self.bot.tree.get_commands()
-            if isinstance(cmd, app_commands.ContextMenu)
-        ])
-
-        total_commands = prefix_commands + slash_commands + hybrid_commands + context_menus
-
-        embed = discord.Embed(
-            description="N.I.R.A -> NEURAL INTERACTIVE RESPONSIVE AGENT.",
-            color=0xBEBEFE,
-        )
-        embed.set_author(name="Bot Information")
-        embed.add_field(name="Owner:",
-                        value="<@754188594461147217>",
-                        inline=True)
-        embed.add_field(name="Python Version:",
-                        value=f"{platform.python_version()}",
-                        inline=True)
-        embed.add_field(
-            name="Prefix:",
-            value="/ (Slash Commands) or . command for normal commands",
-            inline=False)
-
-        embed.add_field(name="Command Stats",
-                        value=f"```\n"
-                        f"Prefix Commands: {prefix_commands}\n"
-                        f"Slash Commands:  {slash_commands}\n"
-                        f"Hybrid Commands: {hybrid_commands}\n"
-                        f"Context Menus:   {context_menus}\n"
-                        f"Total Commands:  {total_commands}\n"
-                        f"```",
-                        inline=False)
-
-        embed.set_footer(text=f"Requested by {context.author}")
         await context.send(embed=embed)
 
 
