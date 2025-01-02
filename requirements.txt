@@ -76,6 +76,7 @@ pillow==10.4.0
 platformdirs==4.2.2
 prettier==0.0.7
 prompt_toolkit==3.0.47
+psutil
 psycopg2-binary==2.9.9
 ptyprocess==0.7.0
 pure_eval==0.2.3
