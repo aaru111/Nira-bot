@@ -704,16 +704,20 @@ class AniListModule:
                 favourites {
                     anime {
                         nodes {
+                            id
                             title {
                                 romaji
                             }
+                            siteUrl
                         }
                     }
                     manga {
                         nodes {
+                            id
                             title {
                                 romaji
                             }
+                            siteUrl
                         }
                     }
                 }
@@ -1177,7 +1181,7 @@ class AniListModule:
 
         if fav_anime:
             fav_anime_list = "\n".join([
-                f"-# {emoji} [{anime['title']['romaji']}]({anime.get('siteUrl', 'https://anilist.co')})"
+                f"-# {emoji} [{anime['title']['romaji']}](https://anilist.co/anime/{anime['id']})"
                 for anime in fav_anime
             ])
             embed.add_field(name="Favorite Anime",
@@ -1186,7 +1190,7 @@ class AniListModule:
 
         if fav_manga:
             fav_manga_list = "\n".join([
-                f"-# {emoji} [{manga['title']['romaji']}]({manga.get('siteUrl', 'https://anilist.co')})"
+                f"-# {emoji} [{manga['title']['romaji']}](https://anilist.co/manga/{manga['id']})"
                 for manga in fav_manga
             ])
             embed.add_field(name="Favorite Manga",
