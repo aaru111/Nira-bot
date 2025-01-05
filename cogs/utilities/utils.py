@@ -1,22 +1,27 @@
-import discord
 from discord.ext import commands
 from discord import app_commands
+import discord
+
 import aiohttp
 import os
-import typing
+
 from typing import Optional, List
-from urllib.parse import quote
+import typing
+
 from abc import ABC, abstractmethod
+from urllib.parse import quote
+
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
-from .modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
-from .modules.weathermod import create_weather_embed
-from .modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
-from .modules.shortnermod import URLShortenerCore
 from .modules.timestampmod import DatetimeTransformer, TimezoneTransformer, TimezoneTransformerError, make_timestamps_embed, TIMESTAMP_STYLE
+from .modules.urbanmod import UrbanDictionaryView, create_definition_embed, create_urban_dropdown, search_urban_dictionary
+from .modules.wikimod import WikipediaSearcher, WikiEmbedCreator, WikiView
 from .modules.encodemod import encode_text, decode_text
+from .modules.weathermod import create_weather_embed
 from .modules.translatemod import TranslationCore
+from .modules.shortnermod import URLShortenerCore
+from .modules.emojistealmod import steal_emoji
 
 from helpers.database import db
 
@@ -27,7 +32,6 @@ RATE_LIMIT = 5
 RESET_INTERVAL = 60 * 60
 
 
-# DatabaseManager interface for abstracting database operations
 class DatabaseManager(ABC):
 
     @abstractmethod
@@ -482,6 +486,19 @@ class Utilities(commands.Cog):
                 file=file)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
+
+    @app_commands.command(
+        name='emojisteal',
+        description="Steal an emoji and add it to this server")
+    @app_commands.describe(emoji="The emoji to steal",
+                           new_name="Optional custom name for the emoji")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def emoji_steal_command(self,
+                                  interaction: discord.Interaction,
+                                  emoji: str,
+                                  new_name: str = None):
+
+        await steal_emoji(interaction, emoji, new_name)
 
 
 async def setup(bot: commands.Bot) -> None:
