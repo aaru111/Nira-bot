@@ -1,5 +1,6 @@
 from discord.interactions import Interaction
 from discord.ext.commands import Context
+from discord.reaction import Reaction
 from discord.message import Message
 from discord.member import Member
 from discord.embeds import Embed
