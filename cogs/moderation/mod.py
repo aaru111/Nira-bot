@@ -344,6 +344,10 @@ class Moderation(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.headers = {
+            'User-Agent': 'Nira-Bot',
+            'Accept': 'application/vnd.github.v3+json'
+        }
         self.session: aiohttp.ClientSession = aiohttp.ClientSession()
         self.nuke_cooldowns = commands.CooldownMapping.from_cooldown(
             1, 300, commands.BucketType.member)
@@ -351,27 +355,43 @@ class Moderation(commands.Cog):
         self.start_time = time.time()
 
     async def cog_unload(self):
-        """Cleanup resources when the cog is unloaded."""
+      
         await self.session.close()
 
     def format_commit(self, commit_data: dict) -> str:
-        sha = commit_data['sha'][:7]
-        message = commit_data['commit']['message'].split('\n')[0]
-        commit_url = commit_data['html_url']
-        commit_time = datetime.datetime.strptime(
-            commit_data['commit']['author']['date'], "%Y-%m-%dT%H:%M:%SZ")
-        timestamp = discord.utils.format_dt(commit_time, "R")
-        return f"[`{sha}`]({commit_url}) {timestamp} | {message}"
+        try:
+            sha = commit_data['sha'][:7]
+            message = commit_data['commit']['message'].split('\n')[0]
+            commit_url = commit_data['html_url']
+            commit_time = datetime.datetime.strptime(
+                commit_data['commit']['author']['date'], "%Y-%m-%dT%H:%M:%SZ")
+            timestamp = discord.utils.format_dt(commit_time, "R")
+            return f"[`{sha}`]({commit_url}) {timestamp} | {message}"
+        except Exception as e:
+            return f"Error formatting commit: {str(e)}"
 
     async def get_latest_commits(self, limit: int = 5) -> List[str]:
+        """Fetch latest commits from GitHub repository."""
         url = "https://api.github.com/repos/aaru111/Nira-bot/commits"
-        async with self.session.get(url) as response:
-            if response.status == 200:
-                commits = await response.json()
-                return [
-                    self.format_commit(commit) for commit in commits[:limit]
-                ]
-            return ["Unable to fetch commit history"]
+        try:
+            async with self.session.get(url, headers=self.headers) as response:
+                if response.status == 200:
+                    commits = await response.json()
+                    formatted_commits = []
+                    for commit in commits[:limit]:
+                        try:
+                            formatted_commits.append(
+                                self.format_commit(commit))
+                        except Exception as e:
+                            formatted_commits.append(
+                                f"Error processing commit: {str(e)}")
+                    return formatted_commits
+                else:
+                    return [
+                        f"Unable to fetch commit history (Status: {response.status})"
+                    ]
+        except Exception as e:
+            return [f"Error fetching commits: {str(e)}"]
 
     def get_system_info(self) -> dict:
         return {
@@ -938,14 +958,20 @@ class Moderation(commands.Cog):
             if self.bot.user is None:
                 raise RuntimeError("Bot user is not initialized")
 
-            app_info = await self.bot.application_info()
+            try:
+                app_info = await self.bot.application_info()
+                owner = app_info.team.owner if app_info.team else app_info.owner
+                owner_mention = owner.mention if owner else "Unknown"
+            except Exception as e:
+                print(f"Error fetching owner info: {e}")
+                owner_mention = "Unknown"
+
             bot_name = self.bot.user.name
             bot_avatar = self.bot.user.display_avatar.url
 
             embed = discord.Embed(
                 title="Bot Information",
-                description=
-                f"**{bot_name}** - Made by {app_info.owner.mention}",
+                description=f"**{bot_name}** - Made by {owner_mention}",
                 color=discord.Color.from_rgb(239, 158, 240),
                 timestamp=datetime.datetime.utcnow())
 
@@ -975,13 +1001,19 @@ class Moderation(commands.Cog):
                                 inline=True)
 
             if show_commits:
-                latest_commits = await self.get_latest_commits()
-                embed.add_field(name="📝 Latest Changes",
-                                value="\n".join(latest_commits),
-                                inline=False)
+                commits = await self.get_latest_commits()
+                if commits and not commits[0].startswith(
+                        "Error") and not commits[0].startswith("Unable"):
+                    embed.add_field(name="📝 Latest Changes",
+                                    value="\n".join(commits),
+                                    inline=False)
+                else:
+                    embed.add_field(
+                        name="📝 Latest Changes",
+                        value="Unable to fetch recent changes at this time.",
+                        inline=False)
 
             author_avatar = ctx.author.display_avatar.url if ctx.author.display_avatar else None
-
             embed.set_footer(text=f"Requested by {ctx.author}",
                              icon_url=author_avatar)
 
