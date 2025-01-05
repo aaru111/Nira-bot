@@ -1,12 +1,12 @@
-import discord
+from discord.interactions import Interaction
+from discord.ext.commands import Context
+from discord.message import Message
+from discord.member import Member
+from discord.embeds import Embed
 from discord.ext import commands
 from discord import app_commands
-from discord.interactions import Interaction
-from discord.embeds import Embed
-from discord.message import Message
-from discord.ext.commands import Context
-from discord.reaction import Reaction
-from discord.member import Member
+
+import discord
 
 from discord_games import button_games
 
@@ -16,12 +16,11 @@ import io
 
 from typing import Optional, Dict
 
-
-from .modules.tetrismod import Tetris
-from .modules.tttmod import TicTacToeGame, AcceptDeclineButtons
-from .modules.triviamod import TriviaView
 from .modules.memorymod import MemoryGameView
 from .modules.chessmod import ChessGame, ChessView, PlayerStats
+from .modules.tttmod import TicTacToeGame, AcceptDeclineButtons
+from .modules.triviamod import TriviaView
+from .modules.tetrismod import Tetris
 
 from helpers.database import db
 
