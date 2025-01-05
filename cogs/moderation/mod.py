@@ -355,7 +355,7 @@ class Moderation(commands.Cog):
         self.start_time = time.time()
 
     async def cog_unload(self):
-      
+
         await self.session.close()
 
     def format_commit(self, commit_data: dict) -> str:
@@ -373,24 +373,32 @@ class Moderation(commands.Cog):
     async def get_latest_commits(self, limit: int = 5) -> List[str]:
         """Fetch latest commits from GitHub repository."""
         url = "https://api.github.com/repos/aaru111/Nira-bot/commits"
+        headers = {
+            'User-Agent': 'Nira-Bot',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+
         try:
-            async with self.session.get(url, headers=self.headers) as response:
+            async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     commits = await response.json()
-                    formatted_commits = []
-                    for commit in commits[:limit]:
-                        try:
-                            formatted_commits.append(
-                                self.format_commit(commit))
-                        except Exception as e:
-                            formatted_commits.append(
-                                f"Error processing commit: {str(e)}")
-                    return formatted_commits
+                    return [
+                        self.format_commit(commit)
+                        for commit in commits[:limit]
+                    ]
                 else:
+                    error_message = await response.text()
+                    print(
+                        f"GitHub API Error: Status {response.status} - {error_message}"
+                    )
                     return [
                         f"Unable to fetch commit history (Status: {response.status})"
                     ]
+        except aiohttp.ClientError as e:
+            print(f"Network Error: {str(e)}")
+            return ["Error: Could not connect to GitHub"]
         except Exception as e:
+            print(f"Unexpected Error: {str(e)}")
             return [f"Error fetching commits: {str(e)}"]
 
     def get_system_info(self) -> dict:
