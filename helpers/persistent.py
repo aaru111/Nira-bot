@@ -44,6 +44,7 @@ class PersistentViewManager:
         self.bot = bot
 
     async def setup_ticket_views(self) -> None:
+        """Set up persistent views for the ticket system."""
         try:
             self.bot.add_view(panel_views(self.bot))
 
@@ -62,5 +63,25 @@ class PersistentViewManager:
         except Exception as e:
             logger.error(f"Error adding persistent ticket views: {e}")
 
+    async def setup_suggestion_views(self) -> None:
+        """Set up persistent views for the suggestion system."""
+        try:
+
+            from cogs.suggestion.suggestion import InitialSuggestionView, SuggestionButtons
+
+            self.bot.add_view(InitialSuggestionView(self.bot))
+            self.bot.add_view(SuggestionButtons(self.bot))
+
+            logger.success("Successfully added persistent suggestion views")
+        except Exception as e:
+            logger.error(f"Error adding persistent suggestion views: {e}")
+
     async def setup_all_views(self) -> None:
+        """Set up all persistent views for the bot."""
+        logger.info("Setting up all persistent views...")
+
         await self.setup_ticket_views()
+
+        await self.setup_suggestion_views()
+
+        logger.success("All persistent views have been set up successfully")
