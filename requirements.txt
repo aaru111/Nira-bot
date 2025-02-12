@@ -120,3 +120,4 @@ wheel==0.43.0
 yarg==0.1.9
 yarl==1.9.4
 ShazamAPI
+yt_dlp
