@@ -16,7 +16,7 @@ logging.basicConfig(filename='dropdown_debug.log',
 
 
 class PlayerStats:
-    # PlayerStats class remains unchanged
+
     def __init__(self, player: discord.Member):
         self.player_id = player.id
         self.player_name = player.name
@@ -61,7 +61,7 @@ class ChessGame:
         chess.BISHOP: 3,
         chess.ROOK: 5,
         chess.QUEEN: 9,
-        chess.KING: 0  # King's value isn't counted in material advantage
+        chess.KING: 0
     }
 
     def __init__(self, player1: discord.Member, player2: discord.Member):
@@ -84,7 +84,7 @@ class ChessGame:
                 if self.board.is_capture(move):
                     captured_square = move.to_square
                     if self.board.is_en_passant(move):
-                        # Handle en passant capture
+
                         pawn_direction = -8 if self.board.turn == chess.WHITE else 8
                         captured_square = move.to_square + pawn_direction
                     captured_piece = self.board.piece_at(captured_square)
@@ -92,7 +92,7 @@ class ChessGame:
                         self.captured_pieces[not self.board.turn].append(
                             captured_piece)
 
-                self.board.push(move)  # This adds the move to the move_stack
+                self.board.push(move)
                 self.move_history.append(san_move)
                 return True
         except ValueError:
@@ -151,7 +151,6 @@ class ChessGame:
 
         return white_captured, black_captured
 
-    # Rest of the methods remain unchanged
     def generate_lichess_pgn_link(self):
         pgn_moves = '_'.join(self.move_history)
         base_url = "https://lichess.org/analysis/pgn"
@@ -201,7 +200,7 @@ class ChessGame:
 
             # Check if the move is legal
             if move not in self.board.legal_moves:
-                # Check specific reasons why the move might be illegal
+
                 if self.board.is_check():
                     return "This move doesn't get you out of check."
 
@@ -702,10 +701,9 @@ class ChessCommands:
         embed.add_field(name="Current Turn", value=ctx.author.name)
 
         if ctx.author == opponent:
-            embed.add_field(
-                name="Note",
-                value="Playing against yourself - you control both sides!",
-                inline=False)
+            embed.add_field(name="Note",
+                            value="Playing against yourself",
+                            inline=False)
 
         await ctx.send(embed=embed, file=file, view=view)
 
