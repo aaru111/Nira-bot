@@ -334,6 +334,7 @@ class ChessView(discord.ui.View):
         self.add_item(self.create_draw_button())
         self.last_move_made = False
         self.selected_square = None
+        self.possible_moves = []
 
     def create_resign_button(self):
         button = discord.ui.Button(label="Resign",
@@ -380,6 +381,8 @@ class ChessView(discord.ui.View):
 
         if self.selected_square is not None:
             squares[chess.parse_square(self.selected_square)] = "#FFFF00"
+            for move in self.possible_moves:
+                squares[chess.parse_square(move)] = "#0000FF40"
 
         if len(self.game.board.move_stack) > 0:
             last_move = self.game.board.move_stack[-1]
@@ -555,6 +558,13 @@ class PieceSelectDropdown(discord.ui.Select):
 
         from_square = self.values[0]
         self.parent_view.selected_square = from_square
+        self.parent_view.possible_moves = []
+
+        from_square_int = chess.parse_square(from_square)
+        for move in self.game.board.legal_moves:
+            if move.from_square == from_square_int:
+                self.parent_view.possible_moves.append(
+                    chess.square_name(move.to_square))
 
         moves_dropdown = MoveSelectDropdown(self.game, self.parent_view,
                                             from_square)
@@ -653,6 +663,7 @@ class MoveSelectDropdown(discord.ui.Select):
             await interaction.response.defer()
             self.parent_view.last_move_made = True
             self.parent_view.selected_square = None
+            self.parent_view.possible_moves = []
 
             if self.game.is_game_over():
                 winner = self.game.get_winner()
