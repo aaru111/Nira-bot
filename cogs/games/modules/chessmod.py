@@ -5,6 +5,8 @@ import chess.svg
 import io
 from cairosvg import svg2png
 import logging
+from typing import Optional
+from discord.ext import commands
 
 from helpers.database import db
 
@@ -478,3 +480,57 @@ class ChessView(discord.ui.View):
     def disable_buttons(self):
         for child in self.children:
             child.disabled = True
+
+
+class ChessCommands:
+    """Container for chess-related commands and their database operations."""
+
+    @staticmethod
+    async def update_chess_player_stats(player: discord.Member) -> None:
+        query = """
+        INSERT INTO player_stats (player_id, player_name, games_played, wins, draws, losses)
+        VALUES ($1, $2, 0, 0, 0, 0)
+        ON CONFLICT (player_id) DO NOTHING
+        """
+        await db.execute(query, player.id, player.name)
+
+    @staticmethod
+    async def start_chess_game(ctx: commands.Context,
+                               opponent: discord.Member) -> None:
+        """Start a chess game against another player."""
+        if ctx.author == opponent:
+            return await ctx.reply("You can't play against yourself!")
+
+        game = ChessGame(player1=ctx.author, player2=opponent)
+        view = ChessView(game)
+
+        # Update player stats in the database
+        await ChessCommands.update_chess_player_stats(ctx.author)
+        await ChessCommands.update_chess_player_stats(opponent)
+
+        svg_board = game.get_svg_board()
+        png_image = view.convert_svg_to_png(svg_board)
+        file = discord.File(io.BytesIO(png_image), filename="chessboard.png")
+
+        embed = discord.Embed(
+            title=f"Chess Game: {ctx.author.name} vs {opponent.name}",
+            color=discord.Color.from_rgb(239, 158, 240))
+        embed.set_image(url="attachment://chessboard.png")
+        embed.add_field(name="Current Turn", value=ctx.author.name)
+
+        await ctx.send(embed=embed, file=file, view=view)
+
+    @staticmethod
+    async def show_chess_leaderboard(
+            ctx: commands.Context,
+            player: Optional[discord.Member] = None) -> None:
+        """Show the stats for a specific player."""
+        if player is None:
+            player = ctx.author
+
+        player_stats = await ChessGame.get_player_stats(player)
+        if player_stats.games_played > 0:
+            stats_embed = player_stats.get_stats()
+            await ctx.send(embed=stats_embed)
+        else:
+            await ctx.send(f"No stats found for {player.mention}.")
