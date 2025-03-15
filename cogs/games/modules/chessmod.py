@@ -370,7 +370,7 @@ class ChessView(discord.ui.View):
             child.disabled = True
 
     async def update_board(self, interaction, game_over=False):
-        flip_board = self.game.current_player == self.game.player2 and self.last_move_made
+        flip_board = self.game.current_player == self.game.player2 and self.game.board.turn == chess.BLACK
 
         arrows = []
         squares = {}
