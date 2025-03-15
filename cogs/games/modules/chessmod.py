@@ -328,22 +328,60 @@ class ChessView(discord.ui.View):
     def __init__(self, game):
         super().__init__(timeout=None)
         self.game = game
+        self.clear_items()
+        self.add_item(PieceSelectDropdown(self.game, self))
+        self.add_item(self.create_resign_button())
+        self.add_item(self.create_draw_button())
+        self.last_move_made = False
+
+    def create_resign_button(self):
+        button = discord.ui.Button(label="Resign",
+                                   style=discord.ButtonStyle.danger,
+                                   custom_id="resign_button")
+        button.callback = self.resign_button_callback
+        return button
+
+    def create_draw_button(self):
+        button = discord.ui.Button(label="Draw",
+                                   style=discord.ButtonStyle.secondary,
+                                   custom_id="draw_button")
+        button.callback = self.draw_button_callback
+        return button
+
+    def add_piece_dropdown(self):
+        self.add_item(PieceSelectDropdown(self.game, self))
+
+    def remove_move_dropdown(self):
+        to_remove = [
+            item for item in self.children
+            if isinstance(item, MoveSelectDropdown)
+        ]
+        for item in to_remove:
+            self.remove_item(item)
+
+    def remove_all_dropdowns(self):
+        to_remove = [
+            item for item in self.children
+            if isinstance(item, (PieceSelectDropdown, MoveSelectDropdown))
+        ]
+        for item in to_remove:
+            self.remove_item(item)
+
+    def disable_all(self):
+        for child in self.children:
+            child.disabled = True
 
     async def update_board(self, interaction, game_over=False):
-        # Determine if board should be flipped based on current player
-        flip_board = self.game.current_player == self.game.player2
+        flip_board = self.game.current_player == self.game.player2 and self.last_move_made
 
-        # Create arrows list for the last move
         arrows = []
         if len(self.game.board.move_stack) > 0:
-            # Get the last move directly from the board's move stack
             last_move = self.game.board.move_stack[-1]
             arrows.append(
                 chess.svg.Arrow(last_move.from_square,
                                 last_move.to_square,
                                 color="#00ff0080"))
 
-        # Generate board SVG with arrows
         svg_board = chess.svg.board(board=self.game.board,
                                     flipped=flip_board,
                                     arrows=arrows,
@@ -378,7 +416,6 @@ class ChessView(discord.ui.View):
                             value=advantage_text,
                             inline=True)
 
-        # Add game status (check/checkmate/etc)
         game_status = self.game.get_game_status()
         if game_status:
             embed.add_field(name="Status", value=game_status, inline=True)
@@ -392,8 +429,11 @@ class ChessView(discord.ui.View):
         else:
             embed.add_field(name="Current Turn",
                             value=self.game.current_player.mention)
+            color_to_move = "White" if self.game.board.turn == chess.WHITE else "Black"
+            embed.add_field(name="Playing As",
+                            value=f"{color_to_move} to move",
+                            inline=True)
 
-        # Update last move info to use mentions
         last_move_info = self.game.get_last_move_info()
         if last_move_info:
             last_move = self.game.move_history[-1]
@@ -401,85 +441,233 @@ class ChessView(discord.ui.View):
             embed.set_footer(
                 text=f"Last move: *{last_move}* by {last_player.name}")
 
-        await interaction.message.edit(embed=embed,
-                                       attachments=[file],
-                                       view=self)
+        try:
+            await interaction.message.edit(embed=embed,
+                                           attachments=[file],
+                                           view=self)
+        except discord.errors.NotFound:
+            await interaction.channel.send(embed=embed, file=file, view=self)
+
+        self.last_move_made = False
 
     def convert_svg_to_png(self, svg_data):
         return svg2png(bytestring=svg_data.encode('utf-8'))
 
-    @discord.ui.button(label="Move",
-                       style=discord.ButtonStyle.primary,
-                       custom_id="move_button")
-    async def move_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
+    async def resign_button_callback(self, interaction: discord.Interaction):
         if interaction.user != self.game.current_player:
-            return await interaction.response.send_message(
-                "It's not your turn!", ephemeral=True)
-
-        await interaction.response.send_modal(ChessMoveModal(view=self))
-
-    @discord.ui.button(label="Resign",
-                       style=discord.ButtonStyle.danger,
-                       custom_id="resign_button")
-    async def resign_button(self, interaction: discord.Interaction,
-                            button: discord.ui.Button):
-        if interaction.user != self.game.current_player:
-            return await interaction.response.send_message(
-                "It's not your turn!", ephemeral=True)
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
 
         winner = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
-
         await self.game.record_game_result(winner)
-
         await interaction.response.send_message(
-            f"{interaction.user.mention} has resigned. {winner.mention} wins!",
-            ephemeral=False)
-        self.disable_buttons()
+            f"{interaction.user.mention} has resigned. {winner.mention} wins!")
+        self.disable_all()
         await self.update_board(interaction, game_over=True)
         self.stop()
 
-    @discord.ui.button(label="Draw",
-                       style=discord.ButtonStyle.secondary,
-                       custom_id="draw_button")
-    async def draw_button(self, interaction: discord.Interaction,
-                          button: discord.ui.Button):
+    async def draw_button_callback(self, interaction: discord.Interaction):
         if interaction.user != self.game.current_player:
-            return await interaction.response.send_message(
-                "It's not your turn!", ephemeral=True)
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
 
         opponent = self.game.player2 if self.game.current_player == self.game.player1 else self.game.player1
         await interaction.response.send_message(
-            f"{interaction.user.mention} has proposed a draw. Waiting for {opponent.mention}'s response...",
-            ephemeral=True)
-
-        await interaction.channel.send(
-            f"{opponent.mention}, {interaction.user.mention} has proposed a draw. Type 'accept' to agree or 'decline' to reject."
+            f"{interaction.user.mention} has proposed a draw. Waiting for {opponent.mention}'s response..."
         )
 
-        def check(response):
-            return response.author == opponent and response.channel == interaction.channel
+        def check(message):
+            return (message.author == opponent
+                    and message.channel == interaction.channel
+                    and message.content.lower() in ['accept', 'decline'])
 
         try:
             response = await interaction.client.wait_for('message',
                                                          timeout=30.0,
                                                          check=check)
             if response.content.lower() == 'accept':
-                await interaction.channel.send(
-                    "The draw has been accepted! It's a draw.")
+                await interaction.followup.send(
+                    "The draw has been accepted! Game ended in a draw.")
                 await self.game.record_game_result(None)
-                self.disable_buttons()
+                self.disable_all()
                 await self.update_board(interaction, game_over=True)
                 self.stop()
             else:
-                await interaction.channel.send("The draw has been declined.")
+                await interaction.followup.send("The draw offer was declined.")
         except asyncio.TimeoutError:
-            await interaction.channel.send(
+            await interaction.followup.send(
                 "No response received. Draw proposal timed out.")
 
-    def disable_buttons(self):
-        for child in self.children:
-            child.disabled = True
+
+class MoveSelectDropdown(discord.ui.Select):
+
+    def __init__(self, game: ChessGame, parent_view: 'ChessView',
+                 from_square: str):
+        self.game = game
+        self.parent_view = parent_view
+        self.from_square = from_square
+
+        options = []
+        from_square_int = chess.parse_square(from_square)
+
+        for move in game.board.legal_moves:
+            if move.from_square == from_square_int:
+                to_square = chess.square_name(move.to_square)
+                move_san = game.board.san(move)
+
+                if game.board.piece_at(from_square_int).piece_type == chess.PAWN and \
+                   chess.square_rank(move.to_square) in [0, 7]:
+                    promotion_pieces = [('Q', 'Queen'), ('R', 'Rook'),
+                                        ('B', 'Bishop'), ('N', 'Knight')]
+                    for piece, piece_name in promotion_pieces:
+                        promotion_move = f"{from_square}{to_square}={piece}"
+                        options.append(
+                            discord.SelectOption(
+                                label=f"Promote to {piece_name}",
+                                value=promotion_move,
+                                description=
+                                f"Move to {to_square} and promote to {piece_name}"
+                            ))
+                else:
+                    options.append(
+                        discord.SelectOption(
+                            label=f"Move to {to_square}",
+                            value=move_san,
+                            description=f"Standard move: {move_san}"))
+
+        if game.board.piece_at(from_square_int) and \
+           game.board.piece_at(from_square_int).piece_type == chess.KING:
+            if from_square == 'e1' and game.board.turn == chess.WHITE:
+                if chess.Move.from_uci('e1g1') in game.board.legal_moves:
+                    options.append(
+                        discord.SelectOption(
+                            label="Castle Kingside (O-O)",
+                            value="O-O",
+                            description="Short castle: King to g1, Rook to f1")
+                    )
+                if chess.Move.from_uci('e1c1') in game.board.legal_moves:
+                    options.append(
+                        discord.SelectOption(
+                            label="Castle Queenside (O-O-O)",
+                            value="O-O-O",
+                            description="Long castle: King to c1, Rook to d1"))
+            elif from_square == 'e8' and game.board.turn == chess.BLACK:
+                if chess.Move.from_uci('e8g8') in game.board.legal_moves:
+                    options.append(
+                        discord.SelectOption(
+                            label="Castle Kingside (O-O)",
+                            value="O-O",
+                            description="Short castle: King to g8, Rook to f8")
+                    )
+                if chess.Move.from_uci('e8c8') in game.board.legal_moves:
+                    options.append(
+                        discord.SelectOption(
+                            label="Castle Queenside (O-O-O)",
+                            value="O-O-O",
+                            description="Long castle: King to c8, Rook to d8"))
+
+        super().__init__(placeholder="Choose your move...",
+                         min_values=1,
+                         max_values=1,
+                         options=options[:25])
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.game.current_player:
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
+
+        move = self.values[0]
+
+        if self.game.move_piece(move):
+            await interaction.response.defer()
+            self.parent_view.last_move_made = True
+
+            if self.game.is_game_over():
+                winner = self.game.get_winner()
+                await self.game.record_game_result(winner)
+                await interaction.followup.send(
+                    f"Game Over! Winner: {winner.name if winner else 'Draw'}")
+                self.parent_view.disable_all()
+                await self.parent_view.update_board(interaction,
+                                                    game_over=True)
+                self.parent_view.stop()
+            else:
+                self.game.switch_turns()
+                self.parent_view.remove_all_dropdowns()
+                self.parent_view.add_piece_dropdown()
+                await self.parent_view.update_board(interaction)
+
+
+class PieceSelectDropdown(discord.ui.Select):
+
+    def __init__(self, game: ChessGame, parent_view: 'ChessView'):
+        self.game = game
+        self.parent_view = parent_view
+
+        options = []
+        legal_from_squares = set(move.from_square
+                                 for move in game.board.legal_moves)
+
+        for square in legal_from_squares:
+            piece = game.board.piece_at(square)
+            if piece and piece.color == game.board.turn:
+                square_name = chess.square_name(square)
+                piece_name = piece.symbol().upper()
+                piece_type = {
+                    'P': 'Pawn',
+                    'N': 'Knight',
+                    'B': 'Bishop',
+                    'R': 'Rook',
+                    'Q': 'Queen',
+                    'K': 'King'
+                }.get(piece_name, piece_name)
+
+                moves_count = sum(1 for move in game.board.legal_moves
+                                  if move.from_square == square)
+
+                if moves_count > 0:
+                    options.append(
+                        discord.SelectOption(
+                            label=f"{piece_type} at {square_name}",
+                            value=square_name,
+                            description=f"{moves_count} possible moves"))
+
+        super().__init__(placeholder="Select a piece to move...",
+                         min_values=1,
+                         max_values=1,
+                         options=options[:25])
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.game.current_player:
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
+
+        from_square = self.values[0]
+
+        # Create moves dropdown
+        moves_dropdown = MoveSelectDropdown(self.game, self.parent_view,
+                                            from_square)
+
+        # Remove old move dropdown if it exists
+        self.parent_view.remove_move_dropdown()
+
+        # Clear all items
+        self.parent_view.clear_items()
+
+        # Add items in the correct order
+        self.parent_view.add_item(self)  # Add piece dropdown
+        self.parent_view.add_item(moves_dropdown)  # Add move dropdown
+        self.parent_view.add_item(
+            self.parent_view.create_resign_button())  # Add resign button
+        self.parent_view.add_item(
+            self.parent_view.create_draw_button())  # Add draw button
+
+        await interaction.response.defer()
+        await self.parent_view.update_board(interaction)
 
 
 class ChessCommands:
