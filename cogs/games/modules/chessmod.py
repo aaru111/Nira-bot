@@ -497,10 +497,7 @@ class ChessCommands:
     @staticmethod
     async def start_chess_game(ctx: commands.Context,
                                opponent: discord.Member) -> None:
-        """Start a chess game against another player."""
-        if ctx.author == opponent:
-            return await ctx.reply("You can't play against yourself!")
-
+        """Start a chess game against another player or yourself."""
         game = ChessGame(player1=ctx.author, player2=opponent)
         view = ChessView(game)
 
@@ -517,6 +514,12 @@ class ChessCommands:
             color=discord.Color.from_rgb(239, 158, 240))
         embed.set_image(url="attachment://chessboard.png")
         embed.add_field(name="Current Turn", value=ctx.author.name)
+
+        if ctx.author == opponent:
+            embed.add_field(
+                name="Note",
+                value="Playing against yourself - you control both sides!",
+                inline=False)
 
         await ctx.send(embed=embed, file=file, view=view)
 
