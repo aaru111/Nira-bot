@@ -333,6 +333,7 @@ class ChessView(discord.ui.View):
         self.add_item(self.create_resign_button())
         self.add_item(self.create_draw_button())
         self.last_move_made = False
+        self.selected_square = None
 
     def create_resign_button(self):
         button = discord.ui.Button(label="Resign",
@@ -375,6 +376,11 @@ class ChessView(discord.ui.View):
         flip_board = self.game.current_player == self.game.player2 and self.last_move_made
 
         arrows = []
+        squares = {}
+
+        if self.selected_square is not None:
+            squares[chess.parse_square(self.selected_square)] = "#FFFF00"
+
         if len(self.game.board.move_stack) > 0:
             last_move = self.game.board.move_stack[-1]
             arrows.append(
@@ -385,6 +391,7 @@ class ChessView(discord.ui.View):
         svg_board = chess.svg.board(board=self.game.board,
                                     flipped=flip_board,
                                     arrows=arrows,
+                                    squares=squares,
                                     size=800)
 
         png_image = self.convert_svg_to_png(svg_board)
@@ -501,6 +508,67 @@ class ChessView(discord.ui.View):
                 "No response received. Draw proposal timed out.")
 
 
+class PieceSelectDropdown(discord.ui.Select):
+
+    def __init__(self, game: ChessGame, parent_view: 'ChessView'):
+        self.game = game
+        self.parent_view = parent_view
+
+        options = []
+        legal_from_squares = set(move.from_square
+                                 for move in game.board.legal_moves)
+
+        for square in legal_from_squares:
+            piece = game.board.piece_at(square)
+            if piece and piece.color == game.board.turn:
+                square_name = chess.square_name(square)
+                piece_name = piece.symbol().upper()
+                piece_type = {
+                    'P': 'Pawn',
+                    'N': 'Knight',
+                    'B': 'Bishop',
+                    'R': 'Rook',
+                    'Q': 'Queen',
+                    'K': 'King'
+                }.get(piece_name, piece_name)
+
+                moves_count = sum(1 for move in game.board.legal_moves
+                                  if move.from_square == square)
+
+                if moves_count > 0:
+                    options.append(
+                        discord.SelectOption(
+                            label=f"{piece_type} at {square_name}",
+                            value=square_name,
+                            description=f"{moves_count} possible moves"))
+
+        super().__init__(placeholder="Select a piece to move...",
+                         min_values=1,
+                         max_values=1,
+                         options=options[:25])
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.game.current_player:
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
+
+        from_square = self.values[0]
+        self.parent_view.selected_square = from_square
+
+        moves_dropdown = MoveSelectDropdown(self.game, self.parent_view,
+                                            from_square)
+        self.parent_view.remove_move_dropdown()
+        self.parent_view.clear_items()
+        self.parent_view.add_item(self)
+        self.parent_view.add_item(moves_dropdown)
+        self.parent_view.add_item(self.parent_view.create_resign_button())
+        self.parent_view.add_item(self.parent_view.create_draw_button())
+
+        await interaction.response.defer()
+        await self.parent_view.update_board(interaction)
+
+
 class MoveSelectDropdown(discord.ui.Select):
 
     def __init__(self, game: ChessGame, parent_view: 'ChessView',
@@ -584,6 +652,7 @@ class MoveSelectDropdown(discord.ui.Select):
         if self.game.move_piece(move):
             await interaction.response.defer()
             self.parent_view.last_move_made = True
+            self.parent_view.selected_square = None
 
             if self.game.is_game_over():
                 winner = self.game.get_winner()
@@ -599,75 +668,6 @@ class MoveSelectDropdown(discord.ui.Select):
                 self.parent_view.remove_all_dropdowns()
                 self.parent_view.add_piece_dropdown()
                 await self.parent_view.update_board(interaction)
-
-
-class PieceSelectDropdown(discord.ui.Select):
-
-    def __init__(self, game: ChessGame, parent_view: 'ChessView'):
-        self.game = game
-        self.parent_view = parent_view
-
-        options = []
-        legal_from_squares = set(move.from_square
-                                 for move in game.board.legal_moves)
-
-        for square in legal_from_squares:
-            piece = game.board.piece_at(square)
-            if piece and piece.color == game.board.turn:
-                square_name = chess.square_name(square)
-                piece_name = piece.symbol().upper()
-                piece_type = {
-                    'P': 'Pawn',
-                    'N': 'Knight',
-                    'B': 'Bishop',
-                    'R': 'Rook',
-                    'Q': 'Queen',
-                    'K': 'King'
-                }.get(piece_name, piece_name)
-
-                moves_count = sum(1 for move in game.board.legal_moves
-                                  if move.from_square == square)
-
-                if moves_count > 0:
-                    options.append(
-                        discord.SelectOption(
-                            label=f"{piece_type} at {square_name}",
-                            value=square_name,
-                            description=f"{moves_count} possible moves"))
-
-        super().__init__(placeholder="Select a piece to move...",
-                         min_values=1,
-                         max_values=1,
-                         options=options[:25])
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user != self.game.current_player:
-            await interaction.response.send_message("It's not your turn!",
-                                                    ephemeral=True)
-            return
-
-        from_square = self.values[0]
-
-        # Create moves dropdown
-        moves_dropdown = MoveSelectDropdown(self.game, self.parent_view,
-                                            from_square)
-
-        # Remove old move dropdown if it exists
-        self.parent_view.remove_move_dropdown()
-
-        # Clear all items
-        self.parent_view.clear_items()
-
-        # Add items in the correct order
-        self.parent_view.add_item(self)  # Add piece dropdown
-        self.parent_view.add_item(moves_dropdown)  # Add move dropdown
-        self.parent_view.add_item(
-            self.parent_view.create_resign_button())  # Add resign button
-        self.parent_view.add_item(
-            self.parent_view.create_draw_button())  # Add draw button
-
-        await interaction.response.defer()
-        await self.parent_view.update_board(interaction)
 
 
 class ChessCommands:
