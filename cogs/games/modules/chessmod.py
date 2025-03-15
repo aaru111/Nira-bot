@@ -127,7 +127,6 @@ class ChessGame:
         white_material = 0
         black_material = 0
 
-        # Count material for pieces still on the board
         for square in chess.SQUARES:
             piece = self.board.piece_at(square)
             if piece:
@@ -136,14 +135,6 @@ class ChessGame:
                     white_material += value
                 else:
                     black_material += value
-
-        # Add captured pieces to the opposite side's total
-        for piece in self.captured_pieces[
-                chess.WHITE]:  # Pieces captured by black
-            black_material += self.PIECE_VALUES[piece.piece_type]
-        for piece in self.captured_pieces[
-                chess.BLACK]:  # Pieces captured by white
-            white_material += self.PIECE_VALUES[piece.piece_type]
 
         return white_material - black_material
 
