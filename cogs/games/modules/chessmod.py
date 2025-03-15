@@ -509,14 +509,12 @@ class ChessView(discord.ui.View):
 
 class PieceSelectDropdown(discord.ui.Select):
 
-    def __init__(self, game: ChessGame, parent_view: 'ChessView'):
+    def __init__(self, game: ChessGame, parent_view: ChessView):
         self.game = game
         self.parent_view = parent_view
-
         options = []
         legal_from_squares = set(move.from_square
                                  for move in game.board.legal_moves)
-
         for square in legal_from_squares:
             piece = game.board.piece_at(square)
             if piece and piece.color == game.board.turn:
@@ -530,17 +528,14 @@ class PieceSelectDropdown(discord.ui.Select):
                     'Q': 'Queen',
                     'K': 'King'
                 }.get(piece_name, piece_name)
-
                 moves_count = sum(1 for move in game.board.legal_moves
                                   if move.from_square == square)
-
                 if moves_count > 0:
                     options.append(
                         discord.SelectOption(
                             label=f"{piece_type} at {square_name}",
                             value=square_name,
                             description=f"{moves_count} possible moves"))
-
         super().__init__(placeholder="Select a piece to move...",
                          min_values=1,
                          max_values=1,
@@ -551,26 +546,22 @@ class PieceSelectDropdown(discord.ui.Select):
             await interaction.response.send_message("It's not your turn!",
                                                     ephemeral=True)
             return
-
         from_square = self.values[0]
         self.parent_view.selected_square = from_square
         self.parent_view.possible_moves = []
-
         from_square_int = chess.parse_square(from_square)
         for move in self.game.board.legal_moves:
             if move.from_square == from_square_int:
                 self.parent_view.possible_moves.append(
                     chess.square_name(move.to_square))
-
         moves_dropdown = MoveSelectDropdown(self.game, self.parent_view,
                                             from_square)
-        self.parent_view.remove_move_dropdown()
         self.parent_view.clear_items()
         self.parent_view.add_item(self)
         self.parent_view.add_item(moves_dropdown)
+        self.parent_view.add_item(self.parent_view.create_move_button())
         self.parent_view.add_item(self.parent_view.create_resign_button())
         self.parent_view.add_item(self.parent_view.create_draw_button())
-
         await interaction.response.defer()
         await self.parent_view.update_board(interaction)
 
