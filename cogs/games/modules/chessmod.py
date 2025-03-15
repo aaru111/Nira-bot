@@ -265,38 +265,34 @@ class ChessGame:
             return PlayerStats(player)
 
 
-class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
-    # ChessMoveModal remains unchanged
+class ManualMoveModal(discord.ui.Modal, title="Manual Move"):
+
     def __init__(self, view, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.view = view
 
         self.move_input = discord.ui.TextInput(
-            label="Enter your move",
-            placeholder="e.g., e4, Nf3, O-O",
+            label="Enter your move in algebraic notation",
+            placeholder="e.g., e4, Nf3, O-O, e8=Q",
             required=True,
+            max_length=10,
             style=discord.TextStyle.short,
         )
         self.add_item(self.move_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        move = self.move_input.value
         if interaction.user != self.view.game.current_player:
             await interaction.response.send_message("It's not your turn!",
                                                     ephemeral=True)
-            asyncio.create_task(self.delete_message_after_delay(
-                interaction, 5))
             return
 
-        # Get validation message if move is invalid
-        error_message = self.view.game.get_move_validation_message(move)
+        move = self.move_input.value.strip()
+        validation_message = self.view.game.get_move_validation_message(move)
 
-        if error_message is None:  # Move is valid
+        if validation_message is None:  # Move is valid
             if self.view.game.move_piece(move):
                 await interaction.response.send_message(
                     f"Move `{move}` was successful!", ephemeral=True)
-                asyncio.create_task(
-                    self.delete_message_after_delay(interaction, 5))
 
                 if self.view.game.is_game_over():
                     winner = self.view.game.get_winner()
@@ -304,7 +300,7 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
                     await interaction.followup.send(
                         f"Game Over! Winner: {winner.name if winner else 'Draw'}"
                     )
-                    self.view.disable_buttons()
+                    self.view.disable_all()
                     await self.view.update_board(interaction, game_over=True)
                     self.view.stop()
                 else:
@@ -312,15 +308,7 @@ class ChessMoveModal(discord.ui.Modal, title="Chess Move"):
                     await self.view.update_board(interaction)
         else:  # Move is invalid
             await interaction.response.send_message(
-                f"{error_message} Please try again.", ephemeral=True)
-            asyncio.create_task(self.delete_message_after_delay(
-                interaction, 5))
-
-    async def delete_message_after_delay(self,
-                                         interaction: discord.Interaction,
-                                         delay: int):
-        await asyncio.sleep(delay)
-        await interaction.delete_original_response()
+                f"{validation_message} Please try again.", ephemeral=True)
 
 
 class ChessView(discord.ui.View):
@@ -330,11 +318,28 @@ class ChessView(discord.ui.View):
         self.game = game
         self.clear_items()
         self.add_item(PieceSelectDropdown(self.game, self))
+        self.add_item(self.create_move_button())
         self.add_item(self.create_resign_button())
         self.add_item(self.create_draw_button())
         self.last_move_made = False
         self.selected_square = None
         self.possible_moves = []
+
+    def create_move_button(self):
+        button = discord.ui.Button(label="Move",
+                                   style=discord.ButtonStyle.primary,
+                                   custom_id="move_button")
+        button.callback = self.move_button_callback
+        return button
+
+    async def move_button_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.game.current_player:
+            await interaction.response.send_message("It's not your turn!",
+                                                    ephemeral=True)
+            return
+
+        modal = ManualMoveModal(self)
+        await interaction.response.send_modal(modal)
 
     def create_resign_button(self):
         button = discord.ui.Button(label="Resign",
