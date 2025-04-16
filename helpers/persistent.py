@@ -82,6 +82,6 @@ class PersistentViewManager:
 
         await self.setup_ticket_views()
 
-        await self.setup_suggestion_views()
+        #await self.setup_suggestion_views()
 
         logger.success("All persistent views have been set up successfully")
