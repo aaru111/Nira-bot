@@ -1,11 +1,11 @@
 import discord
 from discord.ext import commands
 import traceback
+from typing import List, Tuple
 import aiohttp
 import asyncio
-from difflib import get_close_matches
-from typing import List, Tuple
 from loguru import logger
+from helpers import fuzzy
 import sys
 from discord.ext.commands import CommandInvokeError
 from discord.errors import Forbidden, HTTPException
@@ -354,16 +354,13 @@ class Errors(commands.Cog):
 
     def get_command_not_found_description(self, ctx: commands.Context) -> str:
         attempted_command = ctx.message.content.split()[0][len(ctx.prefix):]
-        similar_commands: List[str] = get_close_matches(
-            attempted_command, [cmd.name for cmd in self.bot.commands],
-            n=1,
-            cutoff=0.6)
-        if similar_commands:
-            suggestion: str = similar_commands[0]
+        all_commands = {cmd.name: cmd.name for cmd in self.bot.commands}
+        result = fuzzy.extract_one(attempted_command, all_commands, score_cutoff=60)
+        if result:
+            suggestion, score, _ = result  
             return f"Command not found. Did you mean `{ctx.prefix}{suggestion}`?"
         else:
             return "Command not found. Please check your command and try again."
-
     def get_command_invoke_error_description(self,
                                              error: CommandInvokeError) -> str:
         original = error.original
