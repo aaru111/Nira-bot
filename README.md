@@ -1,6 +1,6 @@
 # NIRA - Neural Interactive Responsive Agent
 
-![NIRA Logo](https://i.ibb.co/VYDC8mTM/f9443ed54c7afd41f87252e934ab54a0.webp)
+![NIRA Logo](https://i.ibb.co/7JssNd3k/f9443ed54c7afd41f87252e934ab54a0.png)
 
 ## Overview
 
