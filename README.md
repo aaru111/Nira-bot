@@ -110,4 +110,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-For more information, visit our [website](https://www.nira-bot.com) or join our [Discord community](https://discord.gg/MB5QnVErhr).
+For more information, visit our [website](https://nira-bot.tech/) or join our [Discord community](https://discord.gg/MB5QnVErhr).
