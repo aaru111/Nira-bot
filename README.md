@@ -127,7 +127,7 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 ---
 
 <p align="center">
-  <img src="https://i.ibb.co/7JssNd3k/f9443ed54c7afd41f87252e934ab54a0.png" alt="NIRA Banner" width="100%"/>
+  <img src="https://i.ibb.co/Ps9Tdz8K/Chat-GPT-Image-Jun-21-2025-10-56-06-AM.png" alt="NIRA Banner"/>
 </p>
 
 <p align="center">
